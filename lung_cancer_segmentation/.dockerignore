@@ -1,0 +1,51 @@
+# .dockerignore – Prevent sensitive and unnecessary files from entering the Docker build context
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+# !! CRITICAL: Never include .env in Docker image !!
+.env
+.env.*
+!.env.example
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Large data / model files (mount as volumes at runtime instead)
+data/
+raw_dicom/
+checkpoints/
+uploads/
+
+# Frontend build artifacts (built separately in web/Dockerfile)
+web/node_modules/
+web/dist/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# IDE & OS
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.tmp
+
+# Docs (not needed at runtime)
+docs/
+notebooks/
+paper/

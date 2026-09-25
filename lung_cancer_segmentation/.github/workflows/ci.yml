@@ -1,0 +1,78 @@
+# .github/workflows/ci.yml
+# ─────────────────────────────────────────────
+# CI pipeline: lint, test, Docker build, security scan
+# ─────────────────────────────────────────────
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Python lint ──────────────────────────────
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ruff
+      - run: ruff check .
+
+  # ── Frontend lint ────────────────────────────
+  lint-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run build
+
+  # ── Python unit & integration tests ──────────
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install deps
+        run: |
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+      - name: Run tests
+        run: pytest tests -v --tb=short
+
+  # ── Docker build ─────────────────────────────
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [lint-python, test-python]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t lungvision-api .
+      - name: Build UI image
+        run: docker build -t lungvision-ui ./web
+
+  # ── Security scan ────────────────────────────
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image for scanning
+        run: docker build -t lungvision-api .
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'lungvision-api'
+          format: 'table'
+          exit-code: '0'    # don't fail on vulnerabilities (advisory)
+          severity: 'CRITICAL,HIGH'

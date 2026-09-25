@@ -1,0 +1,54 @@
+[
+  {
+    "category": "malignant",
+    "patient_id": "LIDC-IDRI-0001",
+    "series_uid": "1.3.6.1.4.1.14519.5.2.1.6279.6001.179049373636438705059720603192",
+    "slice_offset_ratio": 0.5,
+    "case_name": "LIDC_0001_malignant_nodule",
+    "diagnosis": "Malignant Solitary Lesion",
+    "description": "TCIA LIDC-IDRI-0001: Right pulmonary nodule with irregular border, solid internal attenuation.",
+    "file_path": "data/real_test_data/malignant/LIDC_0001_malignant_nodule.png",
+    "web_url": "/real_samples/LIDC_0001_malignant_nodule.png",
+    "metadata": {
+      "patient_id": "LIDC-IDRI-0001",
+      "modality": "CT",
+      "manufacturer": "GE MEDICAL SYSTEMS",
+      "kvp": 120.0,
+      "slice_thickness_mm": 2.5,
+      "pixel_spacing": [
+        0.703,
+        0.703
+      ],
+      "slice_location": -157.5,
+      "hu_min": -2048.0,
+      "hu_max": 3071.0,
+      "hu_mean": -859.6795654296875
+    }
+  },
+  {
+    "category": "normal",
+    "patient_id": "LIDC-IDRI-0002",
+    "series_uid": "1.3.6.1.4.1.14519.5.2.1.6279.6001.619372068417051974713149104919",
+    "slice_offset_ratio": 0.28,
+    "case_name": "LIDC_0002_normal_parenchyma",
+    "diagnosis": "Normal Aerated Parenchyma",
+    "description": "TCIA LIDC-IDRI-0002: Uniform bilateral lung aeration, regular vascular tapering, no focal opacities.",
+    "file_path": "data/real_test_data/normal/LIDC_0002_normal_parenchyma.png",
+    "web_url": "/real_samples/LIDC_0002_normal_parenchyma.png",
+    "metadata": {
+      "patient_id": "LIDC-IDRI-0002",
+      "modality": "CT",
+      "manufacturer": "GE MEDICAL SYSTEMS",
+      "kvp": 120.0,
+      "slice_thickness_mm": 1.25,
+      "pixel_spacing": [
+        0.703,
+        0.703
+      ],
+      "slice_location": -94.5,
+      "hu_min": -3024.0,
+      "hu_max": 1444.0,
+      "hu_mean": -1038.7158203125
+    }
+  }
+]

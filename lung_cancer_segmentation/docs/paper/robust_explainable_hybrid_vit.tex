@@ -1,0 +1,860 @@
+\documentclass[conference]{IEEEtran}
+
+% ─── Package Imports ──────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{subcaption}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=blue,urlcolor=blue]{hyperref}
+
+\begin{document}
+
+% ─── 2. Title & Metadata ─────────────────────────────────────────────────────
+\title{Robust and Explainable Hybrid Vision Transformer for Lung Cancer Classification\\
+\large An Integrated Framework for Classification Performance, Robustness Evaluation, and Explainable Artificial Intelligence}
+
+\author{\IEEEauthorblockN{[AUTHOR NAMES ANONYMIZED FOR PEER REVIEW]}
+\IEEEauthorblockA{\textit{Department of Computer Science and Biomedical Engineering} \\
+\textit{[Institution / University Name]}\\[0.1cm]
+\textit{Project Repository: Extension of `Transforming Diagnosis: A Hybrid Vision Transformer Model for Lung Cancer Classification} \\
+Contact Email: [author@institution.edu]}
+}
+
+\maketitle
+
+% ─── 3. Abstract ─────────────────────────────────────────────────────────────
+\begin{abstract}
+Lung cancer diagnosis via thoracic medical imaging is a cornerstone of clinical oncology, where early and precise detection significantly improves patient prognostic trajectories. While deep learning classifiers have demonstrated high nominal predictive accuracy on curated benchmarks, conventional deep architectures remain vulnerable to image-quality variations, sensor noise, blur, and acquisition artifacts commonly encountered across medical centers. Furthermore, their black-box decision-making creates substantial translational barriers in high-stakes healthcare scenarios. This study proposes an integrated, multi-dimensional research framework that extends an earlier foundational architecture (Transforming Diagnosis: A Hybrid Vision Transformer Model for Lung Cancer Classification'') through systematic robustness analysis and multi-modal Explainable Artificial Intelligence (XAI). We implement a Hybrid CNN--Vision Transformer architecture combining localized convolutional inductive priors with global multi-head self-attention. The framework systematically evaluates three dimensions simultaneously: (1) baseline classification performance, (2) predictive and confidence robustness under ten distinct image perturbations across multiple severity levels, and (3) visual explanation stability and spatial consistency using Grad-CAM, Grad-CAM++, Local Interpretable Model-Agnostic Explanations (LIME), SHapley Additive exPlanations (SHAP), and Vision Transformer attention rollout. Experimental validation on clean versus perturbed images measures Robustness Degradation ($RD$) alongside an Explanation Consistency ($EC$) index. By establishing the empirical relationship between model resilience and visual explanation stability, this research contributes foundational insights toward trustworthy, transparent computer-aided medical diagnosis without overclaiming clinical readiness.
+\end{abstract}
+
+% ─── 4. Keywords ─────────────────────────────────────────────────────────────
+\begin{IEEEkeywords}
+Lung Cancer Classification, Deep Learning, Vision Transformer, Hybrid CNN--ViT, Medical Image Analysis, Robustness Analysis, Explainable AI, Grad-CAM, Grad-CAM++, SHAP, LIME, Trustworthy AI.
+\end{IEEEkeywords}
+
+% ─── 5. Introduction ─────────────────────────────────────────────────────────
+\section{Introduction}
+\label{sec:introduction}
+
+Pulmonary malignancies represent one of the primary contributors to global cancer mortality, accounting for substantial healthcare burdens worldwide. The clinical prognosis of lung cancer is directly tied to the timeliness and precision of initial diagnosis. Computed Tomography (CT) scans and histopathological examinations serve as standard diagnostic modalities, generating dense anatomical imagery that requires labor-intensive analysis by specialized thoracic radiologists and pathologists.
+
+Over the past decade, artificial intelligence (AI), and specifically deep learning (DL), has demonstrated transformative potential in automated medical image analysis. Convolutional Neural Networks (CNNs) have long formed the default foundation for automated lesion detection due to their inherent translation invariance and parameter-efficient localized feature extraction \cite{he2016deep}. However, standard CNN architectures exhibit fundamental limitations: their localized receptive fields struggle to model long-range spatial context across disparate anatomical structures (e.g., bilateral lung lobes or distant lymph node involvement).
+
+To address localized receptive field constraints, Vision Transformers (ViTs) \cite{dosovitskiy2020image} have emerged, processing images as sequences of discrete patch tokens and capturing non-local relationships through Multi-Head Self-Attention (MHSA) \cite{vaswani2017attention}. Despite their global receptive fields, pure ViTs lack localized convolutional inductive biases, often demanding extensive training data and exhibiting sensitivity to subtle low-level textural shifts. These trade-offs motivated hybrid CNN--ViT architectures, such as the initial design in Transforming Diagnosis: A Hybrid Vision Transformer Model for Lung Cancer Classification'' \cite{ORIGINAL_PROJECT_REF}, which integrates shallow convolutional backbones for localized feature mapping with transformer encoders for global semantic aggregation.
+
+Nonetheless, a major fundamental concern in medical machine learning remains unaddressed by nominal benchmark evaluations: \textit{high classification accuracy on a standard, curated test dataset does not guarantee reliability, stability, or safety in clinical deployments} \cite{hendrycks2019benchmarking}. In real-world hospital environments, medical images are inherently subject to diverse variations, including sensor quantum mottle (Gaussian noise), detector defocus (blur), patient respiratory motion, contrast and brightness fluctuations resulting from varied radiation doses or staining protocols, patient positioning rotations, and compression artifacts resulting from Picture Archiving and Communication System (PACS) storage constraints.
+
+In tandem with vulnerability to image corruptions, conventional deep models suffer from the black-box'' dilemma \cite{rudin2019stop}. A model predicting a malignancy score without visual or semantic justification risks clinical dismissal or dangerous error propagation. Consequently, Explainable Artificial Intelligence (XAI) techniques have become essential. However, prior investigations have typically treated classification accuracy, adversarial robustness, and explainability as disconnected research domains.
+
+This work addresses these limitations by introducing a unified framework that evaluates deep learning-based lung cancer classification across three interdependent axes: \textbf{classification performance}, \textbf{robustness and reliability}, and \textbf{explainability and explanation consistency}.
+
+% ─── 6. Research Gap ─────────────────────────────────────────────────────────
+\section{Research Gap}
+\label{sec:research_gap}
+
+A rigorous review of the current medical image computing literature reveals that existing automated lung cancer classification studies focus almost exclusively on conventional scalar performance metrics: Accuracy, Precision, Recall, F1-score, and Area Under the Receiver Operating Characteristic curve (ROC-AUC). 
+
+While these metrics provide foundational validation on clean test partitions, limited attention has been given to:
+\begin{enumerate}
+    \item \textbf{Multi-Perturbation Robustness Profiles:} Systematic evaluation against multiple, concurrent, and realistic medical image perturbation types at graded severity levels.
+    \item \textbf{Prediction and Confidence Stability:} Determining whether model prediction confidence degrades gracefully or exhibits catastrophic overconfidence under image corruptions.
+    \item \textbf{Consistency of Visual Explanations:} Investigating whether heatmaps generated by XAI methods remain invariant or undergo spatial drift when benign or non-pathological noise is introduced.
+    \item \textbf{Robustness--Explainability Interdependence:} Formally analyzing whether architectures demonstrating higher predictive robustness also exhibit superior explanation fidelity.
+    \item \textbf{Architectural Triad Comparison:} Systematically contrasting CNN-only, ViT-only, and Hybrid CNN--ViT paradigms within an identical, controlled robustness and explainability benchmarking harness.
+    \item \textbf{Pathological Region Alignment:} Assessing whether highlighted visual features correspond to medically documented lesion characteristics rather than spurious background artifacts.
+\end{enumerate}
+
+This study is specifically designed to address these identified research gaps through an integrated experimental methodology.
+
+% ─── 7. Problem Statement ───────────────────────────────────────────────────
+\section{Problem Statement}
+\label{sec:problem_statement}
+
+Existing deep learning-based lung cancer classification systems can achieve strong diagnostic performance under standard, clean testing conditions; however, they remain sensitive to realistic variations in input medical images and provide insufficient interpretability regarding their internal decision-making processes. 
+
+Therefore, there is a critical need to formulate, implement, and validate an integrated research framework that simultaneously investigates:
+\begin{equation}
+\mathcal{F}_{\text{eval}} = \Big\langle \text{Classification Accuracy},\, \text{Perturbation Robustness},\, \text{Explanation Consistency} \Big\rangle
+\end{equation}
+to ascertain whether a Hybrid Vision Transformer model can maintain reliable, calibrated, and interpretable outputs under challenging clinical image conditions.
+
+% ─── 8. Research Questions ───────────────────────────────────────────────────
+\section{Research Questions}
+\label{sec:research_questions}
+
+This study is structured around seven primary research questions:
+\begin{itemize}
+    \item \textbf{RQ1:} How does the proposed Hybrid CNN--ViT model perform compared with pure CNN-only and pure ViT-only baseline architectures under standard, clean test conditions?
+    \item \textbf{RQ2:} How does classification performance (accuracy, F1-score, ROC-AUC) change when medical images undergo controlled image perturbations?
+    \item \textbf{RQ3:} Which specific perturbation types and severity thresholds induce the most severe performance degradation across evaluated models?
+    \item \textbf{RQ4:} Does the Hybrid CNN--ViT architecture demonstrate superior robustness resilience compared to individual CNN or ViT architectures?
+    \item \textbf{RQ5:} Do visual explainability methods identify spatially consistent anatomical regions across clean versus perturbed image pairs?
+    \item \textbf{RQ6:} Is higher classification robustness statistically associated with greater explanation consistency?
+    \item \textbf{RQ7:} Which architectural paradigm provides the most favorable trade-off among accuracy, robustness, confidence stability, and interpretability?
+\end{itemize}
+
+% ─── 9. Objectives ───────────────────────────────────────────────────────────
+\section{Objectives}
+\label{sec:objectives}
+
+The overarching primary objective is to develop, evaluate, and analyze a robust and explainable Hybrid Vision Transformer framework for lung cancer image classification. 
+
+To achieve this, the following secondary objectives are pursued:
+\begin{enumerate}
+    \item Preprocess and standardize raw medical imaging datasets using leakage-free patient-aware partitioning.
+    \item Implement and train a standardized deep CNN baseline architecture.
+    \item Implement and train a pure Vision Transformer (ViT) baseline architecture.
+    \item Develop and optimize the Hybrid CNN--ViT network architecture.
+    \item Evaluate all baseline and proposed models on standard clean benchmark test sets using multi-class metrics.
+    \item Design and execute a comprehensive robustness testing harness implementing ten distinct image perturbations across multiple severity levels.
+    \item Integrate multi-modal XAI techniques including Grad-CAM, Grad-CAM++, LIME, SHAP, and Transformer Attention Rollout.
+    \item Formulate quantitative metrics (IoU, Dice, Cosine similarity) to evaluate Explanation Consistency ($EC$) between clean and corrupted image pairs.
+    \item Perform systematic ablation studies on architectural and fusion components.
+    \item Conduct statistical hypothesis testing and error analysis to identify architectural failure modes.
+    \item Characterize the model that achieves the optimal balance among accuracy, robustness, and interpretability.
+\end{enumerate}
+
+% ─── 10. Research Contributions ─────────────────────────────────────────────
+\section{Research Contributions}
+\label{sec:contributions}
+
+The principal contributions of this work are summarized as follows:
+\begin{enumerate}
+    \item \textbf{Hybrid Architectural Framework:} Development of an optimized Hybrid CNN--Vision Transformer tailored for lung cancer image classification, fusing local inductive feature maps with multi-head self-attention.
+    \item \textbf{Multi-Perturbation Robustness Benchmark:} Formulation of a systematic robustness evaluation harness spanning ten clinically motivated image corruptions across graded severities.
+    \item \textbf{Integrated Multi-Modal XAI Suite:} Simultaneous implementation of gradient-based (Grad-CAM, Grad-CAM++), perturbation-based (LIME), game-theoretic (SHAP), and token attention mechanisms.
+    \item \textbf{Cross-Condition Explanation Analysis:} Quantitative and qualitative evaluation of explanation drift between pristine and perturbed medical images.
+    \item \textbf{Robustness Degradation Formalization:} Empirical characterization of Robustness Degradation ($RD$) and Relative Robustness Degradation ($RRD$).
+    \item \textbf{Explanation Consistency Index:} Formulation of the $EC$ metric quantifying explanation spatial overlap under input distortion.
+    \item \textbf{Comprehensive Ablation Studies:} Controlled experiments isolating the individual contributions of convolutional blocks, transformer layers, and fusion mechanisms.
+    \item \textbf{Rigorous Statistical Analysis:} Distributional comparisons via repeated cross-validation folds, confidence intervals, and paired statistical tests.
+    \item \textbf{Tri-Axial Trustworthy Evaluation:} Establishment of a unified evaluation paradigm uniting predictive performance, adversarial/sensor resilience, and transparency.
+\end{enumerate}
+\textit{Disclaimer: This research is an algorithmic and experimental investigation; it does not claim clinical validation or autonomous medical diagnostic certification.}
+
+% ─── 11. Existing System ─────────────────────────────────────────────────────
+\section{Existing System Analysis}
+\label{sec:existing_system}
+
+Existing methodologies for automated lung cancer image analysis can be broadly categorized into three paradigms:
+\begin{itemize}
+    \item \textbf{Handcrafted Feature Extraction + Traditional ML:} Early CAD systems extracted Haralick textures, Gray-Level Co-occurrence Matrices (GLCM), and morphological descriptors, classified via Support Vector Machines (SVM) or Random Forests. While computationally lightweight and inherently interpretable, they exhibit poor generalization across heterogeneous clinical datasets.
+    \item \textbf{Pure CNN Architectures:} Deep architectures (VGG, ResNet, DenseNet) automatically learn hierarchical representations from raw pixels. Although achieving high benchmark accuracy, their localized convolution operations fail to model long-range context, and their vulnerability to high-frequency image corruptions is well documented.
+    \item \textbf{Pure Vision Transformers:} Modern ViTs utilize self-attention across image patches. While proficient at modeling global dependencies, their absence of spatial inductive bias results in data inefficiency and susceptibility to localized contrast variations.
+\end{itemize}
+
+\begin{table*}[t]
+\caption{Comparison of Existing Machine Learning and Deep Learning Paradigms with the Proposed Framework}
+\label{tab:existing_vs_proposed}
+\centering
+\begin{tabular}{lp{5.5cm}p{5.5cm}c}
+\toprule
+\textbf{Approach} & \textbf{Core Strengths} & \textbf{Key Limitations} & \textbf{Evaluates Robustness \& XAI?} \\
+\midrule
+Traditional ML (SVM / RF) & Interpretable feature sets; low computational overhead. & Highly sensitive to segmentation errors; poor cross-scanner transferability. & No \\
+Pure CNN (ResNet, DenseNet) & Strong localized feature extraction; translation invariance. & Restricted receptive fields; brittle to high-frequency noise; opaque black box. & Seldom \\
+Pure ViT (ViT-B/16) & Global receptive field; models non-local anatomical relations. & Lacks inductive spatial bias; high sample complexity; sensitive to contrast shifts. & Seldom \\
+Prior Hybrid ViT \cite{ORIGINAL_PROJECT_REF} & Combines localized convolutions with self-attention. & Evaluated purely on clean benchmark accuracy; no perturbation or XAI consistency analysis. & Partial \\
+\textbf{Proposed Framework} & \textbf{Joint optimization of local and global representations; verified under 10 perturbation types; multi-modal XAI consistency.} & \textbf{Higher training computational complexity compared to shallow CNN baselines.} & \textbf{Yes (Comprehensive)} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Table~\ref{tab:existing_vs_proposed} outlines the comparative strengths and limitations of these approaches.
+
+% ─── 12. Proposed System ─────────────────────────────────────────────────────
+\section{Proposed System Workflow}
+\label{sec:proposed_system}
+
+The proposed framework operates via a systematic, multi-phase sequential pipeline:
+\begin{enumerate}
+    \item \textbf{Data Acquisition and Partitioning:} Sourcing medical imaging datasets with strict patient-level separation to prevent data leakage.
+    \item \textbf{Preprocessing:} Standardization, intensity normalization, and resolution alignment.
+    \item \textbf{Training Augmentation:} Applying medically plausible spatial transformations strictly within training partitions.
+    \item \textbf{Hybrid Feature Encoding:} Joint localized feature extraction via convolutional blocks and global token representation via Transformer encoders.
+    \item \textbf{Classification Head:} Multi-class probability generation via dense layers and softmax normalization.
+    \item \textbf{Robustness Stress-Testing:} Evaluating trained models against clean test images and systematically perturbed test sets.
+    \item \textbf{Explainability Studio:} Generating multi-modal visual attribution heatmaps (Grad-CAM, Grad-CAM++, Attention Rollout, LIME, SHAP).
+    \item \textbf{Joint Consistency Analysis:} Quantifying explanation stability ($EC$) and confidence drop across perturbation severities.
+\end{enumerate}
+
+% ─── 13. Architecture Specification ─────────────────────────────────────────
+\section{Hybrid CNN--Vision Transformer Architecture}
+\label{sec:architecture}
+
+The proposed architecture is engineered to combine localized feature representations with global contextual modeling.
+
+\subsection{Convolutional Feature Extractor}
+Given an input medical image $\mathbf{X} \in \mathbb{R}^{H \times W \times C}$, where $H = W = 224$ and $C = 3$, the input is first processed by a convolutional backbone $f_{\text{conv}}(\mathbf{X})$:
+\begin{equation}
+\mathbf{F}_0 = \text{ReLU}\big(\text{BN}(\text{Conv}_{7\times7}(\mathbf{X}))\big),
+\end{equation}
+followed by a sequence of residual blocks with stride 2 downsampling. The output feature map $\mathbf{F} \in \mathbb{R}^{H' \times W' \times D_{\text{cnn}}}$ has reduced spatial dimensions $H' = W' = 14$ and feature depth $D_{\text{cnn}} = 256$.
+
+\subsection{Patch/Token Transformation and Positional Encoding}
+The spatial grid of feature vectors is flattened into a sequence of $N = H' \times W' = 196$ local visual tokens $\mathbf{x}_p \in \mathbb{R}^{N \times D_{\text{embed}}}$, where a $1 \times 1$ convolution projects $D_{\text{cnn}} \to D_{\text{embed}} = 256$.
+
+A learnable class token $\mathbf{x}_{\text{cls}} \in \mathbb{R}^{1 \times D_{\text{embed}}}$ is prepended to the sequence, and 1D learnable positional embeddings $\mathbf{E}_{\text{pos}} \in \mathbb{R}^{(N+1) \times D_{\text{embed}}}$ are added:
+\begin{equation}
+\mathbf{z}_0 = \left[ \mathbf{x}_{\text{cls}};\, \mathbf{x}_p^1;\, \mathbf{x}_p^2;\, \dots;\, \mathbf{x}_p^N \right] + \mathbf{E}_{\text{pos}}.
+\end{equation}
+
+\subsection{Transformer Encoder and Multi-Head Self-Attention}
+The token sequence $\mathbf{z}_0$ passes through $L$ consecutive Transformer encoder blocks ($L = 6$). Each block $l \in \{1, \dots, L\}$ comprises Layer Normalization ($\text{LN}$), Multi-Head Self-Attention ($\text{MHSA}$), and a Multi-Layer Perceptron ($\text{MLP}$) with residual connections:
+\begin{align}
+\mathbf{z}'_l &= \text{MHSA}\big(\text{LN}(\mathbf{z}_{l-1})\big) + \mathbf{z}_{l-1}, \\
+\mathbf{z}_l &= \text{MLP}\big(\text{LN}(\mathbf{z}'_l)\big) + \mathbf{z}'_l.
+\end{align}
+
+Within the $\text{MHSA}$ module with $h = 8$ attention heads, the queries $\mathbf{Q}$, keys $\mathbf{K}$, and values $\mathbf{V}$ are linear projections of dimension $d_k = D_{\text{embed}} / h = 32$. The scaled dot-product self-attention is formulated as:
+\begin{equation}
+\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left( \frac{\mathbf{Q}\mathbf{K}^T}{\sqrt{d_k}} \right) \mathbf{V},
+\end{equation}
+where $\mathbf{Q}\mathbf{K}^T / \sqrt{d_k}$ represents the attention logits and the $\text{softmax}$ function normalizes attention scores across token positions.
+
+\subsection{Classification Head}
+The contextualized representation of the class token at the output of the final block $\mathbf{z}_L^0 \in \mathbb{R}^{D_{\text{embed}}}$ is passed through layer normalization and a linear classification head:
+\begin{equation}
+\hat{\mathbf{y}} = \text{softmax}\big( \mathbf{W}_c \text{LN}(\mathbf{z}_L^0) + \mathbf{b}_c \big),
+\end{equation}
+where $\mathbf{W}_c \in \mathbb{R}^{K \times D_{\text{embed}}}$ and $K$ is the number of diagnostic classes ($K = 3$: Benign, Malignant, Normal).
+
+% ─── 14. Dataset ─────────────────────────────────────────────────────────────
+\section{Dataset Specification and Integrity}
+\label{sec:dataset}
+
+\subsection{Dataset Cohort}
+Experiments are designed around established benchmark medical imaging repositories:
+\begin{itemize}
+    \item \textbf{Dataset Source:} [DATASET NAME / CITATION PLACEHOLDER, e.g., LIDC-IDRI \cite{armato2011lung}]
+    \item \textbf{Total Sample Volume:} [N] images
+    \item \textbf{Number of Diagnostic Classes:} [K = 3] (Malignant, Benign, Normal)
+    \item \textbf{Class Distribution:}
+      \begin{itemize}
+          \item Class 1 (Malignant): [N] cases ([XX.XX]\%)
+          \item Class 2 (Benign): [N] cases ([XX.XX]\%)
+          \item Class 3 (Normal): [N] cases ([XX.XX]\%)
+      \end{itemize}
+    \item \textbf{Image Modality and Format:} Thoracic CT DICOM / PNG slices standardized to $224 \times 224$ pixels.
+\end{itemize}
+
+\subsection{Data Leakage Prevention}
+A critical requirement in computational healthcare is patient-level cohort separation. When multiple CT slices or regions of interest originate from the same subject, partitioning them arbitrarily across train and test sets leads to severe data leakage and inflated performance. Where patient metadata permits, data splitting is enforced strictly at the patient identifier level:
+\begin{equation}
+\mathcal{P}_{\text{train}} \cap \mathcal{P}_{\text{val}} = \emptyset, \quad \mathcal{P}_{\text{train}} \cap \mathcal{P}_{\text{test}} = \emptyset, \quad \mathcal{P}_{\text{val}} \cap \mathcal{P}_{\text{test}} = \emptyset.
+\end{equation}
+The dataset is partitioned into [70\%] training, [10\%] validation, and [20\%] hold-out testing subsets.
+
+% ─── 15. Preprocessing & 16. Augmentation ────────────────────────────────────
+\section{Preprocessing and Augmentation Strategy}
+\label{sec:preprocessing}
+
+\subsection{Preprocessing Protocol}
+All raw images undergo standardized, deterministic preprocessing prior to network ingestion:
+\begin{itemize}
+    \item \textbf{Intensity Normalization:} Hounsfield Unit (HU) windowing (e.g., lung window: [-1000, 400] HU) followed by min-max scaling to $[0, 1]$.
+    \item \textbf{Channel Standardization:} Normalized using channel-wise mean $\boldsymbol{\mu} = [0.485, 0.456, 0.406]$ and standard deviation $\boldsymbol{\sigma} = [0.229, 0.224, 0.225]$.
+    \item \textbf{Spatial Resampling:} Bilinear interpolation resizing to $224 \times 224$ dimensions.
+\end{itemize}
+
+\subsection{Distinction: Training Augmentation vs. Test-Time Perturbation}
+To maintain scientific validity, a strict distinction is enforced:
+\begin{itemize}
+    \item \textbf{Training Augmentations:} Transformations applied strictly to training batches to promote invariant representation learning. These include random horizontal flips, minor affine rotations ($\pm 10^\circ$), and subtle scaling ($[0.95, 1.05]$).
+    \item \textbf{Test-Time Robustness Perturbations:} Controlled, non-trivial corruptions applied exclusively to the hold-out test set to quantify degradation. Test-time perturbations are not included in training data to prevent trivial memorization.
+\end{itemize}
+
+% ─── 17. Baseline Models ─────────────────────────────────────────────────────
+\section{Baseline Architectures}
+\label{sec:baselines}
+
+To isolate architectural contributions, three architectures are evaluated under identical training and testing conditions:
+\begin{enumerate}
+    \item \textbf{CNN Baseline (ResNet-style):} A 4-stage residual convolutional neural network with localized $3 \times 3$ kernels, batch normalization, and global average pooling before classification.
+    \item \textbf{Vision Transformer Baseline (ViT-B/16):} A standard ViT utilizing raw $16 \times 16$ image patch projection, 12 transformer blocks, 12 attention heads, and embedding dimension 768 \cite{dosovitskiy2020image}.
+    \item \textbf{Proposed Hybrid CNN--ViT:} The integrated architecture detailed in Section~\ref{sec:architecture}.
+\end{enumerate}
+
+% ─── 18. Training Strategy & 19. Loss Function ───────────────────────────────
+\section{Training Strategy and Loss Formulation}
+\label{sec:training}
+
+\subsection{Hyperparameter Optimization}
+All networks are trained using the AdamW optimizer with decoupled weight decay:
+\begin{itemize}
+    \item \textbf{Base Learning Rate:} $\eta = [\text{1e-4}]$
+    \item \textbf{Batch Size:} $B = [\text{16}]$
+    \item \textbf{Weight Decay:} $\lambda = [\text{0.01}]$
+    \item \textbf{Maximum Epochs:} $E = [\text{30}]$
+    \item \textbf{Learning Rate Schedule:} Cosine Annealing scheduler:
+      \begin{equation}
+      \eta_t = \eta_{\text{min}} + \frac{1}{2}(\eta_{\text{max}} - \eta_{\text{min}})\left(1 + \cos\left(\frac{t}{T_{\text{max}}}\pi\right)\right).
+      \end{equation}
+    \item \textbf{Early Stopping:} Monitored on validation loss with patience of [5] epochs.
+\end{itemize}
+
+\subsection{Loss Functions}
+For multiclass lung classification with $K$ classes, standard Categorical Cross-Entropy is applied:
+\begin{equation}
+\mathcal{L}_{\text{CE}} = - \sum_{k=1}^K y_k \log(\hat{y}_k),
+\end{equation}
+where $y_k \in \{0, 1\}$ denotes ground truth one-hot labels and $\hat{y}_k$ denotes predicted softmax probabilities. 
+
+In scenarios with minor class imbalance, Focal Loss \cite{lin2017focal} is evaluated as an alternative:
+\begin{equation}
+\mathcal{L}_{\text{Focal}} = - \sum_{k=1}^K \alpha_k (1 - \hat{y}_k)^\gamma y_k \log(\hat{y}_k),
+\end{equation}
+with focusing parameter $\gamma = 2.0$ and balancing weights $\alpha_k$.
+
+% ─── 20. Robustness Analysis & 21. Matrix ────────────────────────────────────
+\section{Robustness Analysis Framework}
+\label{sec:robustness}
+
+\subsection{Motivation in Medical AI}
+Medical imaging systems in routine clinical practice face heterogeneous imaging conditions across manufacturer platforms, detector ages, radiation dosage protocols, and hospital PACS archiving. A trustworthy model must demonstrate graceful degradation rather than abrupt predictive collapse under such corruptions.
+
+\subsection{Perturbation Taxonomy and Severity Matrix}
+Ten distinct perturbations are systematically applied across three severity levels ($\text{Severity } 0 = \text{Clean}$, $\text{Severity } 1 = \text{Low}$, $\text{Severity } 2 = \text{Medium}$, $\text{Severity } 3 = \text{High}$). Table~\ref{tab:perturbation_matrix} defines the complete experiment matrix.
+
+\begin{table*}[t]
+\caption{Systematic Perturbation Experiment Matrix Across Graded Severity Levels}
+\label{tab:perturbation_matrix}
+\centering
+\begin{tabular}{lp{3.5cm}p{3.5cm}p{3.5cm}p{3.5cm}}
+\toprule
+\textbf{Perturbation Type} & \textbf{Severity 1 (Low)} & \textbf{Severity 2 (Medium)} & \textbf{Severity 3 (High)} & \textbf{Clinical / Physical Motivation} \\
+\midrule
+Gaussian Noise & $\sigma = 15$ & $\sigma = 30$ & $\sigma = 50$ & Quantum mottle, low-dose CT acquisition \\
+Salt-and-Pepper Noise & $p = 0.02$ & $p = 0.05$ & $p = 0.10$ & Defective detector sensors, transmission spikes \\
+Gaussian Blur & Radius $\rho = 1.5$ & Radius $\rho = 3.0$ & Radius $\rho = 5.0$ & Detector defocus, partial volume reconstruction \\
+Motion Blur & Kernel size 5 & Kernel size 9 & Kernel size 15 & Patient respiratory or cardiac motion \\
+Brightness Variation & Factor $\beta = 1.2$ (or $0.8$) & Factor $\beta = 1.4$ (or $0.6$) & Factor $\beta = 1.6$ (or $0.4$) & Tube current / voltage calibration shifts \\
+Contrast Variation & Factor $\kappa = 0.8$ & Factor $\kappa = 0.6$ & Factor $\kappa = 0.4$ & Radiation attenuation, tissue density shifts \\
+In-Plane Rotation & Angle $\theta = 5^\circ$ & Angle $\theta = 15^\circ$ & Angle $\theta = 30^\circ$ & Patient positioning variation on scanner gantry \\
+Spatial Rescaling & Scale factor 0.9 & Scale factor 0.8 & Scale factor 0.7 & Disparate field-of-view / zoom settings \\
+JPEG Compression & Quality factor $Q = 50$ & Quality factor $Q = 30$ & Quality factor $Q = 10$ & Lossy PACS network storage and transmission \\
+Resolution Downsampling & Downsample $0.8\times$ & Downsample $0.6\times$ & Downsample $0.4\times$ & Legacy scanner resolution differences \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+% ─── 22. Robustness Metrics & 23. Confidence Stability ───────────────────────
+\section{Quantitative Robustness Metrics}
+\label{sec:robustness_metrics}
+
+\subsection{Robustness Degradation Metrics}
+Let $\mathcal{P}_{\text{clean}}$ denote model performance (e.g., accuracy, macro F1, or target class probability) on the pristine test set, and $\mathcal{P}_{\text{perturbed}}^{(k, s)}$ denote performance under perturbation $k$ at severity $s$. 
+
+We define the absolute \textbf{Robustness Degradation ($RD$)} as:
+\begin{equation}
+RD(k, s) = \mathcal{P}_{\text{clean}} - \mathcal{P}_{\text{perturbed}}^{(k, s)}.
+\end{equation}
+The \textbf{Relative Robustness Degradation ($RRD$)} is formulated as:
+\begin{equation}
+RRD(k, s) = \frac{\mathcal{P}_{\text{clean}} - \mathcal{P}_{\text{perturbed}}^{(k, s)}}{\mathcal{P}_{\text{clean}}} \times 100\%.
+\end{equation}
+Lower values of $RD$ and $RRD$ indicate superior model resilience.
+
+\subsection{Confidence Stability and Drop}
+For a test image $\mathbf{x}_i$, let $C_{\text{clean}}(\mathbf{x}_i) = \max_k p(y=k|\mathbf{x}_i)$ represent the model's confidence on the clean instance, and $C_{\text{pert}}(\mathbf{x}_i)$ represent confidence on the perturbed instance. The \textbf{Confidence Drop ($\Delta C$)} is defined as:
+\begin{equation}
+\Delta C(\mathbf{x}_i) = C_{\text{clean}}(\mathbf{x}_i) - C_{\text{pert}}(\mathbf{x}_i).
+\end{equation}
+A calibrated and stable model should avoid erratic confidence fluctuations under minor perturbations.
+
+% ─── 24. Explainable AI (25-29) ──────────────────────────────────────────────
+\section{Explainable Artificial Intelligence (XAI) Suite}
+\label{sec:xai}
+
+To audit model reasoning, five complementary XAI techniques are implemented.
+
+\subsection{Grad-CAM}
+Gradient-weighted Class Activation Mapping computes the gradients of the score for target class $c$ ($y^c$, prior to softmax) with respect to feature activation maps $A^k$ of the final convolutional layer:
+\begin{equation}
+\alpha_k^c = \frac{1}{Z} \sum_{i=1}^U \sum_{j=1}^V \frac{\partial y^c}{\partial A_{i,j}^k},
+\end{equation}
+where $Z = U \times V$ is the spatial area of the feature map. The localization map is obtained via a weighted linear combination followed by ReLU:
+\begin{equation}
+L_{\text{Grad-CAM}}^c = \text{ReLU}\left( \sum_k \alpha_k^c A^k \right).
+\end{equation}
+
+\subsection{Grad-CAM++}
+Grad-CAM++ provides enhanced localization for multi-focal lesions by incorporating second- and third-order partial derivatives as weight coefficients $\alpha_{i,j}^{k,c}$:
+\begin{equation}
+\alpha_{i,j}^{k,c} = \frac{\frac{\partial^2 y^c}{(\partial A_{i,j}^k)^2}}{2\frac{\partial^2 y^c}{(\partial A_{i,j}^k)^2} + \sum_{a,b} A_{a,b}^k \frac{\partial^3 y^c}{(\partial A_{i,j}^k)^3}},
+\end{equation}
+yielding fine-grained heatmaps that better capture irregular lesion boundaries.
+
+\subsection{Local Interpretable Model-Agnostic Explanations (LIME)}
+LIME approximates the non-linear decision boundary locally using an interpretable surrogate model $g \in G$ (e.g., sparse linear regressor) trained on perturbed superpixel samples $z'$:
+\begin{equation}
+\xi(\mathbf{x}) = \arg\min_{g \in G} \mathcal{L}(f, g, \pi_{\mathbf{x}}) + \Omega(g),
+\end{equation}
+where $\pi_{\mathbf{x}}(z')$ defines the exponential kernel proximity between sample $z'$ and original image $\mathbf{x}$, and $\Omega(g)$ penalizes model complexity.
+
+\subsection{SHapley Additive exPlanations (SHAP)}
+SHAP computes additive feature attributions based on cooperative game theory. The Shapley value $\phi_i$ represents the marginal contribution of superpixel/patch $i$ across all possible subsets $S \subseteq F \setminus \{i\}$:
+\begin{equation}
+\phi_i = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|!(|F| - |S| - 1)!}{|F|!} \left[ f(S \cup \{i\}) - f(S) \right].
+\end{equation}
+
+\subsection{Vision Transformer Attention Rollout}
+In the Vision Transformer, we compute recursive attention rollout to trace token information propagation from patch tokens to the $[CLS]$ token across all $L$ encoder blocks:
+\begin{equation}
+\mathbf{A}_{\text{rollout}} = \prod_{l=1}^L \left( 0.5 \mathbf{A}_l + 0.5 \mathbf{I} \right),
+\end{equation}
+where $\mathbf{A}_l$ is the head-averaged self-attention matrix at block $l$. \textit{Cautionary Note: Attention maps illustrate internal token routing and should not be conflated with direct causal attribution.}
+
+% ─── 30. Explanation Consistency & 31. Region Analysis ───────────────────────
+\section{Explanation Consistency Analysis}
+\label{sec:explanation_consistency}
+
+A pivotal contribution of this study is evaluating whether visual explanations remain consistent when benign input perturbations are introduced.
+
+\subsection{Explanation Consistency ($EC$) Metric}
+For a given image $\mathbf{x}$, let $\mathbf{E}_{\text{clean}} \in \mathbb{R}^{H \times W}$ denote the normalized explanation heatmap generated from the pristine image, and $\mathbf{E}_{\text{pert}} \in \mathbb{R}^{H \times W}$ denote the explanation generated from the perturbed image. We evaluate spatial consistency using Dice similarity and Cosine correlation:
+\begin{equation}
+EC_{\text{Dice}}(\mathbf{E}_{\text{clean}}, \mathbf{E}_{\text{pert}}) = \frac{2 \sum_{i,j} \mathbf{E}_{\text{clean}}(i,j) \cdot \mathbf{E}_{\text{pert}}(i,j)}{\sum_{i,j} \mathbf{E}_{\text{clean}}^2(i,j) + \sum_{i,j} \mathbf{E}_{\text{pert}}^2(i,j)}.
+\end{equation}
+Higher $EC$ scores indicate that the model's visual reasoning remains focused on invariant pathological features rather than shifting toward noise artifacts.
+
+\subsection{Region-Based Pathological Alignment}
+Where radiologist ground-truth nodule bounding boxes or segmentation masks $\mathbf{M}_{\text{GT}}$ are available, we compute pointing game accuracy and Intersection over Union (IoU) with thresholded explanation maps $\mathbf{E}_{\tau} = (\mathbf{E} > \tau)$:
+\begin{equation}
+\text{IoU}(\mathbf{E}_{\tau}, \mathbf{M}_{\text{GT}}) = \frac{|\mathbf{E}_{\tau} \cap \mathbf{M}_{\text{GT}}|}{|\mathbf{E}_{\tau} \cup \mathbf{M}_{\text{GT}}|}.
+\end{equation}
+If ground-truth masks are unavailable for subsets of the data, we explicitly note that visual explanation quality cannot be interpreted as definitive clinical correctness.
+
+% ─── 32. Joint Analysis ──────────────────────────────────────────────────────
+\section{Joint Robustness and Explainability Analysis}
+\label{sec:joint_analysis}
+
+We analyze the dual-axis trajectory between predictive robustness and explanation consistency across perturbation severities:
+\begin{itemize}
+    \item \textbf{Accuracy vs. Severity:} Quantifies classification margin degradation.
+    \item \textbf{Explanation Consistency vs. Severity:} Quantifies visual reasoning drift.
+    \item \textbf{Robustness--Consistency Correlation:} Evaluates whether models that maintain high classification stability also preserve visual explanation fidelity.
+\end{itemize}
+
+% ─── 33. Ablation Study & 34. Robustness-Aware Training ──────────────────────
+\section{Ablation Framework and Robustness Training}
+\label{sec:ablation}
+
+\subsection{Ablation Study Matrix}
+To analyze architectural components, six model variants are structured:
+\begin{itemize}
+    \item \textbf{Model A:} CNN-only baseline.
+    \item \textbf{Model B:} Pure ViT baseline.
+    \item \textbf{Model C:} CNN + ViT without fusion optimization (concatenation only).
+    \item \textbf{Model D:} Full Proposed Hybrid CNN--ViT.
+    \item \textbf{Model E:} Proposed Hybrid CNN--ViT trained with standard cross-entropy.
+    \item \textbf{Model F:} Proposed Hybrid CNN--ViT with robustness-aware perturbation training.
+\end{itemize}
+
+\subsection{Optional Robustness-Aware Training}
+In Model F, training batches are augmented on-the-fly with mild perturbations ($\sigma \le 15$, blur radius $\le 1.5$) to evaluate whether robustness-aware regularization enhances out-of-distribution stability without diminishing clean test accuracy.
+
+% ─── 35. Statistical Analysis & 36. Error Analysis & 37. Calibration ────────
+\section{Statistical Evaluation, Error Analysis, and Calibration}
+\label{sec:statistical}
+
+\subsection{Statistical Methodology}
+Experiments are evaluated across $K = 5$ cross-validation folds. Results are reported as $\text{Mean} \pm \text{Standard Deviation}$. Statistical significance between architectural pairs is evaluated using paired two-tailed Student's t-tests and DeLong tests for ROC-AUC comparisons, with significance threshold set at $\alpha = 0.05$.
+
+\subsection{Error Analysis Protocol}
+Failure cases are partitioned into: (1) false positives resulting from benign calcifications mimicking spiculated nodules, (2) false negatives in sub-solid ground-glass opacities, and (3) perturbation-induced flips where noise masks subtle margins.
+
+\subsection{Model Calibration and Expected Calibration Error (ECE)}
+Model calibration measures whether predicted softmax probabilities accurately represent empirical correctness likelihoods. Grouping predictions into $M = 10$ confidence bins $B_m$, Expected Calibration Error is computed as:
+\begin{equation}
+\text{ECE} = \sum_{m=1}^M \frac{|B_m|}{N_{\text{total}}} \big| \text{acc}(B_m) - \text{conf}(B_m) \big|.
+\end{equation}
+
+% ─── 38. Results Section ─────────────────────────────────────────────────────
+\section{Experimental Results}
+\label{sec:results}
+
+\textit{Note: In accordance with academic reporting integrity, experimental placeholders $[XX.XX\%]$ are utilized pending final institutional cross-validation convergence.}
+
+\subsection{Baseline Classification Performance on Clean Data}
+Table~\ref{tab:clean_results} reports classification performance on the pristine test partition.
+
+\begin{table}[htbp]
+\caption{Baseline Classification Performance on Clean Test Partition}
+\label{tab:clean_results}
+\centering
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Architecture} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{ROC-AUC} \\
+\midrule
+CNN Baseline          & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] & [XX.XX] & [XX.XX] \\
+ViT Baseline (ViT-B)  & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] & [XX.XX] & [XX.XX] \\
+\textbf{Hybrid CNN--ViT} & \textbf{[XX.XX\%]} & \textbf{[XX.XX\%]} & \textbf{[XX.XX\%]} & \textbf{[XX.XX]} & \textbf{[XX.XX]} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Perturbation Robustness Degradation}
+Table~\ref{tab:perturbation_results} provides comparative accuracy under representative corruptions at Severity Level 2 (Medium).
+
+\begin{table*}[t]
+\caption{Classification Performance Under Representative Image Perturbations (Severity 2 - Medium)}
+\label{tab:perturbation_results}
+\centering
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Architecture} & \textbf{Clean Acc.} & \textbf{Gauss Noise Acc.} & \textbf{Blur Acc.} & \textbf{Contrast Acc.} & \textbf{Rotation Acc.} & \textbf{JPEG Acc.} \\
+\midrule
+CNN Baseline          & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] \\
+ViT Baseline          & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] & [XX.XX\%] \\
+\textbf{Hybrid CNN--ViT} & \textbf{[XX.XX\%]} & \textbf{[XX.XX\%]} & \textbf{[XX.XX\%]} & \textbf{[XX.XX\%]} & \textbf{[XX.XX\%]} & \textbf{[XX.XX\%]} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Robustness Degradation and Explanation Consistency Summary}
+Table~\ref{tab:rd_ec_summary} presents aggregate Robustness Degradation ($RD$), Confidence Drop ($\Delta C$), and Explanation Consistency ($EC$).
+
+\begin{table}[htbp]
+\caption{Aggregate Robustness Degradation and Explanation Consistency}
+\label{tab:rd_ec_summary}
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model Architecture} & \textbf{Mean $RD$ ($\downarrow$)} & \textbf{Mean $\Delta C$ ($\downarrow$)} & \textbf{Mean $EC$ ($\uparrow$)} \\
+\midrule
+CNN Baseline          & [XX.XX] & [XX.XX] & [XX.XX\%] \\
+ViT Baseline          & [XX.XX] & [XX.XX] & [XX.XX\%] \\
+\textbf{Hybrid CNN--ViT} & \textbf{[XX.XX]} & \textbf{[XX.XX]} & \textbf{[XX.XX\%]} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Ablation Study Results}
+Table~\ref{tab:ablation_results} summarizes empirical findings across ablation configurations.
+
+\begin{table}[htbp]
+\caption{Systematic Ablation Evaluation Across Architectural Variants}
+\label{tab:ablation_results}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Configuration} & \textbf{Clean Acc.} & \textbf{Mean $RD$} & \textbf{Mean $EC$} & \textbf{ECE} \\
+\midrule
+Model A: CNN Only       & [XX.XX\%] & [XX.XX] & [XX.XX\%] & [XX.XX] \\
+Model B: ViT Only       & [XX.XX\%] & [XX.XX] & [XX.XX\%] & [XX.XX] \\
+Model C: Unoptimized Fusion & [XX.XX\%] & [XX.XX] & [XX.XX\%] & [XX.XX] \\
+Model D: Full Proposed Hybrid & [XX.XX\%] & [XX.XX] & [XX.XX\%] & [XX.XX] \\
+Model F: Robustness-Aware & [XX.XX\%] & [XX.XX] & [XX.XX\%] & [XX.XX] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─── 39. Figures Placeholders ────────────────────────────────────────────────
+\section{Figures and Visualizations}
+\label{sec:figures}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.8in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 1: High-level end-to-end framework illustrating data ingestion, preprocessing, hybrid modeling, robustness stress battery, and multi-modal XAI evaluation.}
+\label{fig:fig1}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.8in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 2: Detailed architecture of the proposed Hybrid CNN--Vision Transformer showcasing convolutional feature projection, patchification, transformer blocks, and classification head.}
+\label{fig:fig2}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.5in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 3: Data preprocessing and leakage-free patient-level separation pipeline.}
+\label{fig:fig3}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.5in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 4: Robustness stress-testing pipeline applying graded corruptions.}
+\label{fig:fig4}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.6in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 5: Grad-CAM and Grad-CAM++ feature activation overlays on thoracic lesions.}
+\label{fig:fig5}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.6in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 6: Visual comparison of original pristine CT slice versus perturbed instances across Gaussian noise, blur, and contrast reduction.}
+\label{fig:fig6}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.6in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 7: Cross-condition explanation comparison demonstrating spatial heatmap stability between clean and perturbed inputs.}
+\label{fig:fig7}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.5in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 8: Classification accuracy as a function of perturbation severity level across CNN, ViT, and Hybrid architectures.}
+\label{fig:fig8}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.5in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 9: Explanation Consistency ($EC$) index across increasing corruption intensities.}
+\label{fig:fig9}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\fbox{\rule{0pt}{1.5in} \rule{0.88\linewidth}{0pt}}
+\caption{Figure 10: Multi-class confusion matrices for clean versus perturbed test sets.}
+\label{fig:fig10}
+\end{figure}
+
+% ─── 40. Architecture Diagram (ASCII / Flow) ─────────────────────────────────
+\section{System Architecture Flowchart}
+\label{sec:system_diagram}
+
+
+\begin{verbatim}
+Thoracic CT Image (X) ──▶ [7x7 Conv + BN + MaxPool] ──▶ Residual Conv Stages
+                                                             │
+                                                     Spatial Feature Map F (14x14x256)
+                                                             │
+                                                     Flatten to 196 Tokens
+                                                             │
+[CLS] Token + Position Embeddings ──▶ Prepend & Add ─────────┘
+                                           │
+                                  Z_0 = Token Sequence (197x256)
+                                           │
+                                  ┌────────────────────────┐
+                                  │ Transformer Block x6   │
+                                  │  - LayerNorm           │
+                                  │  - Multi-Head Attn     │
+                                  │  - MLP (Dim=512)       │
+                                  │  - Residual Skips      │
+                                  └────────────────────────┘
+                                           │
+                                Z_L^0 = [CLS] Output Vector
+                                           │
+                                [LayerNorm + Linear Head]
+                                           │
+                                Softmax Diagnostic Probs (y_hat)
+                                           │
+            ┌──────────────────────────────┴──────────────────────────────┐
+            ▼                                                             ▼
+[Robustness Evaluation Battery]                               [Explainability Suite]
+  - Gaussian Noise (Low, Med, High)                             - Grad-CAM / Grad-CAM++
+  - Blur / Contrast / Motion / JPEG                             - Attention Rollout
+  - Robustness Degradation (RD)                                 - LIME / SHAP
+            │                                                             │
+            └──────────────────────────────┬──────────────────────────────┘
+                                           ▼
+                     [Joint Evaluation: RD vs. EC Stability]
+\end{verbatim}
+
+% ─── 41. Pseudocode Algorithms ───────────────────────────────────────────────
+\section{Algorithms}
+\label{sec:algorithms}
+
+\begin{algorithm}[H]
+\caption{Training the Hybrid CNN--Vision Transformer}
+\label{alg:train_hybrid}
+\begin{algorithmic}[1]
+\REQUIRE Training dataset $\mathcal{D}_{\text{train}}$, Epochs $E$, Learning rate $\eta$, Batch size $B$.
+\ENSURE Optimized model parameters $\boldsymbol{\theta}^* = \{\boldsymbol{\theta}_{\text{cnn}}, \boldsymbol{\theta}_{\text{trans}}, \boldsymbol{\theta}_{\text{head}}\}$.
+\STATE Initialize parameters $\boldsymbol{\theta}$ using truncated normal distribution.
+\FOR{$\text{epoch} = 1$ to $E$}
+    \FOR{batch $(\mathbf{X}_b, \mathbf{y}_b) \in \mathcal{D}_{\text{train}}$}
+        \STATE $\mathbf{F}_b \leftarrow f_{\text{cnn}}(\mathbf{X}_b; \boldsymbol{\theta}_{\text{cnn}})$ \COMMENT{Extract local feature maps}
+        \STATE $\mathbf{z}_0 \leftarrow \text{Tokenize}(\mathbf{F}_b) + \mathbf{E}_{\text{pos}}$
+        \FOR{$l = 1$ to $L$}
+            \STATE $\mathbf{z}'_l \leftarrow \text{MHSA}(\text{LN}(\mathbf{z}_{l-1})) + \mathbf{z}_{l-1}$
+            \STATE $\mathbf{z}_l \leftarrow \text{MLP}(\text{LN}(\mathbf{z}'_l)) + \mathbf{z}'_l$
+        \ENDFOR
+        \STATE $\hat{\mathbf{y}}_b \leftarrow \text{softmax}(\mathbf{W}_c \mathbf{z}_L^0 + \mathbf{b}_c)$
+        \STATE Compute loss $\mathcal{L} = \mathcal{L}_{\text{CE}}(\hat{\mathbf{y}}_b, \mathbf{y}_b)$
+        \STATE Update $\boldsymbol{\theta} \leftarrow \boldsymbol{\theta} - \eta \nabla_{\boldsymbol{\theta}} \mathcal{L}$ via AdamW
+    \ENDFOR
+    \STATE Update learning rate $\eta$ via Cosine Annealing scheduler.
+\ENDFOR
+\RETURN $\boldsymbol{\theta}^*$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{Robustness Evaluation and Degradation Quantification}
+\label{alg:robustness_eval}
+\begin{algorithmic}[1]
+\REQUIRE Model $f_{\boldsymbol{\theta}^*}$, Test set $\mathcal{D}_{\text{test}}$, Perturbations $\mathcal{P}$, Severities $\mathcal{S}$.
+\ENSURE Robustness degradation scores $RD(k, s)$.
+\STATE $\mathcal{A}_{\text{clean}} \leftarrow \text{Evaluate}(f_{\boldsymbol{\theta}^*}, \mathcal{D}_{\text{test}})$
+\FOR{each perturbation $\mathcal{T}_k \in \mathcal{P}$}
+    \FOR{each severity $s \in \mathcal{S}$}
+        \STATE $\mathcal{D}_{\text{pert}} \leftarrow \{(\mathcal{T}_k(\mathbf{x}, s), y) \mid (\mathbf{x}, y) \in \mathcal{D}_{\text{test}}\}$
+        \STATE $\mathcal{A}_{\text{pert}}^{(k, s)} \leftarrow \text{Evaluate}(f_{\boldsymbol{\theta}^*}, \mathcal{D}_{\text{pert}})$
+        \STATE $RD(k, s) \leftarrow \mathcal{A}_{\text{clean}} - \mathcal{A}_{\text{pert}}^{(k, s)}$
+    \ENDFOR
+\ENDFOR
+\RETURN $RD$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{Explanation Consistency Analysis}
+\label{alg:explanation_consistency}
+\begin{algorithmic}[1]
+\REQUIRE Model $f_{\boldsymbol{\theta}^*}$, Images $\mathbf{x} \in \mathcal{D}_{\text{test}}$, Perturbation $\mathcal{T}_k$, XAI explainer $\mathcal{E}$.
+\ENSURE Consistency score $EC$.
+\STATE $\mathbf{E}_{\text{clean}} \leftarrow \mathcal{E}(f_{\boldsymbol{\theta}^*}, \mathbf{x})$ \COMMENT{Clean attribution map}
+\STATE $\mathbf{x}_{\text{pert}} \leftarrow \mathcal{T}_k(\mathbf{x})$
+\STATE $\mathbf{E}_{\text{pert}} \leftarrow \mathcal{E}(f_{\boldsymbol{\theta}^*}, \mathbf{x}_{\text{pert}})$ \COMMENT{Perturbed attribution map}
+\STATE $EC \leftarrow \frac{2 \sum \mathbf{E}_{\text{clean}} \odot \mathbf{E}_{\text{pert}}}{\sum \mathbf{E}_{\text{clean}}^2 + \sum \mathbf{E}_{\text{pert}}^2}$ \COMMENT{Dice correlation}
+\RETURN $EC$
+\end{algorithmic}
+\end{algorithm}
+
+% ─── 42. Complete Pipeline ───────────────────────────────────────────────────
+\section{Complete Experimental Workflow}
+\label{sec:workflow}
+
+The sequential execution protocol comprises 17 structured steps:
+(1) Dataset collection, (2) Patient-aware splitting, (3) Preprocessing and normalization, (4) In-distribution training augmentation, (5) CNN baseline training, (6) ViT baseline training, (7) Hybrid CNN--ViT model training, (8) Clean test partition evaluation, (9) Perturbed test set synthesis, (10) Perturbation robustness evaluation, (11) Confidence stability analysis, (12) XAI heatmap extraction, (13) Cross-condition explanation consistency quantification, (14) Component ablation studies, (15) Statistical significance testing, (16) Qualitative error analysis, and (17) Synthesis of final comparative results.
+
+% ─── 43. Technology Stack & 44. Hardware ─────────────────────────────────────
+\section{Technology Stack and Computational Environment}
+\label{sec:tech_stack}
+
+The software ecosystem comprises: Python [3.10+], PyTorch [2.3+], torchvision, OpenCV, NumPy, Pandas, scikit-learn, Captum, SHAP, LIME, Matplotlib, and LaTeX/BibTeX.
+
+Computational environment specifications:
+\begin{itemize}
+    \item \textbf{GPU Hardware:} [GPU MODEL PLACEHOLDER, e.g., NVIDIA RTX 3090 / A100]
+    \item \textbf{Video RAM:} [VRAM PLACEHOLDER, e.g., 24 GB]
+    \item \textbf{System Memory:} [RAM PLACEHOLDER, e.g., 64 GB]
+    \item \textbf{CUDA Version:} [CUDA PLACEHOLDER, e.g., 12.1]
+\end{itemize}
+
+% ─── 45. Ethics & 46. Limitations & 47. Threats to Validity ──────────────────
+\section{Ethical Considerations, Limitations, and Validity}
+\label{sec:ethics_limitations}
+
+\subsection{Ethical Considerations and Clinical Disclaimer}
+All evaluated data originate from de-identified, publicly accessible research repositories compliant with Institutional Review Board (IRB) anonymization requirements. 
+\textit{Explicit Clinical Disclaimer: This platform constitutes an experimental computational research prototype. It is not approved by the FDA or international regulatory bodies for clinical diagnosis and must not be utilized for autonomous patient management.}
+
+\subsection{Limitations}
+Key limitations include: (1) 2D slice analysis rather than full volumetric 3D modeling, (2) reliance on synthetic mathematical perturbations that may not capture complex multi-physics scanner artifacts, and (3) explanation heatmaps indicating statistical feature correlation rather than true biological causality.
+
+\subsection{Threats to Validity}
+\begin{itemize}
+    \item \textbf{Internal Validity:} Mitigated via strict patient-level separation and fixed random seeds.
+    \item \textbf{External Validity:} Limited by single-dataset evaluation; domain transfer across diverse hospital scanners requires multi-center validation.
+    \item \textbf{Construct Validity:} Addressed by pairing subjective visual heatmap inspections with objective quantitative metrics ($RD$, $EC$, IoU).
+\end{itemize}
+
+% ─── 48. Future Scope & 49. Outcome & 50. Novelty ────────────────────────────
+\section{Future Scope, Novelty, and Expected Outcomes}
+\label{sec:future_novelty}
+
+\subsection{Future Research Directions}
+Future work will focus on: (1) 3D volumetric transformer extensions, (2) multimodal fusion incorporating clinical electronic health records (EHR) and genomic biomarkers, (3) self-supervised foundation model adaptation, and (4) federated cross-institutional learning.
+
+\subsection{Novelty Statement}
+The proposed work extends conventional lung cancer image classification by integrating Hybrid CNN--Vision Transformer modeling with systematic robustness assessment and explainability analysis. Rather than evaluating the model solely on clean test accuracy, the framework examines predictive stability, confidence stability, and explanation consistency under controlled image perturbations.
+
+\subsection{Expected Research Outcome}
+The ultimate objective is to determine whether the proposed Hybrid CNN--ViT model remains reliable and interpretable when medical images are subjected to realistic variations, establishing a tri-axial evaluation standard across performance, robustness, and interpretability.
+
+% ─── 51. Final Comprehensive Comparison Table ───────────────────────────────
+\section{Comprehensive Architectural Comparison}
+\label{sec:comparison_table}
+
+\begin{table*}[t]
+\caption{Systematic Architectural Comparison Across Evaluation Criteria}
+\label{tab:final_comparison}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Evaluation Dimension} & \textbf{CNN Baseline} & \textbf{ViT Baseline} & \textbf{Prior Hybrid ViT \cite{ORIGINAL_PROJECT_REF}} & \textbf{Proposed Robust Hybrid CNN--ViT} \\
+\midrule
+Local Feature Extraction       & High (Conv kernels)     & Low (Patch projection) & High (Conv backbone)       & High (Optimized Residual Conv) \\
+Global Context Modeling        & Low (Receptive field)   & High (Full MHSA)       & High (Transformer blocks)  & High (Multi-Head Self-Attention) \\
+Clean Accuracy Benchmark       & Evaluated               & Evaluated              & Evaluated                  & Evaluated \\
+Multi-Perturbation Robustness  & Not Evaluated           & Not Evaluated          & Not Evaluated              & Fully Evaluated (10 Types, 3 Severities) \\
+Confidence Drop ($\Delta C$)   & Not Quantified          & Not Quantified         & Not Quantified             & Quantified across severities \\
+XAI Diversity                  & Single method (Grad-CAM)& Single (Attention)     & Not Integrated             & Multi-Modal (Grad-CAM++, LIME, SHAP, Rollout) \\
+Explanation Consistency ($EC$) & Not Evaluated           & Not Evaluated          & Not Evaluated              & Formally Defined and Quantified \\
+Ablation and Statistical Tests & Basic                   & Basic                  & Minimal                    & Comprehensive (Repeated folds, paired tests) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+% ─── 52. Conclusion ──────────────────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+
+This research introduces a unified, robust, and explainable deep learning framework for lung cancer classification. By extending an earlier hybrid transformer foundation into a tri-axial evaluation paradigm, this study directly addresses the vulnerabilities of deep medical classifiers: sensitivity to sensor perturbations and opaque black-box predictions. The proposed Hybrid CNN--Vision Transformer unites localized convolutional inductive priors with global self-attention representations. Systematic perturbation sweeps across ten corruption types and multi-modal XAI evaluations provide rigorous empirical evidence regarding whether deep models preserve both accurate predictions and stable visual reasoning under challenging clinical imaging variations. This methodology represents a vital technical step toward dependable, accountable computer-aided oncology.
+
+% ─── 53. References ──────────────────────────────────────────────────────────
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+% ─── 54. Appendices ──────────────────────────────────────────────────────────
+\appendices
+
+\section{Hyperparameter Configuration}
+\label{app:hyperparameters}
+\begin{itemize}
+    \item Input dimensions: $224 \times 224 \times 3$
+    \item Conv backbone: 3 stages, channels [64, 128, 256]
+    \item Patch token grid: $14 \times 14$ ($N=196$)
+    \item Transformer blocks: $L = 6$
+    \item Attention heads: $h = 8$, head dimension $d_k = 32$
+    \item MLP hidden expansion: $4\times$ ($1024$)
+    \item Dropout rate: $0.1$
+    \item Weight decay: $0.01$
+\end{itemize}
+
+\section{Perturbation Implementation Details}
+\label{app:perturbations}
+All perturbations are implemented using PIL, torchvision, and scikit-image libraries with deterministic seeds. Gaussian noise adds zero-mean normal variance clipped to $[0, 255]$. Blur uses circular Gaussian smoothing filters. Salt-and-pepper randomly mutates pixels to extreme dynamic range boundaries. Contrast modification scales pixel deviations from global channel means.
+
+\section{Mathematical Evaluation Metrics}
+\label{app:metrics}
+Accuracy = $\frac{TP+TN}{TP+TN+FP+FN}$, Precision = $\frac{TP}{TP+FP}$, Recall = $\frac{TP}{TP+FN}$, F1 = $\frac{2 \cdot \text{Prec} \cdot \text{Rec}}{\text{Prec}+\text{Rec}}$, Specificity = $\frac{TN}{TN+FP}$.
+
+\section{Extended Confusion Matrices}
+\label{app:confusion}
+[PLACEHOLDER: Insert detailed per-class 3x3 confusion matrix values for clean versus degraded test partitions].
+
+\section{Additional XAI Visualizations}
+\label{app:xai_visualizations}
+[PLACEHOLDER: Insert comparative figures contrasting Grad-CAM vs. Grad-CAM++ vs. Attention Rollout across severe noise levels].
+
+\section{Experimental Compute Environment}
+\label{app:compute}
+Python 3.11, PyTorch 2.3+cpu/cuda, torchvision 0.18, CUDA 12.1 runtime, Windows 11 / Linux Ubuntu 22.04 LTS.
+
+\end{document}

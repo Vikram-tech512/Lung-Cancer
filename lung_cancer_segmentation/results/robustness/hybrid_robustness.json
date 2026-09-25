@@ -1,0 +1,78 @@
+{
+  "original": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "gaussian_noise_low": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "gaussian_noise_med": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "gaussian_noise_high": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "salt_pepper_low": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "salt_pepper_med": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "salt_pepper_high": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "blur_low": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "blur_med": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "blur_high": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "rotate_5": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "rotate_15": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "rotate_30": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "brightness_low": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "brightness_high": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "contrast_low": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "contrast_high": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "jpeg_q10": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  },
+  "jpeg_q30": {
+    "accuracy": 0.3333,
+    "degradation": 0.0
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "dice": 0.9,
+  "iou": 0.8183,
+  "sensitivity": 0.9515,
+  "specificity": 0.997,
+  "hd95_mm": 1.31,
+  "gate_status": "PASS",
+  "cohort_evaluated": "LIDC-IDRI / Real Test Cohort (N=25)",
+  "sample_count": 25,
+  "quality_thresholds": {
+    "min_dice": 0.7,
+    "min_iou": 0.55,
+    "min_sensitivity": 0.75,
+    "min_specificity": 0.85,
+    "max_hd95_mm": 8.0
+  }
+}

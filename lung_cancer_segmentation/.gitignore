@@ -1,0 +1,19 @@
+# .gitignore
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+venv/
+.env
+.env/
+
+# Data directories (large medical files)
+data/
+raw_dicom/
+checkpoints/
+
+# Logs and temporary files
+*.log
+*.tmp

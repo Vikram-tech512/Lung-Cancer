@@ -1,0 +1,332 @@
+\documentclass[12pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage{times}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+% Page setup
+\geometry{
+    left=1in,
+    right=1in,
+    top=1in,
+    bottom=1in
+}
+
+\onehalfspacing
+
+% Hyperlink setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue
+}
+
+% Title formatting
+\titleformat{\section}
+{\large\bfseries}
+{\thesection.}
+{0.5em}
+{}
+
+\titleformat{\subsection}
+{\normalsize\bfseries}
+{\thesubsection}
+{0.5em}
+{}
+
+\begin{document}
+
+\begin{center}
+{\Large \textbf{ROBUSTNESS ANALYSIS AND EXPLAINABILITY OF}}\\[0.2cm]
+{\Large \textbf{DEEP LEARNING-BASED LUNG CANCER CLASSIFICATION}}\\[0.6cm]
+\textbf{Project Synopsis}\\[0.5cm]
+\end{center}
+
+\section{Abstract}
+
+Lung cancer is one of the leading causes of cancer-related mortality worldwide, making early and accurate diagnosis extremely important for improving patient outcomes. Recent advances in deep learning have demonstrated significant potential for automated classification of lung cancer from medical images. However, high classification accuracy alone does not guarantee that a model is reliable in real-world clinical environments. Variations in image quality, noise, contrast, blur, and other perturbations may significantly affect model predictions.
+
+This project proposes a robust and explainable deep learning framework for lung cancer classification. The proposed system investigates the performance of deep learning models under different image perturbations and evaluates their ability to maintain reliable predictions under challenging conditions. In addition to robustness analysis, Explainable Artificial Intelligence (XAI) techniques such as Grad-CAM, Grad-CAM++, LIME, SHAP, and attention-based visualization are employed to identify the regions of medical images that contribute to the model's predictions.
+
+The framework can incorporate convolutional neural networks (CNNs), Vision Transformers (ViTs), and hybrid CNN--ViT architectures. Their performance is evaluated using accuracy, precision, recall, F1-score, sensitivity, specificity, and ROC-AUC. Robustness is analyzed by comparing model performance on original images and systematically perturbed images. Explainability methods are further analyzed to determine whether the highlighted regions remain consistent under such perturbations.
+
+The primary objective of this work is to develop a lung cancer classification system that is not only accurate but also robust, interpretable, and suitable for further investigation toward trustworthy computer-aided medical diagnosis.
+
+\section{Introduction}
+
+Lung cancer diagnosis commonly involves the analysis of medical images such as computed tomography (CT) scans and histopathological images. The increasing availability of medical imaging datasets has created opportunities for developing automated computer-aided diagnostic systems using deep learning.
+
+Deep learning models can automatically learn complex visual patterns from medical images and have achieved promising results in cancer classification tasks. However, conventional deep learning systems often operate as black-box models, providing predictions without sufficient explanation regarding the visual evidence responsible for those predictions.
+
+Furthermore, the performance of a model trained on high-quality images may degrade when the input images contain noise, blur, contrast variations, compression artifacts, or other changes. Therefore, evaluating the robustness and explainability of medical AI systems is essential before considering their potential use in real-world scenarios.
+
+This project addresses these limitations by combining lung cancer classification, robustness analysis, and explainable artificial intelligence within a unified framework.
+
+\section{Problem Statement}
+
+Existing deep learning-based lung cancer classification systems primarily focus on improving predictive accuracy. However, a model may achieve high accuracy on a standard test dataset while being sensitive to small variations in input images. In addition, many deep learning models provide limited insight into why a particular classification decision was made.
+
+Therefore, there is a need for a framework that can:
+
+\begin{itemize}
+    \item accurately classify lung cancer images;
+    \item evaluate model performance under different image perturbations;
+    \item identify weaknesses in model robustness;
+    \item provide visual and quantitative explanations for predictions;
+    \item compare explanations between original and perturbed images; and
+    \item determine whether the model's decision-making process is consistent and clinically meaningful.
+\end{itemize}
+
+\section{Objectives}
+
+The major objectives of the proposed project are:
+
+\begin{enumerate}
+    \item To develop a deep learning-based system for lung cancer image classification.
+    \item To investigate CNN, Vision Transformer, and hybrid CNN--ViT architectures for classification.
+    \item To evaluate model performance using standard classification metrics.
+    \item To analyze model robustness against different types of image perturbations.
+    \item To investigate the effect of noise, blur, contrast variation, rotation, and other image transformations on classification performance.
+    \item To apply Explainable AI techniques such as Grad-CAM, Grad-CAM++, LIME, SHAP, and attention visualization.
+    \item To compare explanations generated from original and perturbed images.
+    \item To determine whether model predictions and explanations remain consistent under varying image conditions.
+    \item To identify the most robust and interpretable architecture for lung cancer classification.
+\end{enumerate}
+
+\section{Proposed Methodology}
+
+The proposed framework consists of several sequential stages.
+
+\subsection{Dataset Collection}
+
+A publicly available lung cancer medical imaging dataset will be selected for experimentation. The dataset will contain appropriately labeled images representing different lung cancer categories or relevant diagnostic classes.
+
+\subsection{Preprocessing}
+
+The collected images will undergo preprocessing operations such as:
+
+\begin{itemize}
+    \item image resizing;
+    \item normalization;
+    \item noise reduction;
+    \item contrast adjustment;
+    \item data augmentation; and
+    \item train-validation-test splitting.
+\end{itemize}
+
+Care will be taken to avoid data leakage between training, validation, and testing subsets.
+
+\subsection{Deep Learning Models}
+
+Multiple architectures can be evaluated, including:
+
+\begin{itemize}
+    \item Convolutional Neural Network (CNN);
+    \item Vision Transformer (ViT);
+    \item Hybrid CNN--Vision Transformer; and
+    \item other suitable transfer-learning architectures.
+\end{itemize}
+
+The hybrid architecture can combine the local feature extraction capability of CNNs with the global contextual modeling capability of Vision Transformers.
+
+\subsection{Classification}
+
+The model will classify input medical images into the corresponding lung cancer categories. The classification performance will be measured using:
+
+\begin{equation}
+Accuracy = \frac{TP + TN}{TP + TN + FP + FN}
+\end{equation}
+
+Precision is defined as:
+
+\begin{equation}
+Precision = \frac{TP}{TP + FP}
+\end{equation}
+
+Recall is defined as:
+
+\begin{equation}
+Recall = \frac{TP}{TP + FN}
+\end{equation}
+
+The F1-score is calculated as:
+
+\begin{equation}
+F1 = 2 \times \frac{Precision \times Recall}{Precision + Recall}
+\end{equation}
+
+\subsection{Robustness Analysis}
+
+To evaluate robustness, controlled perturbations will be applied to test images. These may include:
+
+\begin{itemize}
+    \item Gaussian noise;
+    \item salt-and-pepper noise;
+    \item Gaussian blur;
+    \item image rotation;
+    \item brightness variation;
+    \item contrast variation;
+    \item image compression; and
+    \item other realistic image-quality distortions.
+\end{itemize}
+
+The model's performance on the original and perturbed datasets will be compared.
+
+A robustness degradation score can be calculated as:
+
+\begin{equation}
+RD = Performance_{original} - Performance_{perturbed}
+\end{equation}
+
+Lower degradation indicates greater robustness.
+
+\section{Explainable Artificial Intelligence}
+
+Explainability techniques will be incorporated to understand the decision-making process of the trained models.
+
+\subsection{Grad-CAM}
+
+Gradient-weighted Class Activation Mapping (Grad-CAM) will be used to generate heatmaps showing image regions that contribute significantly to the model's prediction.
+
+\subsection{Grad-CAM++}
+
+Grad-CAM++ will be investigated as an enhanced localization method capable of providing more detailed visual explanations for complex image regions.
+
+\subsection{LIME}
+
+Local Interpretable Model-Agnostic Explanations (LIME) can be used to approximate the model locally and identify image regions that influence an individual prediction.
+
+\subsection{SHAP}
+
+SHapley Additive exPlanations (SHAP) can be used to quantify the contribution of input features toward a model prediction.
+
+\subsection{Attention Visualization}
+
+For Vision Transformer-based architectures, attention maps will be analyzed to investigate which image patches receive greater attention from the model.
+
+\section{Robustness and Explainability Evaluation}
+
+A major component of the proposed project is the joint analysis of robustness and explainability.
+
+For each test image, explanations will be generated for:
+
+\begin{enumerate}
+    \item the original image;
+    \item the noisy image;
+    \item the blurred image;
+    \item the contrast-modified image; and
+    \item other perturbed versions.
+\end{enumerate}
+
+The generated explanations will then be compared to determine whether the model continues to focus on meaningful lung regions despite changes in image quality.
+
+This analysis can help distinguish between models that merely maintain classification accuracy and models that maintain both accurate predictions and consistent reasoning.
+
+\section{Evaluation Metrics}
+
+The proposed framework will be evaluated using the following metrics:
+
+\begin{itemize}
+    \item Accuracy
+    \item Precision
+    \item Recall
+    \item F1-score
+    \item Sensitivity
+    \item Specificity
+    \item ROC-AUC
+    \item Confusion Matrix
+    \item Robustness degradation
+    \item Explanation consistency
+\end{itemize}
+
+For multi-class classification, macro-averaged and weighted metrics can additionally be reported.
+
+\section{Expected Outcomes}
+
+The expected outcomes of the project are:
+
+\begin{enumerate}
+    \item A trained deep learning model capable of classifying lung cancer images.
+    \item A comparative analysis of CNN, Vision Transformer, and hybrid architectures.
+    \item A systematic evaluation of model robustness under realistic image perturbations.
+    \item Visual explanations demonstrating the regions responsible for model predictions.
+    \item Analysis of explanation consistency between clean and perturbed images.
+    \item Identification of a model that provides a favorable balance between classification performance, robustness, and interpretability.
+\end{enumerate}
+
+\section{System Architecture}
+
+The overall workflow of the proposed system can be represented as:
+
+\begin{center}
+\textbf{Lung Cancer Image Dataset}
+
+$\downarrow$
+
+\textbf{Preprocessing and Augmentation}
+
+$\downarrow$
+
+\textbf{Deep Learning Model}
+
+$\downarrow$
+
+\textbf{CNN / ViT / Hybrid CNN--ViT}
+
+$\downarrow$
+
+\textbf{Lung Cancer Classification}
+
+$\downarrow$
+
+\textbf{Robustness Testing}
+
+$\downarrow$
+
+\textbf{Image Perturbation Analysis}
+
+$\downarrow$
+
+\textbf{Explainable AI}
+
+$\downarrow$
+
+\textbf{Grad-CAM / SHAP / LIME / Attention Maps}
+
+$\downarrow$
+
+\textbf{Performance and Explanation Consistency Analysis}
+\end{center}
+
+\section{Research Novelty}
+
+The novelty of the proposed work lies in evaluating lung cancer classification beyond conventional accuracy-based assessment. Instead of considering classification performance alone, the proposed framework jointly investigates:
+
+\begin{itemize}
+    \item predictive performance;
+    \item robustness to image perturbations;
+    \item interpretability of predictions; and
+    \item consistency of explanations under changing input conditions.
+\end{itemize}
+
+The combination of a hybrid CNN--Vision Transformer architecture with systematic robustness and explainability analysis can provide a more comprehensive assessment of trustworthy medical image classification.
+
+\section{Conclusion}
+
+This project proposes a robust and explainable deep learning framework for lung cancer classification. By combining modern deep learning architectures with systematic robustness testing and Explainable AI techniques, the study aims to address two important limitations of conventional medical AI systems: sensitivity to input variations and lack of interpretability.
+
+The proposed approach can provide not only quantitative evidence of classification performance but also insights into whether the model's predictions remain reliable and its explanations remain consistent under realistic image perturbations. Such analysis can contribute toward the development of more trustworthy computer-aided diagnostic systems.
+
+\section*{Keywords}
+
+Lung Cancer Classification, Deep Learning, Vision Transformer, Hybrid CNN--ViT, Robustness Analysis, Explainable Artificial Intelligence, Grad-CAM, SHAP, LIME, Medical Image Analysis.
+
+\end{document}

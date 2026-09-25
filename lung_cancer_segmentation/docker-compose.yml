@@ -1,0 +1,122 @@
+# docker-compose.yml – Full multi‑service orchestration
+# ────────────────────────────────────────────────────────
+# Usage:
+#   1. Copy .env.example → .env and fill in ANTHROPIC_API_KEY
+#   2. docker compose up --build
+#
+# SECURITY: .env is gitignored. Never hardcode API keys here.
+# ────────────────────────────────────────────────────────
+version: "3.9"
+
+services:
+  # ── FastAPI inference/auth service ──
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pulmotrust-api:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+    # Load .env file for secrets (ANTHROPIC_API_KEY, SECRET_KEY, etc.)
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://lungvision:lungvision@db:5432/lungvision
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-production-change-this-key}
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - PYTHONUNBUFFERED=1
+      # Claude AI — read from .env or override with -e on docker run
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-5}
+      - CLAUDE_MAX_TOKENS=${CLAUDE_MAX_TOKENS:-2048}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # ── Celery worker (async segmentation) ──
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pulmotrust-api:latest
+    command: celery -A src.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://lungvision:lungvision@db:5432/lungvision
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+      - PYTHONUNBUFFERED=1
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-5}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── React UI (Vite dev server) ──
+  ui:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    image: pulmotrust-ui:latest
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ── Redis (Celery broker & cache) ──
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # ── PostgreSQL (audit DB) ──
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lungvision
+      POSTGRES_PASSWORD: lungvision
+      POSTGRES_DB: lungvision
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lungvision"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
+
