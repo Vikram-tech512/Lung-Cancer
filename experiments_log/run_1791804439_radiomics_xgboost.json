@@ -1,0 +1,20 @@
+{
+  "run_id": "run_1791804439_radiomics_xgboost",
+  "run_name": "Train_Radiomics XGBoost_300ep",
+  "model_name": "Radiomics XGBoost",
+  "timestamp": "2026-10-12 16:57:19",
+  "params": {
+    "epochs": 300,
+    "batch_size": 64,
+    "lr": 0.1
+  },
+  "metrics": {
+    "initial_loss": 0.693,
+    "status": "QUEUED"
+  },
+  "tags": {
+    "dataset": "LIDC-IDRI",
+    "split": "patient_stratified"
+  },
+  "artifacts": []
+}

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Layers, Crosshair, ZoomIn, SunMedium, Eye, Zap, AlertCircle } from 'lucide-react';
 import { NoduleItem } from '../types';
+import { API_BASE } from '../services/api';
 
 interface CTViewerPanelProps {
   studyId: string;
@@ -18,7 +19,7 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({ studyId, onInspect
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    fetch(`/api/v2/nodules/${studyId}`)
+    fetch(`${API_BASE}/nodules/${studyId}`)
       .then(res => res.json())
       .then(data => {
         if (data.nodules && data.nodules.length > 0) {

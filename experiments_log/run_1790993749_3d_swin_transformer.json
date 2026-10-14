@@ -1,0 +1,20 @@
+{
+  "run_id": "run_1790993749_3d_swin_transformer",
+  "run_name": "Train_3D Swin Transformer_34ep",
+  "model_name": "3D Swin Transformer",
+  "timestamp": "2026-10-03 07:45:49",
+  "params": {
+    "epochs": 34,
+    "batch_size": 2,
+    "lr": 8e-05
+  },
+  "metrics": {
+    "initial_loss": 0.693,
+    "status": "QUEUED"
+  },
+  "tags": {
+    "dataset": "LIDC-IDRI",
+    "split": "patient_stratified"
+  },
+  "artifacts": []
+}

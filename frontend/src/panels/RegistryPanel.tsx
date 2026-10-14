@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Box, CheckCircle2, AlertCircle, HardDrive, Info } from 'lucide-react';
 import { ModelRegistryItem } from '../types';
+import { API_BASE } from '../services/api';
 
 export const RegistryPanel: React.FC = () => {
   const [registry, setRegistry] = useState<Record<string, ModelRegistryItem[]>>({});
 
   useEffect(() => {
-    fetch('/api/v2/registry')
+    fetch(`${API_BASE}/registry`)
       .then(res => res.json())
       .then(data => setRegistry(data))
       .catch(() => {

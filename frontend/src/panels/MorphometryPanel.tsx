@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Ruler, Activity, BarChart, FileCode, CheckCircle2 } from 'lucide-react';
 import { NoduleMorphometry } from '../types';
+import { API_BASE } from '../services/api';
 
 interface MorphometryPanelProps {
   noduleId: string;
@@ -10,7 +11,7 @@ export const MorphometryPanel: React.FC<MorphometryPanelProps> = ({ noduleId }) 
   const [morph, setMorph] = useState<NoduleMorphometry | null>(null);
 
   useEffect(() => {
-    fetch(`/api/v2/morphometry/${noduleId}`)
+    fetch(`${API_BASE}/morphometry/${noduleId}`)
       .then(res => res.json())
       .then(data => setMorph(data))
       .catch(() => {

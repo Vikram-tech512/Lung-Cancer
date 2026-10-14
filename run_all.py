@@ -286,14 +286,27 @@ info(f"Outputs      : {RESULTS}")
 # ── Open Full-Stack Clinical Dashboard ────────────────────────────────────────
 hdr("Opening Lung Cancer AI Clinical Dashboard")
 dash = ROOT / "frontend" / "dist" / "index.html"
-if not dash.exists():
-    dash = P4 / "dashboard" / "index.html"
 if dash.exists():
     try:
         webbrowser.open(dash.as_uri())
-        info("  Opened dashboard: " + str(dash))
+        info("  Opened production dashboard: " + str(dash))
     except Exception as ex:
         info("  Dashboard URL: " + dash.as_uri() + f" ({ex})")
+else:
+    info("  Production build not found. To run the clinical dashboard:")
+    info("    cd frontend && npm install && npm run dev  (dev server at http://localhost:3000)")
+    info("    OR: cd frontend && npm run build          (creates dist/ for production)")
+    info("  Backend API (requires Python uvicorn):")
+    info("    python -m backend.main --port 8000 --reload")
+    info("  Swagger UI: http://localhost:8000/docs")
+    # Try to open the Vite dev server if already running
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://localhost:3000", timeout=1)
+        webbrowser.open("http://localhost:3000")
+        info("  Dev server detected — opened http://localhost:3000")
+    except Exception:
+        pass
 
 info("")
 info("=" * 68)

@@ -15,18 +15,31 @@ Exposes the FastAPI application with:
 """
 
 import sys
+import os
 import pathlib
+import types
 import uvicorn
 
-# Ensure repository root is on sys.path
-ROOT_DIR = pathlib.Path(__file__).resolve().parent.parent
+CURR_DIR = pathlib.Path(__file__).resolve().parent
+ROOT_DIR = CURR_DIR.parent
+
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+if str(CURR_DIR) not in sys.path:
+    sys.path.insert(0, str(CURR_DIR))
+
+# Register 'backend' package alias if running directly inside the backend directory on AppSail
+if "backend" not in sys.modules:
+    backend_pkg = types.ModuleType("backend")
+    backend_pkg.__path__ = [str(CURR_DIR)]
+    backend_pkg.__file__ = str(CURR_DIR / "__init__.py")
+    sys.modules["backend"] = backend_pkg
 
 # Load environment variables
 try:
     import dotenv
     dotenv.load_dotenv(ROOT_DIR / ".env")
+    dotenv.load_dotenv(CURR_DIR / ".env")
 except ImportError:
     pass
 
@@ -36,7 +49,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Lung Cancer AI Platform Backend")
     parser.add_argument("--reload", action="store_true", help="Enable hot reload")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind")
+    listen_port = int(os.environ.get("X_ZOHO_CATALYST_LISTEN_PORT", os.environ.get("PORT", 8000)))
+    parser.add_argument("--port", type=int, default=listen_port, help="Port to bind")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind")
     args, _ = parser.parse_known_args()
 
@@ -52,8 +66,9 @@ if __name__ == "__main__":
             host=args.host,
             port=args.port,
             reload=True,
-            reload_dirs=[str(ROOT_DIR / "backend")]
+            reload_dirs=[str(ROOT_DIR / "backend"), str(CURR_DIR)]
         )
     else:
         uvicorn.run(app, host=args.host, port=args.port)
+
 

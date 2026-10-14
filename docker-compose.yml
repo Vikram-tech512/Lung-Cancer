@@ -1,7 +1,15 @@
 version: '3.8'
 
+# ===========================================================================
+#  Lung Cancer AI Platform — Full Observability Stack
+#  Services: backend, frontend, prometheus, grafana, node-exporter
+# ===========================================================================
+
 services:
+
+  # -------------------------------------------------------------------------
   backend:
+  # -------------------------------------------------------------------------
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -11,19 +19,32 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
       - DATABASE_URL=sqlite:///./lung_platform.db
+      - CHECKPOINT_DIR=/app/checkpoints
+      - MLFLOW_TRACKING_URI=/app/experiments_log
+      - XAI_OUTPUT_DIR=/app/results/xai
+      - REPORT_OUTPUT_DIR=/app/results/reports
+      - RADIOMICS_CACHE_DB=/app/results/radiomics_cache.db
     volumes:
       - ./backend:/app/backend
       - ./data:/app/data
       - ./checkpoints:/app/checkpoints
+      - ./results:/app/results
+      - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/health"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 20s
+      timeout: 8s
       retries: 3
+      start_period: 15s
+    networks:
+      - lung-cancer-network
 
+  # -------------------------------------------------------------------------
   frontend:
+  # -------------------------------------------------------------------------
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -31,9 +52,84 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    networks:
+      - lung-cancer-network
+
+  # -------------------------------------------------------------------------
+  prometheus:
+  # -------------------------------------------------------------------------
+    image: prom/prometheus:v2.52.0
+    container_name: lung-cancer-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - lung-cancer-network
+
+  # -------------------------------------------------------------------------
+  grafana:
+  # -------------------------------------------------------------------------
+    image: grafana/grafana:10.4.2
+    container_name: lung-cancer-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=lungcancerAI2024
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/lung_cancer_ai.json
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    networks:
+      - lung-cancer-network
+
+  # -------------------------------------------------------------------------
+  node-exporter:
+  # -------------------------------------------------------------------------
+    image: prom/node-exporter:v1.8.0
+    container_name: lung-cancer-node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    restart: unless-stopped
+    networks:
+      - lung-cancer-network
+
+# ===========================================================================
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
 
 networks:
-  default:
+  lung-cancer-network:
     name: lung-cancer-network
+    driver: bridge

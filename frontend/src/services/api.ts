@@ -5,7 +5,26 @@
  * Proxies through Vite / Nginx to FastAPI backend at port 8000.
  */
 
-const API_BASE = '/api/v2';
+/**
+ * In production (S3 + CloudFront), VITE_API_BASE_URL is injected at build time
+ * by the GitHub Actions workflow and points to the EC2 public IP/domain.
+ * In local dev, falls back to relative '/api/v2' (proxied by Vite to localhost:8000).
+ */
+export const API_BASE = import.meta.env.VITE_API_BASE_URL
+  ? `${import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '')}/api/v2`
+  : '/api/v2';
+
+export function getWsUrl(path: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL;
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (base) {
+    const wsBase = base.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://').replace(/\/+$/, '');
+    return `${wsBase}/api/v2${cleanPath}`;
+  }
+  const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'localhost:8000' : (typeof window !== 'undefined' ? window.location.host : 'localhost:8000');
+  return `${protocol}//${host}/api/v2${cleanPath}`;
+}
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {

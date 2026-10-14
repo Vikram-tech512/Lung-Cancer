@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Award, AlertCircle, CheckCircle, Info, ExternalLink } from 'lucide-react';
 import { BenchmarkModel } from '../types';
+import { API_BASE } from '../services/api';
 
 export const BenchmarkPanel: React.FC = () => {
   const [models, setModels] = useState<BenchmarkModel[]>([]);
   const [datasetInfo, setDatasetInfo] = useState<string>('');
 
   useEffect(() => {
-    fetch('/api/v2/benchmark')
+    fetch(`${API_BASE}/benchmark`)
       .then(res => res.json())
       .then(data => {
         setModels(data.models || []);

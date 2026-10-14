@@ -1,21 +1,67 @@
+# ============================================================
+#  Lung Cancer AI Platform — Backend Requirements
+#  Full production + monitoring + ML pipeline dependencies
+# ============================================================
+
+# ----- Web Framework -----
 fastapi>=0.100.0
-uvicorn>=0.22.0
+uvicorn[standard]>=0.22.0
 pydantic>=2.0
+python-multipart>=0.0.6
+aiofiles>=23.1.0
+websockets>=11.0
+starlette>=0.27.0
+
+# ----- Deep Learning -----
 torch>=2.0.0
 torchvision>=0.15.0
+
+# ----- Scientific Stack -----
 numpy>=1.24.0
 scipy>=1.10.0
 scikit-learn>=1.2.0
 scikit-image>=0.20.0
+
+# ----- Medical Imaging -----
 pydicom>=2.4.0
 SimpleITK>=2.2.0
 nibabel>=5.1.0
+pylidc>=0.2.3
+
+# ----- Radiomics -----
 pyradiomics>=3.0.1
 xgboost>=1.7.0
+
+# ----- XAI & Uncertainty -----
 shap>=0.42.0
 captum>=0.6.0
+
+# ----- Experiment Tracking -----
 mlflow>=2.5.0
 joblib>=1.3.0
-python-multipart>=0.0.6
+
+# ----- Database -----
+sqlalchemy>=2.0.0
+
+# ----- Observability & Monitoring -----
+prometheus-client>=0.20.0
+structlog>=24.1.0
+python-json-logger>=2.0.7
+opentelemetry-api>=1.24.0
+opentelemetry-sdk>=1.24.0
+opentelemetry-instrumentation-fastapi>=0.45b0
+
+# ----- Authentication -----
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# ----- Environment -----
+python-dotenv>=1.0.0
+
+# ----- Testing -----
 pytest>=7.3.0
-aiofiles>=23.1.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0
+
+# ----- Optional: Anthropic AI assistant -----
+anthropic>=0.25.0
