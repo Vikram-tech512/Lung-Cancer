@@ -1,0 +1,20 @@
+{
+  "run_id": "run_1790959938_3d_u-net_(seg.)",
+  "run_name": "Train_3D U-Net (Seg.)_41ep",
+  "model_name": "3D U-Net (Seg.)",
+  "timestamp": "2026-10-02 22:22:18",
+  "params": {
+    "epochs": 41,
+    "batch_size": 2,
+    "lr": 5e-05
+  },
+  "metrics": {
+    "initial_loss": 0.693,
+    "status": "QUEUED"
+  },
+  "tags": {
+    "dataset": "LIDC-IDRI",
+    "split": "patient_stratified"
+  },
+  "artifacts": []
+}

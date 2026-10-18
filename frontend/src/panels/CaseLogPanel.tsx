@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Database, Eye, CheckCircle2, FileText } from 'lucide-react';
 import { StudyCase } from '../types';
+import { API_BASE } from '../services/api';
 
 interface CaseLogPanelProps {
   onSelectCase: (studyId: string) => void;
@@ -10,7 +11,7 @@ export const CaseLogPanel: React.FC<CaseLogPanelProps> = ({ onSelectCase }) => {
   const [cases, setCases] = useState<StudyCase[]>([]);
 
   useEffect(() => {
-    fetch('/api/v2/cases')
+    fetch(`${API_BASE}/cases`)
       .then(res => res.json())
       .then(data => setCases(data.cases || []))
       .catch(() => {

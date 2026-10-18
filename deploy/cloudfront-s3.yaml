@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront + S3 distribution for Lung Cancer AI Research Platform Frontend'
+
+Parameters:
+  BucketNamePrefix:
+    Type: String
+    Default: 'lung-cancer-ai-frontend'
+    Description: 'Prefix for the S3 bucket name (will append AWS account ID for uniqueness)'
+
+  BackendDomainName:
+    Type: String
+    Default: ''
+    Description: 'Optional backend EC2/ALB public domain or IP (without http/https) to route /api/* through CloudFront'
+
+Conditions:
+  HasBackend: !Not [!Equals [!Ref BackendDomainName, '']]
+
+Resources:
+  # 1. S3 Bucket for Frontend Static Assets
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketNamePrefix}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # 2. CloudFront Origin Access Control (OAC)
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'OAC-${FrontendBucket}'
+        Description: 'OAC for Lung Cancer AI Frontend S3 bucket'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # 3. S3 Bucket Policy - Restrict read access only to CloudFront via OAC
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+  # 4. CloudFront Distribution
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: 'Lung Cancer AI Platform - Production Frontend'
+        Enabled: true
+        HttpVersion: http2and3
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100 # US, Canada, Europe, Asia
+
+        # S3 Origin
+        Origins:
+          - Id: S3FrontendOrigin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+          !If
+            - HasBackend
+            - Id: BackendApiOrigin
+              DomainName: !Ref BackendDomainName
+              CustomOriginConfig:
+                HTTPPort: 8000
+                HTTPSPort: 443
+                OriginProtocolPolicy: http-only
+            - !Ref 'AWS::NoValue'
+
+        # Default Cache Behavior (SPA Frontend)
+        DefaultCacheBehavior:
+          TargetOriginId: S3FrontendOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          # Managed-CachingOptimized policy ID
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+
+        # Optional Cache Behavior for /api/* routed to Backend
+        CacheBehaviors:
+          !If
+            - HasBackend
+            - - PathPattern: '/api/*'
+                TargetOriginId: BackendApiOrigin
+                ViewerProtocolPolicy: redirect-to-https
+                AllowedMethods:
+                  - GET
+                  - HEAD
+                  - OPTIONS
+                  - PUT
+                  - POST
+                  - PATCH
+                  - DELETE
+                # Managed-CachingDisabled policy ID
+                CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+                # Managed-AllViewer origin request policy ID
+                OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            - !Ref 'AWS::NoValue'
+
+        # SPA Routing: Redirect 403 and 404 to index.html with 200 OK
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+
+Outputs:
+  BucketName:
+    Description: 'S3 Bucket Name'
+    Value: !Ref FrontendBucket
+
+  DistributionId:
+    Description: 'CloudFront Distribution ID'
+    Value: !Ref CloudFrontDistribution
+
+  DistributionDomainName:
+    Description: 'CloudFront Distribution Domain Name'
+    Value: !GetAtt CloudFrontDistribution.DomainName
+
+  CloudFrontURL:
+    Description: 'Frontend HTTPS Application URL'
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'

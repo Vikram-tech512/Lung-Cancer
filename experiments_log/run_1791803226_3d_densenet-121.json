@@ -1,0 +1,20 @@
+{
+  "run_id": "run_1791803226_3d_densenet-121",
+  "run_name": "Train_3D DenseNet-121_50ep",
+  "model_name": "3D DenseNet-121",
+  "timestamp": "2026-10-12 16:37:06",
+  "params": {
+    "epochs": 50,
+    "batch_size": 4,
+    "lr": 0.0001
+  },
+  "metrics": {
+    "initial_loss": 0.693,
+    "status": "QUEUED"
+  },
+  "tags": {
+    "dataset": "LIDC-IDRI",
+    "split": "patient_stratified"
+  },
+  "artifacts": []
+}

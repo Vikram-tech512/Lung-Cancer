@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { GitBranch, Clock, Tag, FileText, CheckCircle2 } from 'lucide-react';
+import { API_BASE } from '../services/api';
 
 export const ExperimentsPanel: React.FC = () => {
   const [runs, setRuns] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/api/v2/experiments')
+    fetch(`${API_BASE}/experiments`)
       .then(res => res.json())
       .then(data => setRuns(data.runs || []))
       .catch(() => {

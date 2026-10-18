@@ -1,0 +1,11 @@
+{
+  "client": {
+    "source": "frontend/dist"
+  },
+  "appsail": [
+    {
+      "name": "lung-cancer-ai-backend",
+      "source": "backend"
+    }
+  ]
+}

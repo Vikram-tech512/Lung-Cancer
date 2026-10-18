@@ -58,3 +58,8 @@ checkpoints/
 Thumbs.db
 .vscode/
 .idea/
+
+# Deployment & Build Archives
+*.zip
+.appsail_stage/
+

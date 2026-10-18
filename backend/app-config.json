@@ -1,0 +1,9 @@
+{
+  "command": "python -u main.py",
+  "buildPath": ".",
+  "stack": "python_3_11",
+  "env_variables": {
+    "PYTHONPATH": "."
+  },
+  "memory": 1024
+}
