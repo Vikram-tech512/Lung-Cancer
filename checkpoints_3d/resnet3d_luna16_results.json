@@ -1,0 +1,46 @@
+{
+  "best_val_auc": 1.0,
+  "test_auc": 1.0,
+  "test_accuracy": 0.25,
+  "test_sensitivity": 0.0,
+  "test_specificity": 1.0,
+  "test_ece": 0.30604052543640137,
+  "temperature": 2.8969740867614746,
+  "dataset": "SYNTHETIC_DRY_RUN",
+  "model": "resnet3d",
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.787,
+      "train_acc": 0.5625,
+      "val_loss": 0.9409,
+      "val_acc": 0.5,
+      "val_auc": 1.0,
+      "val_sens": 0.0,
+      "val_spec": 1.0,
+      "lr": 9.8e-05,
+      "elapsed_s": 38.4
+    }
+  ],
+  "args": {
+    "model": "resnet3d",
+    "data_root": "data/LUNA16",
+    "cache_dir": "data/luna16_crops",
+    "output_dir": "checkpoints_3d",
+    "epochs": 1,
+    "batch_size": 2,
+    "crop_size": 64,
+    "lr": 0.0001,
+    "patience": 10,
+    "max_neg_per_pos": 5,
+    "min_diameter_mm": 0.0,
+    "val_frac": 0.15,
+    "test_frac": 0.15,
+    "seed": 42,
+    "num_workers": 0,
+    "device": "cuda",
+    "robustness_sample_size": 20,
+    "resume": null,
+    "dry_run": true
+  }
+}

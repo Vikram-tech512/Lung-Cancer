@@ -1,62 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Upload, Database, Eye, Cpu, CheckSquare, Ruler, Award, 
-  GitBranch, Box, Activity, ShieldAlert 
+  Upload, Database, Eye, Activity, Wifi, WifiOff, Sparkles, BrainCircuit, Cpu
 } from 'lucide-react';
 
-import { IntakePanel } from './panels/IntakePanel';
-import { CaseLogPanel } from './panels/CaseLogPanel';
-import { CTViewerPanel } from './panels/CTViewerPanel';
-import { TrainingPanel } from './panels/TrainingPanel';
-import { VerdictPanel } from './panels/VerdictPanel';
-import { MorphometryPanel } from './panels/MorphometryPanel';
-import { BenchmarkPanel } from './panels/BenchmarkPanel';
-import { ExperimentsPanel } from './panels/ExperimentsPanel';
-import { RegistryPanel } from './panels/RegistryPanel';
+import { WorkstationPanel } from './panels/WorkstationPanel';
+import { AIAnalysisPanel }  from './panels/AIAnalysisPanel';
+import { TrainingPanel }    from './panels/TrainingPanel';
+import { IntakePanel }       from './panels/IntakePanel';
+import { CaseLogPanel }      from './panels/CaseLogPanel';
+import { CTViewerPanel }     from './panels/CTViewerPanel';
 
-type PanelId = 'intake' | 'cases' | 'viewer' | 'training' | 'verdict' | 'morphometry' | 'benchmark' | 'experiments' | 'registry';
+type PanelId = 'workstation' | 'ai-analysis' | 'training' | 'intake' | 'cases' | 'viewer';
 
 export const App: React.FC = () => {
-  const [activePanel, setActivePanel] = useState<PanelId>('viewer');
+  const [activePanel, setActivePanel]       = useState<PanelId>('workstation');
   const [currentStudyId, setCurrentStudyId] = useState<string>('CASE-DEMO-LIDC-0087');
   const [currentNoduleId, setCurrentNoduleId] = useState<string>('NODULE-01');
+  const [apiOnline, setApiOnline]           = useState<boolean | null>(null);
 
-  const navItems = [
-    { id: 'intake', label: '01 · INTAKE', icon: Upload },
-    { id: 'cases', label: '02 · CASE LOG', icon: Database },
-    { id: 'viewer', label: '03 · CT VIEWER', icon: Eye },
-    { id: 'training', label: '04 · TRAINING', icon: Cpu },
-    { id: 'verdict', label: '05 · VERDICT', icon: CheckSquare },
-    { id: 'morphometry', label: '06 · MORPHOMETRY', icon: Ruler },
-    { id: 'benchmark', label: '07 · BENCHMARK', icon: Award },
-    { id: 'experiments', label: '08 · EXPERIMENTS', icon: GitBranch },
-    { id: 'registry', label: '09 · REGISTRY', icon: Box },
+  // Poll API health every 15 seconds
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const r = await fetch('/api/v2/health', { signal: AbortSignal.timeout(2500) });
+        setApiOnline(r.ok);
+      } catch {
+        setApiOnline(false);
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 15_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const navItems: { id: PanelId; label: string; icon: React.FC<any>; badge?: string }[] = [
+    { id: 'workstation', label: '00 · WORKSTATION', icon: Activity },
+    { id: 'ai-analysis', label: '01 · AI DIAGNOSTIC ENGINE (API)', icon: Sparkles, badge: 'GEMINI READY' },
+    { id: 'training',    label: '02 · TRAINING', icon: Cpu },
+    { id: 'intake',      label: '03 · INTAKE', icon: Upload },
+    { id: 'cases',       label: '04 · CASE LOG', icon: Database },
+    { id: 'viewer',      label: '05 · CT VIEWER', icon: Eye },
   ];
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#070a11' }}>
-      {/* Guard 5 Mandatory Clinical Advisory Banner */}
-      <div style={{
-        background: '#881337',
-        borderBottom: '1px solid #be123c',
-        color: '#ffe4e6',
-        padding: '6px 24px',
-        fontSize: '11px',
-        fontWeight: '700',
-        letterSpacing: '0.04em',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        textTransform: 'uppercase'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ShieldAlert size={15} color="#fda4af" />
-          <span>RESEARCH USE ONLY — not validated for this site/deployment as a clinical decision-support tool.</span>
-        </div>
-        <div style={{ fontSize: '10px', color: '#fecdd3', textTransform: 'none' }}>
-          Deployment Tier: <strong>RESEARCH_ONLY</strong> · Guard 5 Non-Bypassable Gate Enforced
-        </div>
-      </div>
 
       {/* Top Header Bar */}
       <header style={{
@@ -69,51 +56,26 @@ export const App: React.FC = () => {
         justifyContent: 'space-between',
         position: 'sticky',
         top: 0,
-        zIndex: 50
+        zIndex: 50,
+        backdropFilter: 'blur(12px)',
       }}>
+        {/* Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '6px',
+            width: '36px', height: '36px', borderRadius: '10px',
             background: 'linear-gradient(135deg, #0284c7, #06b6d4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)'
           }}>
-            <Activity size={20} color="#ffffff" />
+            <BrainCircuit size={22} color="#ffffff" />
           </div>
           <div>
             <div style={{ fontSize: '15px', fontWeight: '800', letterSpacing: '-0.02em', color: '#f8fafc' }}>
-              LUNG CANCER AI <span style={{ color: '#06b6d4', fontWeight: '500' }}>RESEARCH PLATFORM</span>
+              LUNG CANCER AI <span style={{ color: '#06b6d4', fontWeight: '600' }}>PLATFORM</span>
             </div>
-            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Volumetric 3D DL · Vision Transformers · IBSI Radiomics · XAI
+            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Volumetric 3D DL · Gemini Multi-Modal Engine · XAI Localization
             </div>
-          </div>
-        </div>
-
-        {/* System Badges */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-            API v2.0 Online
-          </div>
-
-          <div style={{
-            background: 'rgba(244, 63, 94, 0.12)',
-            border: '1px solid rgba(244, 63, 94, 0.3)',
-            borderRadius: '4px',
-            padding: '4px 10px',
-            fontSize: '11px',
-            fontWeight: '700',
-            color: '#f43f5e',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}>
-            <ShieldAlert size={14} />
-            RESEARCH USE ONLY
           </div>
         </div>
       </header>
@@ -125,7 +87,7 @@ export const App: React.FC = () => {
         padding: '0 24px',
         display: 'flex',
         gap: '4px',
-        overflowX: 'auto'
+        overflowX: 'auto',
       }}>
         {navItems.map(item => {
           const Icon = item.icon;
@@ -133,72 +95,110 @@ export const App: React.FC = () => {
           return (
             <button
               key={item.id}
-              onClick={() => setActivePanel(item.id as PanelId)}
+              id={`nav-${item.id}`}
+              onClick={() => setActivePanel(item.id)}
+              className={`nav-tab${isActive ? ' active' : ''}`}
               style={{
-                background: 'transparent',
-                border: 'none',
-                borderBottom: isActive ? '2px solid #06b6d4' : '2px solid transparent',
-                color: isActive ? '#f8fafc' : '#64748b',
-                padding: '12px 14px',
-                fontSize: '12px',
-                fontWeight: isActive ? '700' : '500',
-                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s ease'
+                padding: '12px 18px',
+                border: 'none',
+                background: isActive ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
+                borderBottom: isActive ? '2px solid #06b6d4' : '2px solid transparent',
+                color: isActive ? '#f8fafc' : '#64748b',
+                fontWeight: isActive ? '700' : '500',
+                fontSize: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               <Icon size={15} color={isActive ? '#06b6d4' : '#64748b'} />
-              {item.label}
+              <span>{item.label}</span>
+              {item.badge && (
+                <span style={{
+                  fontSize: '9px',
+                  fontWeight: '700',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  background: 'rgba(56, 189, 248, 0.2)',
+                  color: '#38bdf8',
+                  letterSpacing: '0.04em'
+                }}>
+                  {item.badge}
+                </span>
+              )}
             </button>
           );
         })}
       </nav>
 
       {/* Main Panel Content Area */}
-      <main style={{ flex: 1, paddingBottom: '40px' }}>
-        {activePanel === 'intake' && (
-          <IntakePanel
-            onStudyLoaded={(studyId) => {
-              setCurrentStudyId(studyId);
-              setActivePanel('viewer');
+      <main style={{ flex: 1, paddingBottom: '48px' }}>
+
+        {activePanel === 'workstation' && (
+          <WorkstationPanel 
+            studyId={currentStudyId} 
+            navigate={(route) => {
+              if (route.includes('training')) setActivePanel('training');
+              else if (route.includes('ai') || route.includes('api')) setActivePanel('ai-analysis');
+              else if (route.includes('viewer')) setActivePanel('viewer');
+              else if (route.includes('cases')) setActivePanel('cases');
+              else if (route.includes('intake')) setActivePanel('intake');
             }}
           />
+        )}
+
+        {activePanel === 'ai-analysis' && (
+          <AIAnalysisPanel />
+        )}
+
+        {activePanel === 'training' && (
+          <TrainingPanel />
+        )}
+
+        {activePanel === 'intake' && (
+          <IntakePanel onStudyLoaded={(studyId) => {
+            setCurrentStudyId(studyId);
+            setActivePanel('viewer');
+          }} />
         )}
 
         {activePanel === 'cases' && (
-          <CaseLogPanel
-            onSelectCase={(studyId) => {
-              setCurrentStudyId(studyId);
-              setActivePanel('viewer');
-            }}
-          />
+          <CaseLogPanel onSelectCase={(studyId) => {
+            setCurrentStudyId(studyId);
+            setActivePanel('viewer');
+          }} />
         )}
 
         {activePanel === 'viewer' && (
-          <CTViewerPanel
-            studyId={currentStudyId}
-            onInspectNodule={(noduleId) => {
-              setCurrentNoduleId(noduleId);
-              setActivePanel('verdict');
-            }}
-          />
+          <CTViewerPanel studyId={currentStudyId} onInspectNodule={(noduleId) => {
+            setCurrentNoduleId(noduleId);
+            setActivePanel('ai-analysis');
+          }} />
         )}
 
-        {activePanel === 'training' && <TrainingPanel />}
-
-        {activePanel === 'verdict' && <VerdictPanel noduleId={currentNoduleId} />}
-
-        {activePanel === 'morphometry' && <MorphometryPanel noduleId={currentNoduleId} />}
-
-        {activePanel === 'benchmark' && <BenchmarkPanel />}
-
-        {activePanel === 'experiments' && <ExperimentsPanel />}
-
-        {activePanel === 'registry' && <RegistryPanel />}
       </main>
+
+      {/* Footer */}
+      <footer style={{
+        borderTop: '1px solid #1e293b',
+        background: '#070c14',
+        padding: '10px 24px',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        fontSize: '11px',
+        color: '#64748b',
+        position: 'fixed',
+        bottom: 0,
+        width: '100%',
+        boxSizing: 'border-box',
+        zIndex: 40
+      }}>
+        <span>Lung Cancer AI Platform v2.0 · Multi-Modal Clinical Intelligence</span>
+      </footer>
+
     </div>
   );
 };

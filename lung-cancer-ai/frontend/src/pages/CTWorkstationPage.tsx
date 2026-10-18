@@ -4,6 +4,7 @@ import {
   FileText, Activity, ArrowRight, CheckCircle2, Loader2, Sparkles, Target, Compass 
 } from 'lucide-react';
 import { EKGWaveform } from '../components/EKGWaveform';
+import { AIAssistantExplanation } from '../components/AIAssistantExplanation';
 import { api } from '../services/api';
 
 interface CTWorkstationProps {
@@ -991,6 +992,15 @@ export const CTWorkstationPage: React.FC<CTWorkstationProps> = ({ studyId, navig
               MODEL ATTRIBUTION — NOT CLINICAL EVIDENCE
             </div>
           </div>
+
+          {/* ── AI MODALITY PURPOSE & CONTEXT ASSISTANT ─────────────────────── */}
+          <AIAssistantExplanation
+            activeTab={activeTab}
+            onSelectTab={setActiveTab}
+            activeCase={activeCase}
+            currentPixelX={currentPixelX}
+            currentPixelY={currentPixelY}
+          />
         </div>
 
         {/* ================= RIGHT COLUMN (05 · VERDICT & 06 · MORPHOMETRY) ================= */}
@@ -1056,10 +1066,16 @@ export const CTWorkstationPage: React.FC<CTWorkstationProps> = ({ studyId, navig
 
             {/* Confidence Signature (EKG Waveform) */}
             <div style={{ borderTop: '1px solid #1e293b', paddingTop: '10px' }}>
-              <div style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-                Confidence Signature
-              </div>
-              <EKGWaveform points={activeCase.ekgPoints} color={activeCase.ekgColor} height={44} />
+              <EKGWaveform 
+                points={activeCase.ekgPoints} 
+                color={activeCase.ekgColor} 
+                height={52} 
+                verdictClass={activeCase.verdictClass}
+                area={activeCase.area}
+                uncertainty={activeCase.uncertainty}
+                currentPixelX={currentPixelX}
+                currentPixelY={currentPixelY}
+              />
             </div>
           </div>
 

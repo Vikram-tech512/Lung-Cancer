@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "lung-cancer-ai-platform"
+version         = "2.0.0"
+description     = "Clinical-grade full-stack AI platform for volumetric thoracic CT analysis"
+readme          = "README.md"
+requires-python = ">=3.11"
+license         = {text = "MIT"}
+authors         = [{name = "Lung Cancer AI Research Team"}]
+keywords        = ["medical-imaging", "deep-learning", "lung-cancer", "CT", "radiomics", "XAI"]
+classifiers     = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+
+[project.urls]
+Homepage   = "https://github.com/Vikram-tech512/Lung-Cancer"
+Repository = "https://github.com/Vikram-tech512/Lung-Cancer"
+
+# ---------------------------------------------------------------------------
+# Tool configurations
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths    = ["backend/tests"]
+asyncio_mode = "auto"
+addopts      = "-v --tb=short"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+target-version = "py311"
+line-length    = 100
+select         = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore         = ["E501", "B008", "N803", "N806"]
+exclude        = [".venv", "node_modules", "__pycache__", "dist", "build"]
+
+[tool.mypy]
+python_version         = "3.11"
+ignore_missing_imports = true
+strict                 = false
+warn_return_any        = true
+warn_unused_ignores    = true
+
+[tool.coverage.run]
+source   = ["backend"]
+omit     = ["*/tests/*", "*/__pycache__/*", "*/.venv/*"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true

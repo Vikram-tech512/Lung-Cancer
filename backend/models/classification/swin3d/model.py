@@ -381,20 +381,36 @@ class SwinTransformer3D(nn.Module):
         x = self.dropout(x)
         return self.head(x)
 
-    def get_attention_maps(self, x: torch.Tensor) -> list[torch.Tensor]:
-        """Return attention weights from the last Swin stage (for rollout)."""
+    def get_attention_maps(self, x: torch.Tensor) -> list[dict]:
+        """Return per-block attention info needed for SPATIALLY VALID rollout.
+
+        Window attention only ever spans one local window (e.g. 4x4x4=64
+        tokens), never the full token grid. To reconstruct a whole-volume
+        localization map, every consumer needs each block's window size,
+        shift size, and (D, H, W) resolution *at that block* so the local
+        attention can be scattered back to its true grid position with
+        window_reverse_3d before being combined across blocks/stages.
+        Returning bare tensors (the old behaviour) discards this and makes
+        correct spatial reconstruction impossible.
+        """
         x, res = self._patch_embed_forward(x)
         x = self.pos_drop(x)
-        attn_maps = []
+        attn_info = []
         for i, (stage, merge) in enumerate(zip(self.stages, self.merges)):
             for blk in stage:
                 x = blk(x)
                 if blk.attn.attn_weights is not None:
-                    attn_maps.append(blk.attn.attn_weights)
+                    attn_info.append({
+                        "attn": blk.attn.attn_weights,   # (nW, heads, N, N)
+                        "window_size": blk.ws,
+                        "shift_size": blk.shift_size,
+                        "resolution": res,                # (D, H, W) at this block
+                        "stage": i,
+                    })
             if merge is not None:
                 x = merge(x, res)
                 res = tuple(r // 2 for r in res)
-        return attn_maps
+        return attn_info
 
 
 # ─────────────────────────────────────────────────────────────

@@ -5,7 +5,14 @@
  * Proxies through Vite / Nginx to FastAPI backend at port 8000.
  */
 
-const API_BASE = '/api/v2';
+/**
+ * In production (S3 + CloudFront), VITE_API_BASE_URL is injected at build time
+ * by the GitHub Actions workflow and points to the EC2 public IP/domain.
+ * In local dev, falls back to relative '/api/v2' (proxied by Vite to localhost:8000).
+ */
+export const API_BASE = import.meta.env.VITE_API_BASE_URL
+  ? `${import.meta.env.VITE_API_BASE_URL}/api/v2`
+  : '/api/v2';
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {

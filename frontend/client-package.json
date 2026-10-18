@@ -1,0 +1,11 @@
+{
+  "name": "lung-cancer-ai-frontend",
+  "version": "2.0.0",
+  "homepage": "index.html",
+  "login_redirect": "index.html",
+  "404": "404.html",
+  "routes": {
+    "/**": "index.html"
+  }
+}
+

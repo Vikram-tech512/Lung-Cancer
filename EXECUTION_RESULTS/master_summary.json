@@ -1,5 +1,5 @@
 {
-  "execution_time": "2026-09-25 14:04:29",
+  "execution_time": "2026-09-26 09:44:58",
   "passed_steps": [
     "PHASE_5_INFRA: Module & engine validation",
     "PHASE_5_QUALITY: Real segmentation metrics (Dice/IoU/Sens/Spec/HD95)",
