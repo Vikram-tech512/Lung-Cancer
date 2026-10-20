@@ -1,3 +1,8 @@
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
 # separate terms of service, privacy policy, and support
@@ -41,7 +46,9 @@ jobs:
     - name: Run Microsoft Security DevOps
       uses: microsoft/security-devops-action@v1.6.0
       id: msdo
-    - name: Upload results to Security tab
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+    
+- name: Upload results to Security tab
+  uses: github/codeql-action/upload-sarif@v4
+  with:
+    sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+    category: microsoft-defender-for-devops
