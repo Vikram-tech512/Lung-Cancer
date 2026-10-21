@@ -1,4 +1,4 @@
-# Lung Cancer AI Research Platform — v2.0
+# Lung Cancer AI Research Platform 
 
 A **clinical-grade, full-stack AI platform** for volumetric thoracic CT analysis.
 Built with 3D Deep Learning (UNet3D, nnUNet, RetinaNet3D, ResNet3D, DenseNet3D, Swin Transformer 3D),
