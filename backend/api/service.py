@@ -529,10 +529,16 @@ def get_model_info():
 
 @app.get("/api/v2/config/uncertainty")
 def get_uncertainty_config():
-    """Returns configurable uncertainty standard deviation (sigma) thresholds and PACS deferral rules."""
+    """Returns configurable uncertainty standard deviation (sigma) thresholds and manual review flagging rules."""
     thresh_low = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.05"))
     thresh_high = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.15"))
     info = get_active_model_info()
+    review_rules = {
+        "qa_warning": "Study failed or warned on DICOM QA criteria",
+        "high_uncertainty": f"Predictive standard deviation exceeds {thresh_high:.2f}",
+        "outside_distribution": "Tissue attenuation or volume parameters outside training conditions",
+        "banner": "Outside validated conditions. Review manually."
+    }
     return {
         "metric": "predictive_std",
         "metric_display": "Predictive Standard Deviation (σ)",
@@ -555,17 +561,13 @@ def get_uncertainty_config():
             "high": {
                 "name": "High",
                 "range": f"σ > {thresh_high:.2f}",
-                "description": "Divergent predictions across forward passes; manual review required."
+                "description": "Divergent predictions across forward passes; flagged for manual review."
             }
         },
-        "deferral_rules": {
-            "qa_warning": "Study failed or warned on DICOM QA criteria",
-            "high_uncertainty": f"Predictive standard deviation exceeds {thresh_high:.2f}",
-            "outside_distribution": "Tissue attenuation or volume parameters outside training conditions",
-            "banner": "Outside validated conditions. Review manually."
-        },
+        "manual_review_rules": review_rules,
+        "deferral_rules": review_rules,
         "is_validated": False,
-        "note": "Uncertainty tier thresholds (predictive standard deviation σ) are configurable default heuristics for research analysis, not clinically validated.",
+        "note": "Uncertainty tier thresholds (predictive standard deviation σ) are unvalidated defaults to tune on the validation subset, not clinically validated.",
         "model_version": info["model_version"],
         "validation_status": info["status"]
     }

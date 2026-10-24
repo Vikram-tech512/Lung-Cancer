@@ -229,7 +229,7 @@ export const AboutModelScreen: React.FC = () => {
             Uncertainty Tier Definitions (Configurable Defaults)
           </h2>
           <span style={{ fontSize: '11px', color: 'var(--accent-amber)', fontWeight: 600 }}>
-            Configurable defaults · Not clinically validated
+            Unvalidated defaults to tune on validation subset · Not clinically validated
           </span>
         </div>
         
@@ -237,7 +237,7 @@ export const AboutModelScreen: React.FC = () => {
           fontSize: '12px', color: 'var(--text-muted)', background: 'var(--bg-deepest)',
           padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-subtle)'
         }}>
-          <strong>Note:</strong> Uncertainty tier cutoffs are defined on the predictive standard deviation (σ) of candidate probability across T=30 MC Dropout passes. They are configurable default heuristics for research evaluation and risk stratification, not validated diagnostic boundaries.
+          <strong>Note:</strong> Uncertainty tier cutoffs are defined on the predictive standard deviation (σ) of candidate probability across T=30 MC Dropout passes. They are unvalidated default heuristics to tune on the validation subset, not clinically validated diagnostic boundaries.
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '12px' }}>
@@ -268,23 +268,23 @@ export const AboutModelScreen: React.FC = () => {
           }}>
             <div style={{ fontWeight: 700, color: 'var(--accent-red)' }}>High Uncertainty (σ &gt; 0.15)</div>
             <div style={{ color: 'var(--text-body)', marginTop: '4px', lineHeight: 1.4 }}>
-              Divergent stochastic outputs across forward passes. Automatic deferral flag displayed.
+              Divergent stochastic outputs across forward passes. Flagged for manual review.
             </div>
           </div>
 
         </div>
       </div>
 
-      {/* Deferral Rules & Clinical Limitations */}
+      {/* Manual Review Rules & Clinical Limitations */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
         
-        {/* Deferral Rules */}
+        {/* Flagged for Manual Review */}
         <div style={{
           background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
           borderRadius: '4px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px'
         }}>
           <h2 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--accent-amber)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <AlertTriangle size={15} /> Automated Deferral Rules
+            <AlertTriangle size={15} /> Flagged for Manual Review Rules
           </h2>
           <div style={{ fontSize: '13px', color: 'var(--text-body)', lineHeight: 1.5 }}>
             The workstation automatically displays: <br />

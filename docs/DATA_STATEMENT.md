@@ -13,10 +13,21 @@ LUNA16 is an official curated subset of the **Lung Image Database Consortium and
 ---
 
 ## 2. Dataset Licensing
-The LUNA16 and LIDC-IDRI datasets are distributed under the **Creative Commons Attribution 3.0 Unported License (CC BY 3.0)**.
+The dataset licenses as stated directly in the source repository records are quoted below:
 
-- **Permissions:** Commercial and non-commercial use, modification, distribution, and reproduction are permitted, provided appropriate credit is attributed to the original creators and source repositories.
-- **Full License Text:** [https://creativecommons.org/licenses/by/3.0/](https://creativecommons.org/licenses/by/3.0/)
+1. **Zenodo Record 3723295 Metadata License:**  
+   The Zenodo metadata specifies:  
+   > `"license": {"id": "cc-by-4.0"}`  
+   > **Creative Commons Attribution 4.0 International (CC BY 4.0)**
+
+2. **Zenodo Record Description:**  
+   The record description states:  
+   > *"This dataset includes the images from the LIDC/IDRI dataset in a different format, together with additional annotations. The LIDC/IDRI dataset is available at https://wiki.cancerimagingarchive.net/display/Public/LIDC-IDRI under a Creative Commons Attribution 3.0 Unported License."*
+
+3. **The Cancer Imaging Archive (TCIA) LIDC-IDRI Page:**  
+   The TCIA collection page documents the license as:  
+   > **Creative Commons Attribution 3.0 Unported License (CC BY 3.0)**  
+   > *"You are free to: Share — copy and redistribute the material in any medium or format; Adapt — remix, transform, and build upon the material for any purpose, even commercially, under the terms of attribution."*
 
 ---
 
@@ -40,12 +51,12 @@ Any publication, technical report, or software benchmark derived from this cohor
 
 ---
 
-## 4. Patient De-Identification & HIPAA Compliance
-All imaging series in LUNA16/LIDC-IDRI underwent rigorous, multi-tiered institutional de-identification in compliance with the **HIPAA Safe Harbor standard** (45 CFR § 164.514(b)(2)) before public release:
-- All 18 direct protected health information (PHI) identifiers have been permanently removed from DICOM headers (including patient name, date of birth, medical record numbers, social security numbers, address, and facility identifiers).
-- Series Instance UIDs and Study Instance UIDs are hashed with cryptographically non-reversible identifiers.
+## 4. Patient De-Identification (TCIA Curation)
+Per official TCIA documentation, all CT series in LIDC-IDRI / LUNA16 were de-identified by TCIA staff prior to public dissemination:
+- TCIA staff curate and de-identify incoming collections, removing direct Protected Health Information (PHI) identifiers from DICOM headers and scrubbing private vendor tags.
+- Series and Study UIDs are replaced with non-reversible research identifiers.
 - Facial and cranial reconstruction regions were cropped or filtered out where applicable to prevent surface re-identification.
-- No protected personal health data is processed, stored, or transmitted by this software platform.
+- No identifiable private personal health information is stored, processed, or transmitted by this software platform.
 
 ---
 
@@ -58,3 +69,5 @@ All imaging series in LUNA16/LIDC-IDRI underwent rigorous, multi-tiered institut
 1. **Nodule vs. Non-Nodule Only:** LUNA16 annotations index candidate false-positive reduction (distinguishing anatomical/inflammatory non-nodules from consensus pulmonary nodules). The dataset **does not contain verified pathological malignancy outcomes, tissue biopsies, or histopathology grades**.
 2. **No Malignancy Diagnosis:** High probability outputs indicate candidate nodular morphometry, **never** a clinical cancer diagnosis.
 3. **Cohort Exclusions:** The dataset does not include pediatric patients (< 18 years), post-surgical resections, acute interstitial pneumonia, severe thoracic trauma, or high-contrast arterial phase scans.
+4. **Flagged for Manual Review & Unvalidated Uncertainty Defaults:** Uncertainty standard deviation ($\sigma$) tiers are unvalidated default heuristics intended to be tuned on the validation subset. Cases where uncertainty exceeds default thresholds or imaging parameters fail QA checks are flagged for manual review rather than subject to automatic PACS deferral.
+
