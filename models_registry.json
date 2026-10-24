@@ -27,12 +27,27 @@
       "metrics": {
         "val_auc": 0.9227,
         "sensitivity": 0.7348,
-        "specificity": 0.9669
+        "specificity": 0.9669,
+        "test_auc": 0.9052,
+        "test_auc_ci_95": [
+          0.8512594161148337,
+          0.945648105902627
+        ],
+        "test_ap": 0.323,
+        "cpm_froc": 0.4382,
+        "cpm_ci_95": [
+          0.350068509214798,
+          0.538362332112332
+        ],
+        "ece_calibrated": 0.001,
+        "pointing_game_hit_rate": 0.0886,
+        "proxy_dice": 0.0444
       },
       "created_at": "2026-10-24 13:17:44",
       "checkpoint_path": "checkpoints_3d/resnet3d_luna16_best.pt",
       "patient_split_hash": "335343f6f1139c7cf6c808416131f630e6542dda3f344902b6d6f7840afcd109",
-      "notes": "Trained on official LUNA16 subsets 0, 1 (178 scans, 1,848 crops at 32^3 1mm isotropic). Val AUC 0.9227 on subset 2 (89 scans). Research Use Only."
+      "notes": "Trained on official LUNA16 subsets 0, 1 (178 scans, 1,848 crops at 32^3 1mm isotropic). Val AUC 0.9227 on subset 2 (89 scans). Research Use Only.",
+      "updated_at": "2026-10-24 16:16:11 UTC"
     }
   ],
   "3D ResNet-50": [
@@ -56,7 +71,6 @@
       "notes": "EXPERIMENTAL 1-epoch, 10-scan smoke test on LUNA16 subset0. Awaiting full 10-fold LUNA16 cross-validation before STAGING promotion."
     }
   ],
-
   "3D Swin Transformer": [
     {
       "model_name": "3D Swin Transformer",

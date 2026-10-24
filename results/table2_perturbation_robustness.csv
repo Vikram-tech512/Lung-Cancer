@@ -1,8 +1,8 @@
-perturbation_condition,mean_abs_delta_raw,mean_abs_delta_calibrated,delta_reduction,vulnerability_flags
-baseline,0.0,0.0,0.0,0
-hu_shift_+50,0.0752,0.0794,-0.0042,1
-hu_shift_-50,0.0716,0.0585,0.0131,1
-low_dose_noise,0.0591,0.0872,-0.0282,1
-slice_thickness_2.5mm,0.0746,0.0722,0.0024,1
-ring_artifact,0.0669,0.0592,0.0077,0
-respiratory_motion,0.0637,0.0615,0.0022,0
+condition,auc,accuracy,mean_abs_delta,relative_degradation_pct,status
+baseline_clean,0.9034,0.9361,0.0,0.0,BASELINE
+hu_shift_+50,0.5,0.9268,0.1168,44.65,VULNERABLE
+hu_shift_-50,0.5,0.9268,0.1168,44.65,VULNERABLE
+low_dose_noise,0.5,0.9268,0.1168,44.65,VULNERABLE
+slice_thickness_2.5mm,0.8868,0.9374,0.0289,1.84,ROBUST
+ring_artifact,0.9034,0.9361,0.0,0.0,ROBUST
+respiratory_motion,0.7885,0.7952,0.1763,12.71,MODERATE_DROP

@@ -61,6 +61,7 @@ LUNA16_ROOT/
 *.raw
 *.zraw
 *.npy
+*.npz
 *.dcm
 
 # Large Model Checkpoints (>100MB blocked by GitHub)

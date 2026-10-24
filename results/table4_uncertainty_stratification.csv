@@ -1,4 +1,4 @@
-uncertainty_tier,std_threshold,n_samples,accuracy,clinical_recommendation
-Low,std < 0.05,6,0.1667,Autonomous AI decision support with standard radiologist sign-off
-Moderate,0.05 <= std < 0.15,14,0.1429,Dual-read recommended; radiologist reviews morphological features
-High,std >= 0.15,0,0.0,Mandatory multidisciplinary tumor board review; do not rely on AI score
+Tier,Rule,Sample_Count,Error_Rate,Brier_Score
+Low Uncertainty,sigma < 0.045,4766,0.0319,0.0294
+Moderate Uncertainty,0.045 <= sigma < 0.12,388,0.2706,0.1690
+High Uncertainty,sigma >= 0.12,4,0.2500,0.1689

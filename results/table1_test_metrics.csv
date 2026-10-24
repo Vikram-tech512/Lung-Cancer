@@ -1,0 +1,18 @@
+Metric,Value,95% CI,Evaluation Level
+ROC AUC,0.9052,"[0.8513, 0.9456]",Candidate-level
+Average Precision (PR AUC),0.3230,"[0.2413, 0.4089]",Candidate-level
+CPM (FROC Score),0.4382,"[0.3501, 0.5384]",Nodule-level (annotations.csv)
+CPM (Candidate-level),0.3590,"[0.2829, 0.4403]",Candidate-level
+Sensitivity @ 0.125 FP/scan,0.2521,-,Nodule-level
+Sensitivity @ 0.25 FP/scan,0.2857,-,Nodule-level
+Sensitivity @ 0.5 FP/scan,0.3613,-,Nodule-level
+Sensitivity @ 1.0 FP/scan,0.4370,-,Nodule-level
+Sensitivity @ 2.0 FP/scan,0.5042,-,Nodule-level
+Sensitivity @ 4.0 FP/scan,0.5798,-,Nodule-level
+Sensitivity @ 8.0 FP/scan,0.6471,-,Nodule-level
+ECE-15 (Uncalibrated),0.0057,-,Calibration (Natural Dist)
+"ECE-15 (Calibrated, Prior Shift + T)",0.0010,-,Calibration (T=1.169)
+Adaptive ECE (Calibrated),0.0012,-,Quantile Binning (15 bins)
+Brier Score (Calibrated),0.0050,-,Probabilistic Loss
+Grad-CAM Pointing Game Hit Rate,8.9%,-,Explainability (Attribution peak)
+Grad-CAM Proxy Sphere Dice,0.0444,-,Explainability (Proxy sphere)

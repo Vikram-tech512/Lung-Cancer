@@ -171,6 +171,16 @@ class ResNet3D50(nn.Module):
         x = self.dropout(x)
         return self.fc(x)
 
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Extract pooled 1D feature embeddings before dropout and classification head."""
+        x = self.stem(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.avgpool(x)
+        return x.flatten(1)
+
     def get_feature_maps(self, x: torch.Tensor) -> torch.Tensor:
         """Return layer4 feature map for 3D Grad-CAM."""
         x = self.stem(x)
@@ -299,6 +309,12 @@ class ResNet3D18Half(nn.Module):
         x = self.stem(x); x = self.layer1(x); x = self.layer2(x)
         x = self.layer3(x); x = self.layer4(x)
         return self.fc(self.dropout(self.avgpool(x).flatten(1)))
+
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Extract pooled 1D feature embeddings before dropout and classification head."""
+        x = self.stem(x); x = self.layer1(x); x = self.layer2(x)
+        x = self.layer3(x); x = self.layer4(x)
+        return self.avgpool(x).flatten(1)
 
     def get_feature_maps(self, x: torch.Tensor) -> torch.Tensor:
         """Return layer4 feature maps for 3D Grad-CAM."""
