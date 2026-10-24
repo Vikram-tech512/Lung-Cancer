@@ -1,0 +1,90 @@
+{
+  "step": 2,
+  "title": "CPU Training Profile (3D ResNet-18)",
+  "generated_at": "2026-10-24 12:55:32 UTC",
+  "hardware": {
+    "device": "cpu",
+    "logical_cores": 16,
+    "physical_cores": 10,
+    "total_system_ram_gb": 15.64,
+    "memory_limit_gb": 12.0,
+    "peak_memory_mb": 1235.3,
+    "peak_memory_gb": 1.206,
+    "oom_safe": true
+  },
+  "dry_run_cohort": {
+    "scans_count": 20,
+    "positives": 20,
+    "negatives": 200,
+    "total_crops": 220,
+    "crop_dimensions": [
+      32,
+      32,
+      32
+    ],
+    "spacing_mm": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "hu_window": [
+      -1000.0,
+      400.0
+    ],
+    "extraction_throughput_crops_per_sec": 55.3
+  },
+  "model_benchmarks": {
+    "ResNet3D-18-Standard": {
+      "parameters": 33148482,
+      "throughput_crops_per_sec": 9.1,
+      "step_time_ms_b8": 881.7,
+      "memory_mb": 1166.4
+    },
+    "ResNet3D-18-Half": {
+      "parameters": 8292130,
+      "throughput_crops_per_sec": 29.1,
+      "step_time_ms_b8": 275.3,
+      "memory_mb": 1194.8
+    }
+  },
+  "batch_size_scaling": {
+    "B=8": {
+      "batch_size": 8,
+      "throughput_crops_per_sec": 30.0,
+      "latency_per_batch_ms": 266.6,
+      "memory_mb": 1151.9
+    },
+    "B=16": {
+      "batch_size": 16,
+      "throughput_crops_per_sec": 36.9,
+      "latency_per_batch_ms": 434.1,
+      "memory_mb": 1168.9
+    }
+  },
+  "dry_run_metrics": {
+    "model": "ResNet3D-18-Half",
+    "batch_size": 16,
+    "epoch_duration_sec": 6.28,
+    "throughput_crops_per_sec": 35.0,
+    "initial_loss": 0.808,
+    "final_loss": 0.8594,
+    "average_loss": 0.962,
+    "accuracy": 0.6682
+  },
+  "full_dataset_projections": {
+    "full_train_scans": 178,
+    "full_train_positives": 308,
+    "ratio_10x": {
+      "total_crops_per_epoch": 3388,
+      "projected_epoch_time_sec": 96.7,
+      "projected_epoch_time_min": 1.61,
+      "projected_10_epochs_min": 16.1
+    },
+    "ratio_5x": {
+      "total_crops_per_epoch": 1848,
+      "projected_epoch_time_sec": 52.7,
+      "projected_epoch_time_min": 0.88,
+      "projected_10_epochs_min": 8.8
+    }
+  }
+}
