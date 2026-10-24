@@ -69,5 +69,6 @@ Per official TCIA documentation, all CT series in LIDC-IDRI / LUNA16 were de-ide
 1. **Nodule vs. Non-Nodule Only:** LUNA16 annotations index candidate false-positive reduction (distinguishing anatomical/inflammatory non-nodules from consensus pulmonary nodules). The dataset **does not contain verified pathological malignancy outcomes, tissue biopsies, or histopathology grades**.
 2. **No Malignancy Diagnosis:** High probability outputs indicate candidate nodular morphometry, **never** a clinical cancer diagnosis.
 3. **Cohort Exclusions:** The dataset does not include pediatric patients (< 18 years), post-surgical resections, acute interstitial pneumonia, severe thoracic trauma, or high-contrast arterial phase scans.
-4. **Flagged for Manual Review & Unvalidated Uncertainty Defaults:** Uncertainty standard deviation ($\sigma$) tiers are unvalidated default heuristics intended to be tuned on the validation subset. Cases where uncertainty exceeds default thresholds or imaging parameters fail QA checks are flagged for manual review rather than subject to automatic PACS deferral.
+4. **Flagged for Manual Review & Unvalidated Uncertainty Defaults:** Uncertainty standard deviation ($\sigma$) tiers are unvalidated default heuristics intended to be tuned on the validation subset. Cases where uncertainty exceeds default thresholds or imaging parameters fail QA checks are flagged for manual review by a qualified radiologist.
+
 
