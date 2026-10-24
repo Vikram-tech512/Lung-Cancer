@@ -55,6 +55,8 @@ EXECUTION_RESULTS/master_execution_log.txt
 data/
 data/**
 segmentation/data/
+LUNA16_DATA/
+LUNA16_ROOT/
 *.mhd
 *.raw
 *.zraw

@@ -529,40 +529,43 @@ def get_model_info():
 
 @app.get("/api/v2/config/uncertainty")
 def get_uncertainty_config():
-    """Returns configurable uncertainty entropy thresholds and PACS deferral rules."""
-    thresh_low = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.30"))
-    thresh_high = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.70"))
+    """Returns configurable uncertainty standard deviation (sigma) thresholds and PACS deferral rules."""
+    thresh_low = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.05"))
+    thresh_high = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.15"))
     info = get_active_model_info()
     return {
-        "entropy_thresholds": {
+        "metric": "predictive_std",
+        "metric_display": "Predictive Standard Deviation (σ)",
+        "statistic": "Standard deviation of nodule candidate probability across T=30 stochastic MC Dropout passes",
+        "thresholds": {
             "low": thresh_low,
             "high": thresh_high
         },
         "tiers": {
             "low": {
                 "name": "Low",
-                "range": f"< {thresh_low:.2f}",
+                "range": f"σ < {thresh_low:.2f}",
                 "description": "High model concordance across stochastic MC Dropout forward passes."
             },
             "moderate": {
                 "name": "Moderate",
-                "range": f"{thresh_low:.2f} - {thresh_high:.2f}",
+                "range": f"{thresh_low:.2f} <= σ <= {thresh_high:.2f}",
                 "description": "Borderline concordance; radiologist review recommended."
             },
             "high": {
                 "name": "High",
-                "range": f"> {thresh_high:.2f}",
-                "description": "Divergent predictions or out-of-distribution input; manual review required."
+                "range": f"σ > {thresh_high:.2f}",
+                "description": "Divergent predictions across forward passes; manual review required."
             }
         },
         "deferral_rules": {
             "qa_warning": "Study failed or warned on DICOM QA criteria",
-            "high_uncertainty": f"Predictive entropy exceeds {thresh_high:.2f}",
+            "high_uncertainty": f"Predictive standard deviation exceeds {thresh_high:.2f}",
             "outside_distribution": "Tissue attenuation or volume parameters outside training conditions",
             "banner": "Outside validated conditions. Review manually."
         },
         "is_validated": False,
-        "note": "Uncertainty tier thresholds are configurable default heuristics for research analysis, not clinically validated.",
+        "note": "Uncertainty tier thresholds (predictive standard deviation σ) are configurable default heuristics for research analysis, not clinically validated.",
         "model_version": info["model_version"],
         "validation_status": info["status"]
     }

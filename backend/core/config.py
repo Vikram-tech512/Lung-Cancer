@@ -51,6 +51,10 @@ try:
         REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         STORAGE_ROOT: str = os.getenv("STORAGE_ROOT", "storage_bucket")
         MAX_UPLOAD_SIZE_MB: int = 500
+        LUNA16_ROOT: str = os.getenv("LUNA16_ROOT", r"C:\LUNA16_DATA")
+        UNCERTAINTY_METRIC: str = "predictive_std"
+        UNCERTAINTY_THRESHOLD_LOW: float = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.05"))
+        UNCERTAINTY_THRESHOLD_HIGH: float = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.15"))
         CLINICAL_DISCLAIMER: str = (
             "RESEARCH USE ONLY — NOT APPROVED FOR PRIMARY CLINICAL DIAGNOSIS. "
             "Algorithmic assessments represent decision-support outputs and require "
@@ -74,8 +78,12 @@ except ImportError:
         REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         STORAGE_ROOT: str = os.getenv("STORAGE_ROOT", "storage_bucket")
         MAX_UPLOAD_SIZE_MB: int = 500
+        LUNA16_ROOT: str = os.getenv("LUNA16_ROOT", r"C:\LUNA16_DATA")
+        UNCERTAINTY_METRIC: str = "predictive_std"
+        UNCERTAINTY_THRESHOLD_LOW: float = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.05"))
+        UNCERTAINTY_THRESHOLD_HIGH: float = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.15"))
         CLINICAL_DISCLAIMER: str = (
-            "RESEARCH USE ONLY — NOT APPROVED FOR PRIMARY CLINICAL DIAGNOSIS. "
+            "RESEARCH USE ONLY — NOT APPROVED FOR PRIMARY CLINICAL DECISIONS. "
             "Algorithmic assessments represent decision-support outputs and require "
             "interpretation by qualified medical professionals."
         )

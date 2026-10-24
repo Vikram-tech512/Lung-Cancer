@@ -237,7 +237,7 @@ export const AboutModelScreen: React.FC = () => {
           fontSize: '12px', color: 'var(--text-muted)', background: 'var(--bg-deepest)',
           padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-subtle)'
         }}>
-          <strong>Note:</strong> Uncertainty tier cutoffs are configurable default heuristics for research evaluation and risk stratification. They are not validated diagnostic decision boundaries.
+          <strong>Note:</strong> Uncertainty tier cutoffs are defined on the predictive standard deviation (σ) of candidate probability across T=30 MC Dropout passes. They are configurable default heuristics for research evaluation and risk stratification, not validated diagnostic boundaries.
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '12px' }}>
@@ -246,7 +246,7 @@ export const AboutModelScreen: React.FC = () => {
             background: 'var(--bg-deepest)', padding: '12px', borderRadius: '4px',
             border: '1px solid rgba(22, 163, 74, 0.3)'
           }}>
-            <div style={{ fontWeight: 700, color: 'var(--accent-emerald)' }}>Low Uncertainty (Entropy &lt; 0.30)</div>
+            <div style={{ fontWeight: 700, color: 'var(--accent-emerald)' }}>Low Uncertainty (σ &lt; 0.05)</div>
             <div style={{ color: 'var(--text-body)', marginTop: '4px', lineHeight: 1.4 }}>
               High predictive concordance across stochastic forward passes.
             </div>
@@ -256,7 +256,7 @@ export const AboutModelScreen: React.FC = () => {
             background: 'var(--bg-deepest)', padding: '12px', borderRadius: '4px',
             border: '1px solid rgba(217, 119, 6, 0.3)'
           }}>
-            <div style={{ fontWeight: 700, color: 'var(--accent-amber)' }}>Moderate Uncertainty (0.30 - 0.70)</div>
+            <div style={{ fontWeight: 700, color: 'var(--accent-amber)' }}>Moderate Uncertainty (0.05 &le; σ &le; 0.15)</div>
             <div style={{ color: 'var(--text-body)', marginTop: '4px', lineHeight: 1.4 }}>
               Borderline model agreement. Review recommended; manual caliper verification advised.
             </div>
@@ -266,9 +266,9 @@ export const AboutModelScreen: React.FC = () => {
             background: 'var(--bg-deepest)', padding: '12px', borderRadius: '4px',
             border: '1px solid rgba(220, 38, 38, 0.3)'
           }}>
-            <div style={{ fontWeight: 700, color: 'var(--accent-red)' }}>High Uncertainty (Entropy &gt; 0.70)</div>
+            <div style={{ fontWeight: 700, color: 'var(--accent-red)' }}>High Uncertainty (σ &gt; 0.15)</div>
             <div style={{ color: 'var(--text-body)', marginTop: '4px', lineHeight: 1.4 }}>
-              Divergent stochastic outputs or out-of-distribution input. Automatic deferral flag displayed.
+              Divergent stochastic outputs across forward passes. Automatic deferral flag displayed.
             </div>
           </div>
 
