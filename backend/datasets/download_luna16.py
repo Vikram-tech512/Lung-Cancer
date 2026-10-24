@@ -117,65 +117,71 @@ def download_file_resumable(
 
     temp_path = target_path.with_suffix(target_path.suffix + ".part")
 
-    downloaded = 0
-    if temp_path.exists():
-        downloaded = temp_path.stat().st_size
+    max_retries = 25
+    retry_count = 0
+    chunk_size = 2 * 1024 * 1024  # 2MB chunks for better throughput
+
+    while retry_count < max_retries:
+        downloaded = temp_path.stat().st_size if temp_path.exists() else 0
         if downloaded > expected_size:
-            print(f"[WARN] Partial file {temp_path.name} is larger than expected ({downloaded} > {expected_size}). Truncating.")
+            print(f"[WARN] Partial file {temp_path.name} exceeds expected size ({downloaded} > {expected_size}). Truncating.")
             temp_path.unlink()
             downloaded = 0
         elif downloaded == expected_size:
-            print(f"[INFO] Partial file matches expected size {expected_size}. Verifying MD5...")
-            if compute_file_md5(temp_path) == expected_md5:
-                print(f"[OK] MD5 verified for existing partial file.")
-                temp_path.rename(target_path)
-                return True
-            else:
-                print(f"[WARN] MD5 mismatch on existing partial file. Restarting download.")
-                temp_path.unlink()
-                downloaded = 0
+            print(f"[INFO] Partial file matches expected size {expected_size}.")
+            break
 
-    headers = {"User-Agent": "LungCancerAI-Research/1.0"}
-    if downloaded > 0:
-        headers["Range"] = f"bytes={downloaded}-"
-        print(f"[RESUME] Resuming {target_path.name} from byte {downloaded:,} / {expected_size:,} ({downloaded/expected_size*100:.1f}%)")
-    else:
-        print(f"[START] Downloading {target_path.name} ({expected_size / (1024**2):.2f} MB)...")
+        headers = {"User-Agent": "LungCancerAI-Research/1.0"}
+        if downloaded > 0:
+            headers["Range"] = f"bytes={downloaded}-"
+            print(f"[RESUME] Resuming {target_path.name} from byte {downloaded:,} / {expected_size:,} ({downloaded/expected_size*100:.1f}%)")
+        else:
+            print(f"[START] Downloading {target_path.name} ({expected_size / (1024**2):.2f} MB)...")
 
-    req = urllib.request.Request(url, headers=headers)
-    t0 = time.time()
-    last_print = t0
-    bytes_since_last = 0
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            t0 = time.time()
+            last_print = t0
+            bytes_since_last = 0
 
-    mode = "ab" if downloaded > 0 else "wb"
-    with urllib.request.urlopen(req, timeout=60) as response:
-        if downloaded > 0 and response.status != 206:
-            print(f"[WARN] Server returned {response.status} instead of 206. Restarting download from byte 0.")
-            downloaded = 0
-            mode = "wb"
-            
-        with open(temp_path, mode) as out_f:
-            while True:
-                chunk = response.read(chunk_size)
-                if not chunk:
-                    break
-                out_f.write(chunk)
-                downloaded += len(chunk)
-                bytes_since_last += len(chunk)
+            mode = "ab" if downloaded > 0 else "wb"
+            with urllib.request.urlopen(req, timeout=30) as response:
+                if downloaded > 0 and response.status != 206:
+                    print(f"[WARN] Server returned {response.status} instead of 206. Restarting download from byte 0.")
+                    downloaded = 0
+                    mode = "wb"
+                    
+                with open(temp_path, mode) as out_f:
+                    while True:
+                        chunk = response.read(chunk_size)
+                        if not chunk:
+                            break
+                        out_f.write(chunk)
+                        downloaded += len(chunk)
+                        bytes_since_last += len(chunk)
 
-                now = time.time()
-                if now - last_print >= 5.0 or downloaded == expected_size:
-                    elapsed = now - t0
-                    interval_speed = bytes_since_last / (now - last_print) if (now - last_print) > 0 else 0
-                    pct = (downloaded / expected_size) * 100
-                    remaining_bytes = expected_size - downloaded
-                    eta_sec = remaining_bytes / interval_speed if interval_speed > 0 else 0
-                    print(
-                        f"  [{target_path.name}] {downloaded / (1024**2):.1f}/{expected_size / (1024**2):.1f} MB "
-                        f"({pct:.1f}%) | Speed: {interval_speed / (1024**2):.2f} MB/s | ETA: {eta_sec:.0f}s"
-                    )
-                    last_print = now
-                    bytes_since_last = 0
+                        now = time.time()
+                        if now - last_print >= 5.0 or downloaded >= expected_size:
+                            elapsed = now - t0
+                            interval_speed = bytes_since_last / (now - last_print) if (now - last_print) > 0 else 0
+                            pct = (downloaded / expected_size) * 100
+                            remaining_bytes = max(0, expected_size - downloaded)
+                            eta_sec = remaining_bytes / interval_speed if interval_speed > 0 else 0
+                            print(
+                                f"  [{target_path.name}] {downloaded / (1024**2):.1f}/{expected_size / (1024**2):.1f} MB "
+                                f"({pct:.1f}%) | Speed: {interval_speed / (1024**2):.2f} MB/s | ETA: {eta_sec:.0f}s"
+                            )
+                            last_print = now
+                            bytes_since_last = 0
+
+            if temp_path.stat().st_size >= expected_size:
+                break
+
+        except Exception as e:
+            retry_count += 1
+            print(f"[RETRY {retry_count}/{max_retries}] Transient network error ({e}). Reconnecting in 5s...")
+            time.sleep(5)
+
 
 
     if downloaded != expected_size:
