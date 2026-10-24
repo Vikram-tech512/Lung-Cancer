@@ -102,6 +102,19 @@ def download_file_resumable(
     Verifies final file size and MD5 checksum.
     """
     target_path.parent.mkdir(parents=True, exist_ok=True)
+    if target_path.exists():
+        if target_path.stat().st_size == expected_size:
+            print(f"[VERIFY] {target_path.name} already exists. Checking MD5...")
+            if compute_file_md5(target_path) == expected_md5.lower():
+                print(f"[OK] {target_path.name} already downloaded and verified.")
+                return True
+            else:
+                print(f"[WARN] Existing {target_path.name} MD5 mismatch. Re-downloading.")
+                target_path.unlink()
+        else:
+            print(f"[WARN] Existing {target_path.name} size mismatch. Removing.")
+            target_path.unlink()
+
     temp_path = target_path.with_suffix(target_path.suffix + ".part")
 
     downloaded = 0
@@ -135,30 +148,35 @@ def download_file_resumable(
     bytes_since_last = 0
 
     mode = "ab" if downloaded > 0 else "wb"
-    with urllib.request.urlopen(req, timeout=60) as response, open(temp_path, mode) as out_f:
-        # Check response code if range requested
-        while True:
-            chunk = response.read(chunk_size)
-            if not chunk:
-                break
-            out_f.write(chunk)
-            downloaded += len(chunk)
-            bytes_since_last += len(chunk)
+    with urllib.request.urlopen(req, timeout=60) as response:
+        if downloaded > 0 and response.status != 206:
+            print(f"[WARN] Server returned {response.status} instead of 206. Restarting download from byte 0.")
+            downloaded = 0
+            mode = "wb"
+            
+        with open(temp_path, mode) as out_f:
+            while True:
+                chunk = response.read(chunk_size)
+                if not chunk:
+                    break
+                out_f.write(chunk)
+                downloaded += len(chunk)
+                bytes_since_last += len(chunk)
 
-            now = time.time()
-            if now - last_print >= 5.0 or downloaded == expected_size:
-                elapsed = now - t0
-                overall_speed = downloaded / elapsed if elapsed > 0 else 0
-                interval_speed = bytes_since_last / (now - last_print) if (now - last_print) > 0 else 0
-                pct = (downloaded / expected_size) * 100
-                remaining_bytes = expected_size - downloaded
-                eta_sec = remaining_bytes / interval_speed if interval_speed > 0 else 0
-                print(
-                    f"  [{target_path.name}] {downloaded / (1024**2):.1f}/{expected_size / (1024**2):.1f} MB "
-                    f"({pct:.1f}%) | Speed: {interval_speed / (1024**2):.2f} MB/s | ETA: {eta_sec:.0f}s"
-                )
-                last_print = now
-                bytes_since_last = 0
+                now = time.time()
+                if now - last_print >= 5.0 or downloaded == expected_size:
+                    elapsed = now - t0
+                    interval_speed = bytes_since_last / (now - last_print) if (now - last_print) > 0 else 0
+                    pct = (downloaded / expected_size) * 100
+                    remaining_bytes = expected_size - downloaded
+                    eta_sec = remaining_bytes / interval_speed if interval_speed > 0 else 0
+                    print(
+                        f"  [{target_path.name}] {downloaded / (1024**2):.1f}/{expected_size / (1024**2):.1f} MB "
+                        f"({pct:.1f}%) | Speed: {interval_speed / (1024**2):.2f} MB/s | ETA: {eta_sec:.0f}s"
+                    )
+                    last_print = now
+                    bytes_since_last = 0
+
 
     if downloaded != expected_size:
         raise IOError(f"Downloaded size ({downloaded}) does not match expected size ({expected_size}) for {target_path.name}")
