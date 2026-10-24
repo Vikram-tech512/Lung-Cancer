@@ -249,15 +249,68 @@ class ResNet3D18(nn.Module):
             if isinstance(m, nn.Dropout):
                 m.train()
 
+    def get_feature_maps(self, x: torch.Tensor) -> torch.Tensor:
+        """Return layer4 feature maps for 3D Grad-CAM."""
+        x = self.stem(x); x = self.layer1(x); x = self.layer2(x)
+        x = self.layer3(x)
+        return self.layer4(x)
+
+
+class ResNet3D18Half(nn.Module):
+    """Half-width 3D ResNet-18 (8.29M params) optimized for CPU training."""
+
+    def __init__(self, in_channels: int = 1, num_classes: int = 2, dropout_p: float = 0.3):
+        super().__init__()
+        self.in_ch = 32
+        self.stem = nn.Sequential(
+            nn.Conv3d(in_channels, 32, (3, 7, 7), stride=(1, 2, 2), padding=(1, 3, 3), bias=False),
+            nn.BatchNorm3d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool3d((1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1)),
+        )
+        self.layer1 = self._make_layer(32,  2, stride=1)
+        self.layer2 = self._make_layer(64,  2, stride=2)
+        self.layer3 = self._make_layer(128, 2, stride=2)
+        self.layer4 = self._make_layer(256, 2, stride=2)
+        self.avgpool = nn.AdaptiveAvgPool3d(1)
+        self.dropout = nn.Dropout(dropout_p)
+        self.fc      = nn.Linear(256, num_classes)
+
+    def _make_layer(self, out_ch: int, n: int, stride: int) -> nn.Sequential:
+        ds = None
+        if stride != 1 or self.in_ch != out_ch:
+            ds = nn.Sequential(
+                nn.Conv3d(self.in_ch, out_ch, 1, stride=stride, bias=False),
+                nn.BatchNorm3d(out_ch),
+            )
+        layers = [BasicBlock3d(self.in_ch, out_ch, stride, ds)]
+        self.in_ch = out_ch
+        for _ in range(1, n):
+            layers.append(BasicBlock3d(out_ch, out_ch))
+        return nn.Sequential(*layers)
+
+    def enable_mc_dropout(self):
+        self.eval()
+        for m in self.modules():
+            if isinstance(m, nn.Dropout):
+                m.train()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.stem(x); x = self.layer1(x); x = self.layer2(x)
         x = self.layer3(x); x = self.layer4(x)
         return self.fc(self.dropout(self.avgpool(x).flatten(1)))
 
+    def get_feature_maps(self, x: torch.Tensor) -> torch.Tensor:
+        """Return layer4 feature maps for 3D Grad-CAM."""
+        x = self.stem(x); x = self.layer1(x); x = self.layer2(x)
+        x = self.layer3(x)
+        return self.layer4(x)
+
 
 # ─────────────────────────────────────────────────────────────
 #  Smoke test
 # ─────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
     print("=== 3D ResNet-50 ===")
     m50 = ResNet3D50(in_channels=1, num_classes=2)

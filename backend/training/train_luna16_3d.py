@@ -59,7 +59,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import time
+
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -100,15 +102,17 @@ from backend.experiments.mlflow_tracker import ExperimentTracker
 from backend.experiments.model_registry import ModelRegistry, ModelVersionInfo
 
 # ── 3D Model zoo ────────────────────────────────────────────────────────────
-from backend.models.classification.resnet3d.model   import ResNet3D50
+from backend.models.classification.resnet3d.model   import ResNet3D50, ResNet3D18Half
 from backend.models.classification.densenet3d.model import DenseNet3D121
 from backend.models.classification.swin3d.model     import SwinTransformer3D
 
 MODEL_BUILDERS = {
-    "resnet3d":   lambda: ResNet3D50(in_channels=1, num_classes=2),
-    "densenet3d": lambda: DenseNet3D121(in_channels=1, num_classes=2),
-    "swin3d":     lambda: SwinTransformer3D(in_channels=1, num_classes=2),
+    "resnet3d":         lambda: ResNet3D50(in_channels=1, num_classes=2),
+    "resnet3d18_half":  lambda: ResNet3D18Half(in_channels=1, num_classes=2),
+    "densenet3d":       lambda: DenseNet3D121(in_channels=1, num_classes=2),
+    "swin3d":           lambda: SwinTransformer3D(in_channels=1, num_classes=2),
 }
+
 
 CLASS_NAMES = ["non-nodule", "nodule"]
 
@@ -571,6 +575,268 @@ def train(args: argparse.Namespace) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  CPU Profile Pipeline (ResNet3D18Half, 32^3 crops, in-memory cache)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _extract_32_crop_sitk(
+    image: "sitk.Image",
+    center_xyz: Tuple[float, float, float],
+    crop_size: int = 32,
+    target_spacing: float = 1.0,
+    window_min: float = -1000.0,
+    window_max: float = 400.0,
+) -> np.ndarray:
+    import SimpleITK as sitk
+    target_size = [crop_size, crop_size, crop_size]
+    spacing = [target_spacing, target_spacing, target_spacing]
+    target_origin = [center_xyz[i] - (crop_size - 1) * target_spacing / 2.0 for i in range(3)]
+
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetSize(target_size)
+    resampler.SetOutputSpacing(spacing)
+    resampler.SetOutputOrigin(target_origin)
+    resampler.SetOutputDirection(image.GetDirection())
+    resampler.SetDefaultPixelValue(-1000.0)
+    resampler.SetInterpolator(sitk.sitkLinear)
+
+    crop_img = resampler.Execute(image)
+    arr = sitk.GetArrayFromImage(crop_img).astype(np.float32)
+    clipped = np.clip(arr, window_min, window_max)
+    return (clipped - window_min) / (window_max - window_min)
+
+
+class _CPUPreloadedDataset(torch.utils.data.Dataset):
+    def __init__(self, crops: List[np.ndarray], labels: List[int], augment: bool = False, seed: int = 42):
+        self.crops = crops
+        self.labels = labels
+        self.augment = augment
+        self.seed = seed
+
+    def __len__(self) -> int:
+        return len(self.crops)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        crop = self.crops[idx]
+        if self.augment:
+            rng = np.random.default_rng(self.seed + idx * 10007)
+            # Random flips
+            for ax in range(3):
+                if rng.random() < 0.5:
+                    crop = np.flip(crop, axis=ax)
+            k = int(rng.integers(0, 4))
+            if k > 0:
+                crop = np.rot90(crop, k=k, axes=(1, 2))
+            scale = rng.uniform(0.95, 1.05)
+            crop = np.clip(crop * scale, 0.0, 1.0).astype(np.float32)
+
+        vol_t = torch.from_numpy(crop.copy()).unsqueeze(0).float()
+        lbl_t = torch.tensor(self.labels[idx], dtype=torch.long)
+        return vol_t, lbl_t
+
+
+def run_cpu_training_pipeline(
+    luna_root: Path = Path(r"C:\LUNA16_DATA"),
+    manifest_path: Path = Path("results/split_manifest.json"),
+    max_epochs: int = 15,
+    batch_size: int = 16,
+    lr: float = 1e-3,
+    patience: int = 4,
+    neg_ratio: int = 5,
+    seed: int = 42,
+    output_dir: Path = Path("checkpoints_3d"),
+) -> dict:
+    import csv
+    import SimpleITK as sitk
+    from sklearn.metrics import roc_auc_score, accuracy_score, confusion_matrix
+
+    print("=================================================================")
+    print(f" CPU Training Profile: ResNet3D-18 Half (Seed {seed})")
+    print("=================================================================")
+
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    train_scans = manifest["scans"]["train_scans"]  # 178 scans
+    val_scans = manifest["scans"]["val_scans"]      # 89 scans
+    cand_csv = luna_root / "candidates_V2.csv"
+
+    def preload(scans_list, neg_mult, s_seed, desc):
+        scan_set = set(scans_list)
+        scan_mhd_map = {}
+        for sdir in luna_root.glob("subset*"):
+            for mhd in sdir.glob("*.mhd"):
+                if mhd.stem in scan_set:
+                    scan_mhd_map[mhd.stem] = mhd
+
+        pos_cands, neg_cands = [], []
+        with open(cand_csv, "r", newline="", encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                if r["seriesuid"] in scan_set:
+                    entry = {
+                        "seriesuid": r["seriesuid"],
+                        "coord_x": float(r["coordX"]),
+                        "coord_y": float(r["coordY"]),
+                        "coord_z": float(r["coordZ"]),
+                        "class": int(r["class"]),
+                    }
+                    (pos_cands if entry["class"] == 1 else neg_cands).append(entry)
+
+        np.random.seed(s_seed)
+        n_pos = len(pos_cands)
+        n_neg = min(len(neg_cands), n_pos * neg_mult)
+        sampled_neg = [neg_cands[i] for i in np.random.choice(len(neg_cands), size=n_neg, replace=False)]
+        all_cands = pos_cands + sampled_neg
+        np.random.shuffle(all_cands)
+
+        by_scan = {}
+        for c in all_cands:
+            by_scan.setdefault(c["seriesuid"], []).append(c)
+
+        crops, labels = [], []
+        t0 = time.time()
+        for suid, clist in by_scan.items():
+            img = sitk.ReadImage(str(scan_mhd_map[suid]))
+            for c in clist:
+                crops.append(_extract_32_crop_sitk(img, (c["coord_x"], c["coord_y"], c["coord_z"]), 32))
+                labels.append(c["class"])
+        print(f"[{desc.upper()}] Preloaded {len(crops)} crops in {time.time()-t0:.1f}s.")
+        return crops, labels
+
+    train_crops, train_labels = preload(train_scans, neg_ratio, seed, "train")
+    val_crops, val_labels = preload(val_scans, neg_ratio, seed + 1, "val")
+
+    train_ds = _CPUPreloadedDataset(train_crops, train_labels, augment=True, seed=seed)
+    val_ds = _CPUPreloadedDataset(val_crops, val_labels, augment=False, seed=seed)
+
+    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+
+    torch.manual_seed(seed)
+    model = ResNet3D18Half(in_channels=1, num_classes=2, dropout_p=0.3)
+    counts = np.bincount(train_labels, minlength=2)
+    weights = torch.tensor([len(train_labels)/(2.0*counts[0]), len(train_labels)/(2.0*counts[1])], dtype=torch.float32)
+    criterion = nn.CrossEntropyLoss(weight=weights)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs, eta_min=1e-5)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    seed_best_ckpt = output_dir / f"resnet3d_luna16_seed{seed}_best.pt"
+    overall_best_ckpt = output_dir / "resnet3d_luna16_best.pt"
+
+    history = []
+    best_val_auc = 0.0
+    best_epoch = 0
+    epochs_no_improve = 0
+    total_sec = 0.0
+
+    for epoch in range(1, max_epochs + 1):
+        t0_ep = time.time()
+        model.train()
+        train_loss = 0.0
+        train_preds, train_targets = [], []
+
+        for vols, tgts in train_loader:
+            optimizer.zero_grad()
+            logits = model(vols)
+            loss = criterion(logits, tgts)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+            train_loss += loss.item() * vols.size(0)
+            train_preds.extend(logits.argmax(dim=-1).tolist())
+            train_targets.extend(tgts.tolist())
+
+        scheduler.step()
+        dt_ep = time.time() - t0_ep
+        total_sec += dt_ep
+
+        train_acc = accuracy_score(train_targets, train_preds)
+        mean_tr_loss = train_loss / len(train_targets)
+
+        # Eval
+        model.eval()
+        v_loss, v_preds, v_targets, v_probs = 0.0, [], [], []
+        with torch.no_grad():
+            for vols, tgts in val_loader:
+                lg = model(vols)
+                v_loss += criterion(lg, tgts).item() * vols.size(0)
+                v_probs.extend(torch.softmax(lg, dim=-1)[:, 1].tolist())
+                v_preds.extend(lg.argmax(dim=-1).tolist())
+                v_targets.extend(tgts.tolist())
+
+        val_auc = float(roc_auc_score(v_targets, v_probs))
+        val_acc = accuracy_score(v_targets, v_preds)
+        cm = confusion_matrix(v_targets, v_preds, labels=[0, 1])
+        tn, fp, fn, tp = cm.ravel() if cm.shape == (2, 2) else (0, 0, 0, 0)
+        sens = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+        spec = float(tn / (tn + fp)) if (tn + fp) > 0 else 0.0
+
+        rec = {
+            "epoch": epoch,
+            "train_loss": round(mean_tr_loss, 4),
+            "train_accuracy": round(train_acc, 4),
+            "val_loss": round(v_loss / len(v_targets), 4),
+            "val_accuracy": round(val_acc, 4),
+            "val_auc": round(val_auc, 4),
+            "sensitivity": round(sens, 4),
+            "specificity": round(spec, 4),
+            "epoch_sec": round(dt_ep, 1),
+        }
+        history.append(rec)
+        is_best = val_auc > best_val_auc
+        marker = " [*BEST]" if is_best else ""
+        print(f"Seed {seed} | Epoch {epoch:2d}/{max_epochs:2d} ({dt_ep:4.1f}s) | TrLoss: {mean_tr_loss:.4f} TrAcc: {train_acc*100:4.1f}% | ValAUC: {val_auc:.4f} (Sens: {sens:.3f}, Spec: {spec:.3f}){marker}")
+
+        if is_best:
+            best_val_auc = val_auc
+            best_epoch = epoch
+            epochs_no_improve = 0
+            ckpt_data = {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "val_auc": val_auc,
+                "val_metrics": rec,
+                "architecture": "ResNet3D18Half",
+                "split_hash": manifest["split_hash_sha256"],
+                "crop_size": 32,
+                "seed": seed,
+            }
+            torch.save(ckpt_data, seed_best_ckpt)
+        else:
+            epochs_no_improve += 1
+
+        if epoch == 5:
+            assert best_val_auc > 0.50, f"GUARD FAILED (Seed {seed}): Best Val AUC {best_val_auc:.4f} <= 0.50"
+            print(f"[GUARD PASSED] Seed {seed} 5-Epoch Guard: Best Val AUC is {best_val_auc:.4f} > 0.50.")
+
+        if epochs_no_improve >= patience and epoch >= 5:
+            print(f"[EARLY STOP] Seed {seed}: No Val AUC improvement for {patience} epochs. Stopping.")
+            break
+
+    # Save Seed history
+    res_dir = Path("results")
+    res_dir.mkdir(parents=True, exist_ok=True)
+    history_file = res_dir / f"training_history_seed{seed}.json"
+    result_data = {
+        "seed": seed,
+        "architecture": "ResNet3D18Half",
+        "best_epoch": best_epoch,
+        "best_val_auc": best_val_auc,
+        "total_training_sec": round(total_sec, 1),
+        "history": history,
+        "checkpoint": str(seed_best_ckpt),
+        "split_hash": manifest["split_hash_sha256"],
+    }
+    with open(history_file, "w", encoding="utf-8") as f:
+        json.dump(result_data, f, indent=2)
+
+    print(f"[OK] Seed {seed} complete -> Best Val AUC: {best_val_auc:.4f} at epoch {best_epoch}. Saved to {history_file}")
+    return result_data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -579,6 +845,8 @@ def _parse_args() -> argparse.Namespace:
         description="Train 3D nodule classifier on LUNA16",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    p.add_argument("--profile",           choices=["gpu", "cpu"], default=None,
+                   help="Hardware profile: 'cpu' uses ResNet3D18Half with 32^3 crops and CPU vectorization")
     p.add_argument("--model",             choices=list(MODEL_BUILDERS), default="resnet3d")
     p.add_argument("--data-root",         type=str, default="data/LUNA16",
                    help="Path to LUNA16 root dir (must contain subset0..N + candidates CSV)")
@@ -613,4 +881,18 @@ def _parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    train(_parse_args())
+    args = _parse_args()
+    if args.profile == "cpu":
+        luna_root = Path(os.environ.get("LUNA16_ROOT", r"C:\LUNA16_DATA"))
+        run_cpu_training_pipeline(
+            luna_root=luna_root,
+            max_epochs=args.epochs if args.epochs != 50 else 15,
+            batch_size=args.batch_size if args.batch_size != 4 else 16,
+            lr=args.lr if args.lr != 1e-4 else 1e-3,
+            patience=args.patience if args.patience != 10 else 4,
+            seed=args.seed,
+            output_dir=Path(args.output_dir),
+        )
+    else:
+        train(args)
+

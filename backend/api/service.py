@@ -497,15 +497,15 @@ def get_active_model_info() -> Dict[str, Any]:
         try:
             with open(reg_path, "r", encoding="utf-8") as f:
                 reg = json.load(f)
-                resnet_entries = reg.get("3D ResNet-50", [])
+                resnet_entries = reg.get("3D ResNet-18 Half") or reg.get("3D ResNet-50", [])
                 if resnet_entries:
                     latest = resnet_entries[-1]
                     return {
-                        "model_name": latest.get("model_name", "3D ResNet-50"),
-                        "model_version": latest.get("version", "v1.1.0-exp"),
+                        "model_name": latest.get("model_name", "3D ResNet-18 Half"),
+                        "model_version": latest.get("version", "v1.2.0-cpu"),
                         "stage": latest.get("stage", "EXPERIMENTAL"),
                         "status": latest.get("stage", "EXPERIMENTAL"),
-                        "architecture": latest.get("architecture", "3D ResNet-50 Bottleneck + MC Dropout"),
+                        "architecture": latest.get("architecture", "ResNet3D18Half"),
                         "checkpoint_path": latest.get("checkpoint_path"),
                         "notes": latest.get("notes", "")
                     }
@@ -513,16 +513,17 @@ def get_active_model_info() -> Dict[str, Any]:
             logger.warning(f"Error loading models_registry.json: {exc}")
 
     return {
-        "model_name": "3D ResNet-50",
-        "model_version": "v1.1.0-exp",
+        "model_name": "3D ResNet-18 Half",
+        "model_version": "v1.2.0-cpu",
         "stage": "EXPERIMENTAL",
         "status": "EXPERIMENTAL",
-        "architecture": "3D ResNet-50 Bottleneck + MC Dropout (T=30)",
+        "architecture": "ResNet3D18Half",
         "checkpoint_path": "checkpoints_3d/resnet3d_luna16_best.pt",
-        "notes": "Experimental model evaluated on LUNA16 benchmark."
+        "notes": "LUNA16 CPU-trained model. Research Use Only."
     }
 
 @app.get("/api/v2/model/info")
+
 def get_model_info():
     """Returns active model version, stage and status loaded strictly from models_registry.json."""
     return get_active_model_info()

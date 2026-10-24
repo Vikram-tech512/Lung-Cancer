@@ -1,0 +1,176 @@
+{
+  "seed": 43,
+  "architecture": "ResNet3D18Half",
+  "best_epoch": 13,
+  "best_val_auc": 0.935636885320961,
+  "total_training_sec": 985.8,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.8115,
+      "train_accuracy": 0.6098,
+      "val_loss": 1.1329,
+      "val_accuracy": 0.7873,
+      "val_auc": 0.612,
+      "sensitivity": 0.2762,
+      "specificity": 0.8895,
+      "epoch_sec": 61.7
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.7606,
+      "train_accuracy": 0.6326,
+      "val_loss": 0.8458,
+      "val_accuracy": 0.7459,
+      "val_auc": 0.6561,
+      "sensitivity": 0.337,
+      "specificity": 0.8276,
+      "epoch_sec": 79.0
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.731,
+      "train_accuracy": 0.6926,
+      "val_loss": 0.7851,
+      "val_accuracy": 0.7044,
+      "val_auc": 0.7277,
+      "sensitivity": 0.663,
+      "specificity": 0.7127,
+      "epoch_sec": 65.4
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.6716,
+      "train_accuracy": 0.6894,
+      "val_loss": 0.5947,
+      "val_accuracy": 0.7477,
+      "val_auc": 0.7974,
+      "sensitivity": 0.7514,
+      "specificity": 0.747,
+      "epoch_sec": 64.1
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.5515,
+      "train_accuracy": 0.7819,
+      "val_loss": 0.8548,
+      "val_accuracy": 0.6796,
+      "val_auc": 0.8072,
+      "sensitivity": 0.8177,
+      "specificity": 0.6519,
+      "epoch_sec": 79.5
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.5252,
+      "train_accuracy": 0.8079,
+      "val_loss": 0.5298,
+      "val_accuracy": 0.767,
+      "val_auc": 0.8556,
+      "sensitivity": 0.8343,
+      "specificity": 0.7536,
+      "epoch_sec": 67.9
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.4712,
+      "train_accuracy": 0.8588,
+      "val_loss": 0.457,
+      "val_accuracy": 0.8195,
+      "val_auc": 0.8524,
+      "sensitivity": 0.6298,
+      "specificity": 0.8575,
+      "epoch_sec": 67.2
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.4224,
+      "train_accuracy": 0.882,
+      "val_loss": 0.4481,
+      "val_accuracy": 0.8785,
+      "val_auc": 0.8861,
+      "sensitivity": 0.7735,
+      "specificity": 0.8994,
+      "epoch_sec": 67.4
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.376,
+      "train_accuracy": 0.8929,
+      "val_loss": 0.4171,
+      "val_accuracy": 0.8941,
+      "val_auc": 0.9047,
+      "sensitivity": 0.6961,
+      "specificity": 0.9337,
+      "epoch_sec": 66.8
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.3237,
+      "train_accuracy": 0.9259,
+      "val_loss": 0.3504,
+      "val_accuracy": 0.9015,
+      "val_auc": 0.9279,
+      "sensitivity": 0.8232,
+      "specificity": 0.9171,
+      "epoch_sec": 65.1
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.2812,
+      "train_accuracy": 0.9443,
+      "val_loss": 0.4183,
+      "val_accuracy": 0.9144,
+      "val_auc": 0.9097,
+      "sensitivity": 0.6906,
+      "specificity": 0.9591,
+      "epoch_sec": 62.9
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.2493,
+      "train_accuracy": 0.9405,
+      "val_loss": 0.4133,
+      "val_accuracy": 0.9199,
+      "val_auc": 0.9236,
+      "sensitivity": 0.7569,
+      "specificity": 0.9525,
+      "epoch_sec": 63.1
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.1912,
+      "train_accuracy": 0.9567,
+      "val_loss": 0.3723,
+      "val_accuracy": 0.9236,
+      "val_auc": 0.9356,
+      "sensitivity": 0.7624,
+      "specificity": 0.9558,
+      "epoch_sec": 56.0
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.1478,
+      "train_accuracy": 0.9729,
+      "val_loss": 0.3841,
+      "val_accuracy": 0.9291,
+      "val_auc": 0.9316,
+      "sensitivity": 0.779,
+      "specificity": 0.9591,
+      "epoch_sec": 56.2
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.1345,
+      "train_accuracy": 0.9692,
+      "val_loss": 0.422,
+      "val_accuracy": 0.9309,
+      "val_auc": 0.9292,
+      "sensitivity": 0.7459,
+      "specificity": 0.968,
+      "epoch_sec": 63.6
+    }
+  ],
+  "checkpoint": "checkpoints_3d\\resnet3d_luna16_seed43_best.pt",
+  "split_hash": "335343f6f1139c7cf6c808416131f630e6542dda3f344902b6d6f7840afcd109"
+}
