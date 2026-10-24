@@ -2,19 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg-main: #060911;
-  --bg-card: #0d1322;
-  --bg-card-subtle: #111827;
-  --border-card: #1c2638;
-  --primary: #0284c7;
-  --accent-cyan: #06b6d4;
-  --accent-emerald: #10b981;
-  --accent-rose: #f43f5e;
-  --accent-amber: #f59e0b;
-  --accent-pink: #f472b6;
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
+/* ============================================================
+   CSS CUSTOM PROPERTIES — DARK MODE (default)
+   ============================================================ */
+:root,
+[data-theme="dark"] {
+  --bg-main:          #0b0f1a;
+  --bg-surface:       #111827;
+  --bg-card:          #161d2e;
+  --bg-card-hover:    #1c2540;
+  --bg-input:         #1a2235;
+  --border:           #1f2d45;
+  --border-subtle:    #192134;
+
+  --primary:          #2563eb;
+  --primary-hover:    #1d4ed8;
+  --primary-glow:     rgba(37, 99, 235, 0.25);
+
+  --accent-cyan:      #0ea5e9;
+  --accent-emerald:   #10b981;
+  --accent-rose:      #f43f5e;
+  --accent-amber:     #f59e0b;
+
+  --risk-high:        #ef4444;
+  --risk-low:         #22c55e;
+
+  --text-main:        #f1f5f9;
+  --text-secondary:   #94a3b8;
+  --text-muted:       #475569;
+  --text-link:        #60a5fa;
+
+  --shadow-card:      0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
+  --shadow-elevated:  0 8px 32px rgba(0,0,0,0.5);
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   CSS CUSTOM PROPERTIES — LIGHT MODE
+   ============================================================ */
+[data-theme="light"] {
+  --bg-main:          #f0f4f8;
+  --bg-surface:       #ffffff;
+  --bg-card:          #ffffff;
+  --bg-card-hover:    #f8fafc;
+  --bg-input:         #f1f5f9;
+  --border:           #d1dae8;
+  --border-subtle:    #e2e8f0;
+
+  --primary:          #2563eb;
+  --primary-hover:    #1d4ed8;
+  --primary-glow:     rgba(37, 99, 235, 0.15);
+
+  --accent-cyan:      #0284c7;
+  --accent-emerald:   #059669;
+  --accent-rose:      #e11d48;
+  --accent-amber:     #d97706;
+
+  --risk-high:        #dc2626;
+  --risk-low:         #16a34a;
+
+  --text-main:        #0f172a;
+  --text-secondary:   #475569;
+  --text-muted:       #94a3b8;
+  --text-link:        #2563eb;
+
+  --shadow-card:      0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+  --shadow-elevated:  0 8px 32px rgba(0,0,0,0.12);
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   BASE RESET
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
@@ -23,123 +88,198 @@ body {
   background-color: var(--bg-main);
   color: var(--text-main);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
   overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 code, pre, .font-mono {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-/* Reference UI Cards */
+/* ============================================================
+   SCROLLBARS
+   ============================================================ */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+.surface {
+  background-color: var(--bg-surface);
+  transition: background-color 0.3s ease;
+}
+
+.card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.card:hover {
+  background-color: var(--bg-card-hover);
+  border-color: var(--accent-cyan);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tag-primary {
+  background: var(--primary-glow);
+  color: var(--text-link);
+  border: 1px solid var(--primary);
+}
+
+.tag-danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--risk-high);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.tag-success {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--risk-low);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.tag-warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+/* ============================================================
+   MEDICAL CARD (legacy alias)
+   ============================================================ */
 .medical-card {
-  background: rgba(13, 19, 34, 0.85);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .medical-header-tag {
-  color: #38bdf8;
+  color: var(--accent-cyan);
   font-weight: 700;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.lesion-glow {
-  filter: drop-shadow(0 0 10px rgba(244, 114, 182, 0.6));
-}
-
-/* Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #080d1a;
-}
-::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #334155;
-}
-
-/* Medical Buttons and Interactive Elements */
-.medical-btn-primary {
-  background: linear-gradient(135deg, #0284c7, #06b6d4);
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  font-weight: 700;
-  cursor: pointer;
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  outline: none;
-}
-.medical-btn-primary:hover {
-  background: linear-gradient(135deg, #0369a1, #0891b2);
-  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.4);
-  transform: translateY(-1px);
-}
-.medical-btn-primary:active {
-  transform: translateY(1px);
-}
-
-.medical-btn-outline {
-  background: transparent;
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  border-radius: 6px;
+  border: none;
+  border-radius: 7px;
   font-weight: 600;
+  font-size: 13px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 8px 16px;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
   outline: none;
-}
-.medical-btn-outline:hover {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: #38bdf8;
-  color: #f8fafc;
-  transform: translateY(-1px);
-}
-.medical-btn-outline:active {
-  transform: translateY(1px);
+  white-space: nowrap;
 }
 
+.btn-primary {
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 2px 8px var(--primary-glow);
+}
+.btn-primary:hover {
+  background: var(--primary-hover);
+  box-shadow: 0 4px 14px var(--primary-glow);
+  transform: translateY(-1px);
+}
+.btn-primary:active { transform: translateY(0); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+  border-color: var(--accent-cyan);
+}
+
+/* legacy aliases */
+.medical-btn-primary  { @apply btn btn-primary; }
+.medical-btn-outline  { @apply btn btn-ghost; }
+
+/* ============================================================
+   CASE LIST CARD
+   ============================================================ */
 .medical-case-card {
-  background: #070c17;
-  border: 1px solid #1e293b;
-  border-radius: 6px;
-  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
 }
 .medical-case-card:hover {
-  background: #0b1324;
-  border-color: #334155;
+  background: var(--bg-card-hover);
+  border-color: var(--accent-cyan);
   transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
 }
 .medical-case-card.active-malignant {
-  background: #110d18;
-  border: 1px solid #f43f5e;
-  box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+  background: var(--bg-card);
+  border-color: var(--risk-high);
+  box-shadow: 0 0 0 1px rgba(239,68,68,0.2), var(--shadow-card);
 }
 .medical-case-card.active-benign {
-  background: #071518;
-  border: 1px solid #10b981;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+  background: var(--bg-card);
+  border-color: var(--risk-low);
+  box-shadow: 0 0 0 1px rgba(34,197,94,0.2), var(--shadow-card);
 }
 
+/* ============================================================
+   PROGRESS BARS
+   ============================================================ */
+.progress-track {
+  height: 5px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+/* ============================================================
+   GLOW HELPERS
+   ============================================================ */
+.lesion-glow {
+  filter: drop-shadow(0 0 8px rgba(244, 114, 182, 0.5));
+}
+.glow-cyan {
+  filter: drop-shadow(0 0 6px rgba(14, 165, 233, 0.4));
+}

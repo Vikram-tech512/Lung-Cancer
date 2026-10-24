@@ -1,7 +1,11 @@
 # Environments & Secrets
 .env
-.env.local
+.env.*
+!.env.example
 *.env
+.catalystrc
+*.pem
+*.key
 
 # Python
 __pycache__/
@@ -44,22 +48,40 @@ out/
 *.db
 *.sqlite3
 *.log
+logs/
 EXECUTION_RESULTS/master_execution_log.txt
+
+# Datasets, Scans & Preprocessed Crops
+data/
+data/**
+segmentation/data/
+*.mhd
+*.raw
+*.zraw
+*.npy
+*.dcm
 
 # Large Model Checkpoints (>100MB blocked by GitHub)
 checkpoints/
+checkpoints_3d/
 *.pt
 *.pth
 *.bin
 *.onnx
 
-# OS / Editor
+# Experiment Run Manifests
+experiments_log/
+
+# OS / Editor / Linter Caches
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+.ruff_cache/
 
 # Deployment & Build Archives
 *.zip
 .appsail_stage/
+.wrangler/
+backend/storage/vault/
 

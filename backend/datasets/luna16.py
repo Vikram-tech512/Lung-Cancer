@@ -230,16 +230,26 @@ class LUNA16Loader:
                     return a["diameter_mm"]
             return 0.0
 
+        # Pre-index available MHD files to avoid hundreds of thousands of filesystem stat calls
+        mhd_index: Dict[str, int] = {}
+        for subset_dir in sorted(self.root.glob("subset*")):
+            try:
+                s_id = int(subset_dir.name.replace("subset", ""))
+            except ValueError:
+                s_id = 0
+            for mhd_file in subset_dir.glob("*.mhd"):
+                mhd_index[mhd_file.stem] = s_id
+
         positives = []
         negatives = []
         for r in raw:
-            uid  = r["series_uid"]
+            uid = r["series_uid"]
+            if uid not in mhd_index:
+                continue   # .mhd file not downloaded yet
+            subset = mhd_index[uid]
             diam = _diameter_for(uid, r["coord_x"], r["coord_y"], r["coord_z"]) if r["label"] else 0.0
             if r["label"] == 1 and diam < min_diameter_mm:
                 continue
-            subset = _series_uid_to_subset(self.root, uid)
-            if subset < 0:
-                continue   # .mhd file not downloaded yet
             cand = LUNA16Candidate(
                 series_uid  = uid,
                 coord_x     = r["coord_x"],

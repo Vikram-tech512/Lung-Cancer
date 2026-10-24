@@ -431,6 +431,24 @@ export const PuterAnalysisPanel: React.FC = () => {
         </div>
       </div>
 
+      {/* Experimental Safety Notice Banner */}
+      <div style={{
+        backgroundColor: '#451a03',
+        border: '1px solid #b45309',
+        borderRadius: '8px',
+        padding: '10px 14px',
+        marginBottom: '18px',
+        color: '#fef3c7',
+        fontSize: '12px',
+        fontWeight: '600',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}>
+        <AlertCircle size={18} color="#fbbf24" style={{ flexShrink: 0 }} />
+        <span>Experimental. Not validated. Data leaves this system. Sends strictly de-identified research queries.</span>
+      </div>
+
       {/* ── Main Two-Column Grid ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 0.95fr', gap: '20px' }}>
         {/* ── LEFT COLUMN: Input Configuration ── */}

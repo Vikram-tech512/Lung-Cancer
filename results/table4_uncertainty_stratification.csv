@@ -1,0 +1,4 @@
+uncertainty_tier,std_threshold,n_samples,accuracy,clinical_recommendation
+Low,std < 0.05,6,0.1667,Autonomous AI decision support with standard radiologist sign-off
+Moderate,0.05 <= std < 0.15,14,0.1429,Dual-read recommended; radiologist reviews morphological features
+High,std >= 0.15,0,0.0,Mandatory multidisciplinary tumor board review; do not rely on AI score

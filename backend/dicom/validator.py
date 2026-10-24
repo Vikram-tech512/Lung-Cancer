@@ -263,6 +263,10 @@ class DICOMValidator:
         return validate_dicom_series(dicom_dir)
 
     @staticmethod
+    def validate_series(dicom_dir: str | Path) -> QualityResult:
+        return validate_dicom_series(dicom_dir)
+
+    @staticmethod
     def validate_single(dcm_path: str | Path) -> QualityResult:
         return validate_single_dicom(dcm_path)
 

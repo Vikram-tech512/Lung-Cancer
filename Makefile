@@ -67,7 +67,7 @@ docker-up:
 	@echo "     Frontend    →  http://localhost:3000"
 	@echo "     Backend API →  http://localhost:8000/docs"
 	@echo "     Prometheus  →  http://localhost:9090"
-	@echo "     Grafana     →  http://localhost:3001  (admin / lungcancerAI2024)"
+	@echo "     Grafana     →  http://localhost:3001  (admin / [$$GRAFANA_ADMIN_PASSWORD])"
 	@echo ""
 
 docker-down:
@@ -79,10 +79,6 @@ docker-logs:
 # ─── AWS CloudFront Deployment ──────────────────────────────────────────────
 deploy-cloudfront:
 	powershell -ExecutionPolicy Bypass -File deploy/deploy-cloudfront.ps1
-
-# ─── Zoho Catalyst Deployment ────────────────────────────────────────────────
-deploy-zoho:
-	powershell -ExecutionPolicy Bypass -File deploy/deploy-zoho.ps1
 
 # ─── Monitoring ──────────────────────────────────────────────────────────────
 generate-dashboard:

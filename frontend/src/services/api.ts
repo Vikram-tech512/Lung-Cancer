@@ -39,6 +39,7 @@ export const api = {
 
   // Case Management
   listCases: () => request<{ cases: any[] }>('/cases'),
+  getNodules: (studyId: string) => request<{ study_id: string; series_id?: string; slice_count?: number; slice_thickness?: number; pixel_spacing?: number[]; nodules: any[] }>(`/nodules/${studyId}`),
 
   // DICOM Intake & Quality Gate
   uploadDicom: (formData?: FormData) => {
@@ -50,14 +51,19 @@ export const api = {
   getQCReport: (studyId: string) => request<any>(`/dicom/${studyId}/quality`),
 
   // Classification & Multimodal Ensemble
-  classifyNodule: (noduleId: string) => request<any>(`/classify/${noduleId}`, { method: 'POST' }),
+  classifyNodule: (noduleId: string, studyId?: string) =>
+    request<any>(`/classify/${noduleId}${studyId ? `?study_id=${encodeURIComponent(studyId)}` : ''}`, { method: 'POST' }),
 
   // 3D Morphometry & Radiomics
-  getMorphometry: (noduleId: string) => request<any>(`/morphometry/${noduleId}`),
+  getMorphometry: (noduleId: string, studyId?: string) =>
+    request<any>(`/morphometry/${noduleId}${studyId ? `?study_id=${encodeURIComponent(studyId)}` : ''}`),
 
   // Explainable AI (3D Grad-CAM, Integrated Gradients, Attention Rollout)
-  getXAI: (noduleId: string, method: 'gradcam3d' | 'integrated_gradients' | 'attention_rollout' = 'gradcam3d') =>
-    request<any>(`/xai/${noduleId}/${method}`),
+  getXAI: (noduleId: string, method: 'gradcam3d' | 'integrated_gradients' | 'attention_rollout3d' = 'gradcam3d', studyId?: string) =>
+    request<any>(`/xai/${noduleId}/${method}${studyId ? `?study_id=${encodeURIComponent(studyId)}` : ''}`),
+
+  locateNodule: (noduleId: string, studyId?: string) =>
+    request<any>(`/xai/${noduleId}/locate${studyId ? `?study_id=${encodeURIComponent(studyId)}` : ''}`),
 
   // Benchmarking & Robustness
   getBenchmark: () => request<any>('/benchmark'),
@@ -85,5 +91,7 @@ export const api = {
       method: 'POST',
       body: data
     }).then(res => res.json());
-  }
+  },
+  getUncertaintyConfig: () => request<any>('/config/uncertainty'),
+  getModelMetrics: () => request<any>('/model/metrics')
 };

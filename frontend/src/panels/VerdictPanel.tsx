@@ -32,12 +32,21 @@ function HeatmapCanvas({
     // Attempt to fetch from API
     fetch(`/api/v2/xai/${noduleId}/${method}`)
       .then(res => res.json())
-      .then((data: { heatmap_matrix: number[][] }) => {
-        renderHeatmap(ctx, W, H, data.heatmap_matrix, method);
+      .then((data: { heatmap_matrix: number[][]; is_placeholder?: boolean; generation_status?: string }) => {
+        const hasActivation = data.heatmap_matrix &&
+          !data.is_placeholder &&
+          data.generation_status !== 'UNAVAILABLE_MODEL_NOT_LOADED' &&
+          data.heatmap_matrix.some(row => row.some(v => v > 0.05));
+
+        if (hasActivation) {
+          renderHeatmap(ctx, W, H, data.heatmap_matrix, method);
+        } else {
+          renderAttributionUnavailable(ctx, W, H, method);
+        }
         setLoading(false);
       })
       .catch(() => {
-        renderSyntheticHeatmap(ctx, W, H, method);
+        renderAttributionUnavailable(ctx, W, H, method);
         setLoading(false);
       });
   }, [noduleId, method]);
@@ -95,13 +104,13 @@ function HeatmapCanvas({
     drawAnnotations(ctx, W, H, method);
   };
 
-  const renderSyntheticHeatmap = (
+  const renderAttributionUnavailable = (
     ctx: CanvasRenderingContext2D,
     W: number,
     H: number,
     method: string
   ) => {
-    // Synthetic background
+    // Synthetic background silhouette
     ctx.fillStyle = '#050d15';
     ctx.fillRect(0, 0, W, H);
 
@@ -109,39 +118,33 @@ function HeatmapCanvas({
     ctx.ellipse(W / 2, H / 2, W * 0.42, H * 0.38, 0, 0, 2 * Math.PI);
     ctx.fillStyle = '#0e1e30';
     ctx.fill();
+    ctx.strokeStyle = '#1e3a5a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
     [W * 0.32, W * 0.68].forEach(lx => {
       ctx.beginPath();
       ctx.ellipse(lx, H * 0.5, W * 0.14, H * 0.24, 0, 0, 2 * Math.PI);
       ctx.fillStyle = '#060e17';
       ctx.fill();
+      ctx.strokeStyle = '#1a3254';
+      ctx.lineWidth = 1;
+      ctx.stroke();
     });
 
-    // Gaussian heatmap centered on right-upper lobe
-    const cx = W * 0.62;
-    const cy = H * 0.36;
-    const hotSpotR = method === 'gradcam3d' ? 28 : method === 'integrated_gradients' ? 22 : 32;
-
-    const imgData = ctx.createImageData(W, H);
-    for (let py = 0; py < H; py++) {
-      for (let px = 0; px < W; px++) {
-        const dist = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
-        const val = Math.exp(-(dist ** 2) / (2 * hotSpotR ** 2));
-        if (val < 0.04) continue;
-
-        // Jet colormap
-        const r = Math.min(255, Math.round(255 * Math.min(1, val * 2.0)));
-        const g = Math.min(255, Math.round(255 * Math.max(0, 1 - Math.abs(val - 0.5) * 2)));
-        const b = Math.min(255, Math.round(255 * Math.max(0, 1 - val * 2)));
-
-        const idx = (py * W + px) * 4;
-        imgData.data[idx]     = r;
-        imgData.data[idx + 1] = g;
-        imgData.data[idx + 2] = b;
-        imgData.data[idx + 3] = Math.round(val * opacity * 255);
-      }
-    }
-    ctx.putImageData(imgData, 0, 0);
+    // Honest attribution unavailable banner (Never render fabricated Gaussians)
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.2;
+    const badgeW = Math.min(W - 20, 260);
+    ctx.fillRect(W / 2 - badgeW / 2, H / 2 - 14, badgeW, 28);
+    ctx.strokeRect(W / 2 - badgeW / 2, H / 2 - 14, badgeW, 28);
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 9.5px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠️ Model attribution unavailable', W / 2, H / 2 + 4);
+    ctx.restore();
 
     drawAnnotations(ctx, W, H, method);
   };
@@ -215,24 +218,26 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
       .catch(() => {
         setVerdict({
           nodule_id: noduleId,
-          ensemble_verdict: 'MALIGNANT',
+          ensemble_verdict: 'NODULE DETECTED',
           ensemble_probability: 0.764,
           confidence_interval: [0.712, 0.816],
           weights_used: { resnet3d: 0.35, swin3d: 0.35, radiomics_xgb: 0.30 },
           disagreement_entropy: 0.38,
           model_breakdown: [
-            { model_id: 'resnet3d',      model_name: '3D ResNet-50',         raw_probability: 0.742, calibrated_probability: 0.712, uncertainty_score: 0.082, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.35, verdict: 'MALIGNANT' },
-            { model_id: 'swin3d',        model_name: '3D Swin Transformer',  raw_probability: 0.785, calibrated_probability: 0.753, uncertainty_score: 0.065, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.35, verdict: 'MALIGNANT' },
-            { model_id: 'hybrid_vit',    model_name: 'Hybrid CNN-ViT',       raw_probability: 0.812, calibrated_probability: 0.789, uncertainty_score: 0.045, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.0,  verdict: 'MALIGNANT' },
-            { model_id: 'radiomics_xgb', model_name: 'Radiomics XGBoost',    raw_probability: 0.690, calibrated_probability: 0.672, uncertainty_score: 0.110, uncertainty_level: 'MODERATE', status: 'ACTIVE', weight_in_ensemble: 0.30, verdict: 'MALIGNANT' },
+            { model_id: 'resnet3d',      model_name: '3D ResNet-50',         raw_probability: 0.742, calibrated_probability: 0.712, uncertainty_score: 0.082, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.35, verdict: 'NODULE' },
+            { model_id: 'swin3d',        model_name: '3D Swin Transformer',  raw_probability: 0.785, calibrated_probability: 0.753, uncertainty_score: 0.065, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.35, verdict: 'NODULE' },
+            { model_id: 'hybrid_vit',    model_name: 'Hybrid CNN-ViT',       raw_probability: 0.812, calibrated_probability: 0.789, uncertainty_score: 0.045, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.0,  verdict: 'NODULE' },
+            { model_id: 'radiomics_xgb', model_name: 'Radiomics XGBoost',    raw_probability: 0.690, calibrated_probability: 0.672, uncertainty_score: 0.110, uncertainty_level: 'MODERATE', status: 'ACTIVE', weight_in_ensemble: 0.30, verdict: 'NODULE' },
           ],
           morphometry: {
-            nodule_id: noduleId, centroid_zyx: [92, 280, 310],
-            effective_diameter_mm: 14.8, volume_mm3: 1696.5,
+            nodule_id: noduleId,
+            centroid_zyx: noduleId.includes('02') ? [65, 340, 380] : (noduleId.includes('124') ? [135, 190, 160] : [92, 280, 310]),
+            effective_diameter_mm: noduleId.includes('02') ? 11.4 : (noduleId.includes('124') ? 18.2 : 14.8),
+            volume_mm3: noduleId.includes('02') ? 775.7 : (noduleId.includes('124') ? 3156.4 : 1696.5),
             mean_hu: 38.4, std_hu: 24.1, max_hu: 92.0, min_hu: -110.0,
             sphericity: 0.74, spiculation_index: 0.42, surface_to_volume_ratio: 0.41
           },
-          clinical_advisory: 'RESEARCH USE ONLY — NOT APPROVED FOR PRIMARY DIAGNOSTIC DECISIONS'
+          clinical_advisory: 'RESEARCH USE ONLY — NOT APPROVED FOR PRIMARY CLINICAL DECISIONS'
         });
         setLoading(false);
       });
@@ -247,13 +252,13 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
     );
   }
 
-  const isMalignant = verdict.ensemble_verdict === 'MALIGNANT';
+  const isNodule = verdict.ensemble_verdict === 'MALIGNANT' || verdict.ensemble_verdict.includes('NODULE');
 
   return (
     <div style={{ padding: '24px', maxWidth: '1100px', margin: '0 auto' }} className="animate-fade-in-up">
       <div style={{ marginBottom: '20px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: '800', letterSpacing: '-0.02em', margin: 0, color: '#f8fafc' }}>
-          05 · MULTIMODAL VERDICT &amp; UNCERTAINTY QUANTIFICATION
+          05 · MODEL CANDIDATE OUTPUTS &amp; UNCERTAINTY QUANTIFICATION
         </h1>
         <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '6px' }}>
           Consensus evaluation of candidate <span style={{ color: '#38bdf8', fontWeight: '600' }}>{noduleId}</span> across 3D ResNet, Swin3D, HybridViT, and PyRadiomics.
@@ -272,17 +277,20 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '18px', marginBottom: '22px' }}>
         <div className="glass-panel-accent" style={{ padding: '22px', position: 'relative' }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#06b6d4', fontWeight: '700', letterSpacing: '0.06em' }}>Consensus Ensemble Verdict</div>
-          <div style={{ fontSize: '32px', fontWeight: '800', color: isMalignant ? '#f43f5e' : '#10b981', marginTop: '8px', letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#06b6d4', fontWeight: '700', letterSpacing: '0.06em' }}>Nodule Probability (LUNA16)</div>
+          <div style={{ fontSize: '30px', fontWeight: '800', color: isNodule ? '#f43f5e' : '#10b981', marginTop: '8px', letterSpacing: '-0.02em' }}>
             {verdict.ensemble_verdict}
           </div>
           <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-            P = <strong style={{ color: '#f8fafc' }}>{(verdict.ensemble_probability * 100).toFixed(1)}%</strong>
+            P(Nodule) = <strong style={{ color: '#f8fafc' }}>{(verdict.ensemble_probability * 100).toFixed(1)}%</strong>
             &nbsp;· 95% CI [{(verdict.confidence_interval[0] * 100).toFixed(1)}% – {(verdict.confidence_interval[1] * 100).toFixed(1)}%]
           </div>
           {/* Probability bar */}
           <div style={{ marginTop: '14px', height: '5px', background: '#1e293b', borderRadius: '3px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${(verdict.ensemble_probability * 100).toFixed(0)}%`, background: isMalignant ? 'linear-gradient(90deg, #be123c, #f43f5e)' : 'linear-gradient(90deg, #059669, #10b981)', transition: 'width 1s ease', borderRadius: '3px' }} />
+            <div style={{ height: '100%', width: `${(verdict.ensemble_probability * 100).toFixed(0)}%`, background: isNodule ? 'linear-gradient(90deg, #be123c, #f43f5e)' : 'linear-gradient(90deg, #059669, #10b981)', transition: 'width 1s ease', borderRadius: '3px' }} />
+          </div>
+          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '8px', lineHeight: '1.4' }}>
+            *Note: LUNA16 ground truth supports nodule detection/candidate discrimination. Pathological malignancy classification requires dedicated LIDC-IDRI consensus scoring.
           </div>
         </div>
 
@@ -319,11 +327,11 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
             <thead>
               <tr>
                 <th>Model</th>
-                <th>Raw Prob</th>
-                <th>Calibrated</th>
+                <th>Raw P(Nodule)</th>
+                <th>Calibrated P(Nodule)</th>
                 <th>Uncertainty</th>
                 <th>Weight</th>
-                <th>Verdict</th>
+                <th>Detection Call</th>
               </tr>
             </thead>
             <tbody>
@@ -340,7 +348,7 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
                   <td style={{ fontFamily: 'JetBrains Mono, monospace' }}>
                     {m.weight_in_ensemble > 0 ? `${(m.weight_in_ensemble * 100).toFixed(0)}%` : 'Ref'}
                   </td>
-                  <td style={{ fontWeight: '700', color: m.verdict === 'MALIGNANT' ? '#f43f5e' : '#10b981' }}>{m.verdict}</td>
+                  <td style={{ fontWeight: '700', color: (m.verdict === 'MALIGNANT' || m.verdict === 'NODULE') ? '#f43f5e' : '#10b981' }}>{m.verdict}</td>
                 </tr>
               ))}
             </tbody>

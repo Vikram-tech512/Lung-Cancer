@@ -471,9 +471,11 @@ def train(args: argparse.Namespace) -> None:
         print(f"\n[Robustness] Testing {args.robustness_sample_size} samples...")
         pipeline    = CTPipeline(target_spacing=(1.0, 1.0, 1.0))
 
-        def predict_fn(raw_hu: np.ndarray) -> float:
-            windowed = pipeline.apply_window(raw_hu)
-            t = torch.from_numpy(windowed).unsqueeze(0).unsqueeze(0).float().to(device)
+        def predict_fn(vol_arr: np.ndarray) -> float:
+            if vol_arr.min() < -50 or vol_arr.max() > 10:
+                vol_arr = pipeline.apply_window(vol_arr)
+            vol_arr = np.clip(vol_arr, 0.0, 1.0)
+            t = torch.from_numpy(vol_arr).unsqueeze(0).unsqueeze(0).float().to(device)
             with torch.no_grad():
                 return float(torch.softmax(model(t), dim=-1)[0, 1].item())
 
@@ -550,7 +552,7 @@ def train(args: argparse.Namespace) -> None:
         registry.register_version(ModelVersionInfo(
             model_name        = args.model,
             version           = time.strftime("%Y%m%d_%H%M%S"),
-            stage             = "STAGING",  # human reviews before PRODUCTION
+            stage             = getattr(args, "stage", "EXPERIMENTAL"),  # EXPERIMENTAL by default until 10-fold CV
             architecture      = args.model,
             input_dimension   = f"{args.crop_size}^3",
             metrics           = {
@@ -602,6 +604,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--robustness-sample-size", type=int, default=20)
     p.add_argument("--resume",            type=str, default=None,
                    help="Path to .pt checkpoint to resume from")
+    p.add_argument("--stage",             type=str, default="EXPERIMENTAL",
+                   choices=["EXPERIMENTAL", "STAGING", "PRODUCTION"],
+                   help="Lifecycle stage (requires 10-fold CV to promote to STAGING)")
     p.add_argument("--dry-run",           action="store_true",
                    help="Use synthetic data to smoke-test the pipeline (no LUNA16 needed)")
     return p.parse_args()

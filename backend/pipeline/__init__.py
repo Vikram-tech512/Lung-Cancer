@@ -14,6 +14,16 @@ Exposes all pipeline stages as importable modules:
   - registry  : MLflow model lifecycle management
 """
 
-from .orchestrator import PipelineOrchestrator
+from .orchestrator import (
+    PipelineOrchestrator,
+    PipelineStage,
+    PipelineContext,
+    PipelineReport,
+)
 
-__all__ = ["PipelineOrchestrator"]
+__all__ = [
+    "PipelineOrchestrator",
+    "PipelineStage",
+    "PipelineContext",
+    "PipelineReport",
+]

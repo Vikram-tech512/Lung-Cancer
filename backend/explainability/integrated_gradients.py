@@ -7,10 +7,14 @@ to input volume. Axiomatically satisfies Completeness and Implementation Invaria
 """
 
 from __future__ import annotations
+import logging
 import torch
 import torch.nn.functional as F
 import numpy as np
 from typing import Optional, Tuple, Dict, Any
+
+logger = logging.getLogger(__name__)
+
 
 class IntegratedGradients3D:
     def __init__(self, model: torch.nn.Module, steps: int = 40):
@@ -71,20 +75,50 @@ class IntegratedGradients3D:
         integrated_grad = delta * avg_grads  # (1, 1, D, H, W)
 
         attr_vol = integrated_grad.squeeze().cpu().numpy()
+
+        # Safety: replace any non-finite values (NaN, Inf) that can arise from untrained
+        # random weights producing near-zero or infinite gradients.
+        if not np.all(np.isfinite(attr_vol)):
+            logger.warning(
+                "IntegratedGradients3D: non-finite values detected in attribution volume "
+                "(likely caused by untrained model weights). Replacing with zeros."
+            )
+            attr_vol = np.zeros_like(attr_vol)
+
         # Normalization: keep positive and negative attributions or absolute magnitude
         abs_attr = np.abs(attr_vol)
-        norm_attr = (abs_attr - abs_attr.min()) / (abs_attr.max() - abs_attr.min() + 1e-8)
+        attr_range = abs_attr.max() - abs_attr.min()
+        norm_attr = (abs_attr - abs_attr.min()) / (attr_range + 1e-8) if attr_range > 0 else abs_attr
 
         # Multiplanar maximum intensity projections
         mip_axial = np.max(norm_attr, axis=0)       # (H, W)
         mip_coronal = np.max(norm_attr, axis=1)     # (D, W)
         mip_sagittal = np.max(norm_attr, axis=2)    # (D, H)
 
+        # Completeness delta: sum(attribution) should equal f(input) - f(baseline).
+        # Values close to 0 indicate the trapezoidal approximation is numerically sound.
+        # Large deltas indicate too few integration steps or numerical instability.
+        with torch.no_grad():
+            try:
+                score_input    = self.model(input_tensor)[:, target_class].item()
+                score_baseline = self.model(baseline)[:, target_class].item()
+                output_delta   = score_input - score_baseline
+                attr_sum       = float(integrated_grad.sum().item())
+                completeness_delta = float(abs(attr_sum - output_delta))
+            except Exception:
+                completeness_delta = None  # Cannot compute when model weights are random / untrained
+
         return {
             "attributions_3d": norm_attr,
             "mip_axial": mip_axial,
             "mip_coronal": mip_coronal,
             "mip_sagittal": mip_sagittal,
+            "completeness_delta": completeness_delta,
+            "completeness_note": (
+                "Difference between sum(attribution) and f(input)-f(baseline). "
+                "Values near 0 confirm the trapezoidal approximation is numerically stable. "
+                "None indicates the check could not be computed (e.g. untrained weights)."
+            ),
             "method": "Integrated Gradients (3D)",
             "disclaimer": "MODEL ATTRIBUTION — NOT CLINICAL EVIDENCE. Research Use Only."
         }

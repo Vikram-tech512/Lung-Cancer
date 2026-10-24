@@ -1,0 +1,89 @@
+"""
+backend/tests/test_dicom_upload.py
+====================================
+Tests for genuine DICOM upload, archive inspection, multi-vendor checking,
+quality validation, and data integrity safeguards.
+"""
+
+import io
+import zipfile
+import pytest
+from pathlib import Path
+from fastapi.testclient import TestClient
+import pydicom
+from pydicom.dataset import Dataset, FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian
+import numpy as np
+
+from backend.api.service import app, STUDY_STORE
+from backend.tests.test_hospital_interop import create_synthetic_slice
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+def test_upload_missing_file_returns_400(client):
+    """Uploading without a file payload must be rejected with 400."""
+    res = client.post("/api/v2/dicom/upload")
+    assert res.status_code == 400
+    assert "No DICOM file or archive provided" in res.json()["detail"]
+
+
+def test_upload_empty_file_returns_400(client):
+    """Uploading an empty file must be rejected with 400."""
+    files = {"file": ("empty.dcm", b"", "application/octet-stream")}
+    res = client.post("/api/v2/dicom/upload", files=files)
+    assert res.status_code == 400
+    assert "empty" in res.json()["detail"].lower()
+
+
+def test_upload_non_dicom_archive_returns_400(client):
+    """Uploading a zip with text files must report no readable DICOM files."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("notes.txt", "This is not a DICOM file")
+    buf.seek(0)
+
+    files = {"file": ("corrupt.zip", buf.getvalue(), "application/zip")}
+    res = client.post("/api/v2/dicom/upload", files=files)
+    assert res.status_code == 400
+    assert "no readable dicom files" in res.json()["detail"].lower()
+
+
+def test_upload_genuine_dicom_zip_success(client):
+    """Uploading a genuine zip of DICOM slices must compute real slice counts,
+    extract real vendor metadata, perform de-identification, and mark is_synthetic=False.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for i in range(10):
+            ds = create_synthetic_slice(
+                z_pos=i * 2.0,
+                manufacturer="TOSHIBA",
+                slice_thickness=2.0
+            )
+            slice_buf = io.BytesIO()
+            ds.save_as(slice_buf, write_like_original=False)
+            zf.writestr(f"slice_{i:03d}.dcm", slice_buf.getvalue())
+    buf.seek(0)
+
+    files = {"file": ("toshiba_study.zip", buf.getvalue(), "application/zip")}
+    res = client.post("/api/v2/dicom/upload", files=files)
+    assert res.status_code == 200
+    data = res.json()
+
+    assert "study_id" in data
+    study_id = data["study_id"]
+    assert study_id in STUDY_STORE
+
+    stored = STUDY_STORE[study_id]
+    # Verify metadata is genuinely extracted, NOT hardcoded GE Apex / 196 slices!
+    assert stored["is_synthetic"] is False
+    assert stored["slice_count"] == 10
+    assert stored["slice_thickness"] == 2.0
+    assert stored["compatibility_report"]["vendor"] == "CANON/TOSHIBA"
+    assert stored["deidentification_audit"]["stage_status"] == "PASS"
+    assert stored["patient_id"].startswith("ANON-")
+    assert stored["nodules"] == []

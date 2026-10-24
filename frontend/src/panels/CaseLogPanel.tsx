@@ -26,10 +26,10 @@ export const CaseLogPanel: React.FC<CaseLogPanelProps> = ({ onSelectCase }) => {
             timestamp: '2026-09-22 12:30:00'
           },
           {
-            study_id: 'CASE-LIDC-0124',
+            study_id: 'CASE-DEMO-LIDC-0124',
             patient_id: 'LIDC-IDRI-0124',
             modality: 'CT',
-            slice_count: 210,
+            slice_count: 220,
             qc_status: 'PASS',
             nodule_count: 2,
             timestamp: '2026-09-21 16:45:10'

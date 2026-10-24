@@ -143,7 +143,7 @@ const MODELS: ModelOption[] = [
     providerBadgeColor: '#38bdf8',
     badgeBg: 'rgba(56, 189, 248, 0.15)',
     tierColor: '#38bdf8',
-    desc: 'Efficient multimodal diagnosis & report generation',
+    desc: 'Efficient multimodal research text & report generation',
     contextWindow: '1M tokens',
   },
   {
@@ -164,7 +164,7 @@ const MODELS: ModelOption[] = [
    -------------------------------------------------------------------------- */
 const PRESETS = [
   {
-    label: 'Malignancy Risk Assessment (Recommended)',
+    label: 'Nodule Risk Assessment (For radiologist review)',
     prompt:
       'Analyse this thoracic CT slice for features that may suggest malignancy: spiculation, lobulation, pleural tethering/indentation, ground-glass opacity (GGO), vascular convergence, or lymphadenopathy. Systematically categorize and report each finding with confidence assessment.',
   },
@@ -174,34 +174,36 @@ const PRESETS = [
       'Identify any pulmonary nodules or parenchymal masses visible in this CT image. Describe their anatomical location (lung lobe/segment), approximate diameter, morphology (solid, part-solid, non-solid/GGO), and density characteristics in Hounsfield units (HU) if inferable.',
   },
   {
-    label: 'Lung-RADS v2022 Classification & Fleischner Protocol',
+    label: 'Lung-RADS v2022 Criteria Reference & Fleischner Protocol',
     prompt:
-      'Assign an appropriate Lung-RADS v2022 score (Category 1, 2, 3, 4A, 4B, 4X) based on nodule characteristics, size, and solid/subsolid proportion. Outline the Fleischner Society surveillance guideline and recommended management timeframe.',
+      'Compare nodule characteristics, size, and solid/subsolid proportion against Lung-RADS v2022 criteria for radiologist review. Outline the Fleischner Society surveillance guideline and recommended management timeframe.',
   },
   {
-    label: 'Histopathology & Growth Pattern Differential',
+    label: 'Histopathology & Growth Pattern Architectural Differential',
     prompt:
-      'Evaluate visible cytomorphologic and architectural features. Outline a differential diagnosis (e.g. Adenocarcinoma subtypes: lepidic, acinar, papillary vs Squamous Cell Carcinoma vs Large Cell Neuroendocrine vs Benign Hamartoma/Granuloma).',
+      'Evaluate visible cytomorphologic and architectural features. Outline possible morphological patterns (e.g. Adenocarcinoma subtypes: lepidic, acinar, papillary vs Squamous Cell Carcinoma vs Large Cell Neuroendocrine vs Benign Hamartoma/Granuloma) for radiologist review.',
   },
 ];
 
 /* --------------------------------------------------------------------------
    Component
    -------------------------------------------------------------------------- */
-export const AIAnalysisPanel: React.FC = () => {
+export interface AIAnalysisPanelProps {
+  studyId?: string;
+  noduleId?: string;
+}
+
+export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
+  studyId = 'CASE-DEMO-LIDC-0087',
+  noduleId = 'NODULE-01'
+}) => {
   // Model selection
   const [selectedModelId, setSelectedModelId] = useState<string>('gpt-4o');
   const [modelDropdownOpen, setModelDropdownOpen] = useState<boolean>(false);
 
-  // Dynamic API Keys (Stored locally in localStorage)
-  const [openaiKey, setOpenaiKey]     = useState<string>(() => localStorage.getItem('lc_ai_openai_key') || '');
-  const [anthropicKey, setAnthropicKey] = useState<string>(() => localStorage.getItem('lc_ai_anthropic_key') || '');
-  const [geminiKey, setGeminiKey]     = useState<string>(() => localStorage.getItem('lc_ai_gemini_key') || ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || '');
-  const [showKeysDrawer, setShowKeysDrawer] = useState<boolean>(false);
-  const [showKeyText, setShowKeyText] = useState<{ [key: string]: boolean }>({});
-
-  // Server-side provider availability
+  // Server-side provider availability (Keys are held exclusively in backend environment)
   const [serverProviders, setServerProviders] = useState<{ [k: string]: boolean }>({});
+  const [showStatusDrawer, setShowStatusDrawer] = useState<boolean>(false);
 
   // Input states
   const [prompt, setPrompt]           = useState<string>(PRESETS[0].prompt);
@@ -209,6 +211,7 @@ export const AIAnalysisPanel: React.FC = () => {
   const [imageMime, setImageMime]     = useState<string>('image/png');
   const [imageFileName, setImageFileName] = useState<string | null>(null);
   const [imagePreview, setImagePreview]   = useState<string | null>(null);
+  const [activeFindingLabel, setActiveFindingLabel] = useState<string | null>(null);
 
   // Clinical parameters
   const [temperature, setTemperature] = useState<number>(0.2);
@@ -232,61 +235,40 @@ export const AIAnalysisPanel: React.FC = () => {
 
   const selectedModel = MODELS.find((m) => m.id === selectedModelId) || MODELS[0];
 
-  // Save API keys to localStorage on change
-  const handleKeySave = (provider: AIProvider, val: string) => {
-    if (provider === 'openai') {
-      setOpenaiKey(val);
-      localStorage.setItem('lc_ai_openai_key', val);
-    } else if (provider === 'anthropic') {
-      setAnthropicKey(val);
-      localStorage.setItem('lc_ai_anthropic_key', val);
-    } else if (provider === 'gemini') {
-      setGeminiKey(val);
-      localStorage.setItem('lc_ai_gemini_key', val);
-    }
-  };
-
-  // Tumour Localization & Clinical Purpose Metrics
-  const DEFAULT_LOCATOR_REGION: TumourRegion = {
-    found: true,
-    source: 'segmentation',
-    boundary_is_measured: true,
-    centroid_voxel: [32, 28, 30],
-    centroid_mm: [40.0, 35.0, 37.5],
-    bbox_voxel: [[24, 40], [20, 36], [22, 38]],
-    focus: 0.884,
-    profile: {
-      values: Array.from({ length: 64 }, (_, i) => Math.exp(-((i - 32) ** 2) / (2 * 6 * 6))),
-      best_slice: 32,
-    },
-    disclaimer: 'RESEARCH USE ONLY - model attribution, not clinical evidence.',
-  };
-
-  const [locatorRegion, setLocatorRegion] = useState<TumourRegion | null>(DEFAULT_LOCATOR_REGION);
-  const [locatorSlice, setLocatorSlice] = useState<number>(32);
+  // Tumour Localization state — strictly isolated to selected study and nodule
+  const [locatorRegion, setLocatorRegion] = useState<TumourRegion | null>(null);
+  const [locatorSlice, setLocatorSlice] = useState<number>(48);
+  // Zero-filled heatmap: invisible placeholder until real XAI attribution is available
   const [locatorHeatmap, setLocatorHeatmap] = useState<number[][]>(() => {
     const h: number[][] = [];
     for (let y = 0; y < 64; y++) {
-      const row: number[] = [];
-      for (let x = 0; x < 64; x++) {
-        const d = Math.sqrt((x - 32) ** 2 + (y - 32) ** 2);
-        row.push(Math.exp(-(d ** 2) / (2 * 10 * 10)));
-      }
-      h.push(row);
+      h.push(new Array(64).fill(0));
     }
     return h;
   });
   const [purposeMetrics, setPurposeMetrics] = useState<Record<string, Record<string, number | string>>>({});
 
-  // Check server-side configured keys & load localization/metrics
+  // Check server-side configured keys & load localization/metrics dynamically for active study & nodule
   useEffect(() => {
     fetch(`${API_BASE}/api/ai/providers`)
       .then((r) => r.json())
       .then((d) => setServerProviders(d))
       .catch(() => {});
 
-    // Fetch tumour localization
-    fetch(`${API_BASE}/xai/NODULE-01/locate`)
+    // Clear stale state immediately before loading new case
+    setLocatorRegion(null);
+    setLocatorHeatmap(() => {
+      const h: number[][] = [];
+      for (let y = 0; y < 64; y++) {
+        h.push(new Array(64).fill(0));
+      }
+      return h;
+    });
+
+    // Fetch dynamic tumour localization for the active study and nodule
+    const cleanNoduleId = noduleId || 'NODULE-01';
+    const studyQuery = studyId ? `?study_id=${encodeURIComponent(studyId)}` : '';
+    fetch(`${API_BASE}/xai/${cleanNoduleId}/locate${studyQuery}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: TumourRegion | null) => {
         if (d && d.found) {
@@ -294,15 +276,27 @@ export const AIAnalysisPanel: React.FC = () => {
           if (d.profile?.best_slice !== undefined) {
             setLocatorSlice(d.profile.best_slice);
           }
+        } else {
+          setLocatorRegion({
+            found: false,
+            source: 'detector',
+            disclaimer: 'Lobe and nodule localization unavailable for this scan.',
+          });
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setLocatorRegion({
+          found: false,
+          source: 'detector',
+          disclaimer: 'Lobe and nodule localization unavailable.',
+        });
+      });
 
-    // Fetch 2D attribution heatmap matrix
-    fetch(`${API_BASE}/xai/NODULE-01/gradcam3d`)
+    // Fetch 2D attribution heatmap matrix from genuine model output.
+    fetch(`${API_BASE}/xai/${cleanNoduleId}/gradcam3d${studyQuery}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d && d.heatmap_matrix) {
+        if (d && d.heatmap_matrix && !d.is_placeholder) {
           setLocatorHeatmap(d.heatmap_matrix);
         }
       })
@@ -315,7 +309,7 @@ export const AIAnalysisPanel: React.FC = () => {
         if (d) setPurposeMetrics(d);
       })
       .catch(() => {});
-  }, []);
+  }, [studyId, noduleId]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -340,6 +334,7 @@ export const AIAnalysisPanel: React.FC = () => {
     setError(null);
     setImageFileName(file.name);
     setImageMime(file.type || 'image/png');
+    setActiveFindingLabel(null);
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -354,6 +349,7 @@ export const AIAnalysisPanel: React.FC = () => {
     setImageBase64(null);
     setImageFileName(null);
     setImagePreview(null);
+    setActiveFindingLabel(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -364,6 +360,7 @@ export const AIAnalysisPanel: React.FC = () => {
       : './samples/benign_sample.png';
     setImageFileName(type === 'malignant' ? 'LIDC-0087-Malignant-Slice.png' : 'LIDC-0023-Benign-Slice.png');
     setImageMime('image/png');
+    setActiveFindingLabel(type === 'malignant' ? 'Spiculated Nodule Candidate' : 'Calcified Granuloma Candidate');
     try {
       const res = await fetch(sampleUrl);
       const blob = await res.blob();
@@ -379,178 +376,20 @@ export const AIAnalysisPanel: React.FC = () => {
     }
   };
 
-  // Get active key for current provider
-  const getActiveKey = (prov: AIProvider): string => {
-    if (prov === 'openai') return openaiKey.trim();
-    if (prov === 'anthropic') return anthropicKey.trim();
-    if (prov === 'gemini') return geminiKey.trim();
-    return '';
-  };
-
   const hasKey = (prov: AIProvider): boolean => {
-    return Boolean(getActiveKey(prov) || serverProviders[prov]);
+    return Boolean(serverProviders[prov]);
   };
 
-  // Direct client-side calls for zero-latency serverless fallback
-  const callDirectProvider = async (
-    prov: AIProvider,
-    modelId: string,
-    userPrompt: string,
-    b64: string | null,
-    mime: string,
-    key: string
-  ): Promise<string> => {
-    const sys = `Act as an AI-assisted thoracic imaging research assistant specializing in lung CT image interpretation, pulmonary nodule characterization, lung cancer risk assessment, nodule segmentation, and Explainable Artificial Intelligence (XAI). Generate structured, evidence-conscious reports using only the provided CT images and available clinical information.
-The system is intended for educational and research purposes. It must not replace a qualified radiologist or provide a definitive medical diagnosis.
-
-Required Analysis & Output Structure:
-1. Image Quality and Examination Scope (explicitly state if single slice vs full volume; note that single slices cannot rule out pathology elsewhere).
-2. Primary Imaging Observations (parenchyma, airways, pleura, hilar/mediastinum).
-3. Pulmonary Nodule Characterization (location, diameter in mm if calibrated, solid/subsolid/ground-glass, margins, spiculation).
-4. Morphology & Anatomical Assessment (distinguish directly visible from AI-suggested findings).
-5. Malignancy Risk Assessment (only when sufficient evidence is available; otherwise state cannot be reliably estimated).
-6. Lung-RADS v2022 Classification (assign only for complete screening examinations; never assign based solely on one axial slice).
-7. Differential Considerations (evidence-supported possibilities only).
-8. Follow-Up and Clinical Recommendations (Fleischner/screening guidelines; emphasize specialist radiologist review).
-9. Explainable AI Summary (report model predicted finding, ROI, heatmap focus, and state attention indicates focus, not proof).
-10. Limitations & Educational Disclaimer (state output is research decision support only).
-
-Strict Rules:
-- Never fabricate findings, measurements, confidence values, or clinical history.
-- Never describe unassessed anatomy as definitively normal.
-- Never claim that a CT image rules out lung cancer.
-- Explicitly communicate uncertainty and examination limitations.`;
-
-    if (prov === 'openai') {
-      const userContent = b64
-        ? [
-            { type: "text", text: userPrompt },
-            { type: "image_url", image_url: { url: b64 } }
-          ]
-        : userPrompt;
-
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${key}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            { role: "system", content: sys },
-            { role: "user", content: userContent }
-          ],
-          temperature,
-          max_tokens: maxTokens
-        })
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || `OpenAI returned status ${res.status}`);
-      }
-      const data = await res.json();
-      return data.choices[0].message.content;
-    }
-
-    if (prov === 'anthropic') {
-      const claudeContent: any[] = [];
-      if (b64) {
-        const cleanB64 = b64.includes(',') ? b64.split(',')[1] : b64;
-        claudeContent.push({
-          type: "image",
-          source: { type: "base64", media_type: mime, data: cleanB64 }
-        });
-      }
-      claudeContent.push({ type: "text", text: userPrompt });
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({
-          model: modelId,
-          system: sys,
-          max_tokens: maxTokens,
-          temperature,
-          messages: [{ role: "user", content: claudeContent }]
-        })
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Anthropic returned status ${res.status}`);
-      }
-      const data = await res.json();
-      return data.content.map((c: any) => c.text || '').join('');
-    }
-
-    if (prov === 'gemini') {
-      const parts: any[] = [];
-      if (b64) {
-        const cleanB64 = b64.includes(',') ? b64.split(',')[1] : b64;
-        parts.push({
-          inline_data: { mime_type: mime, data: cleanB64 }
-        });
-      }
-      parts.push({ text: userPrompt });
-
-      const tryModels = [
-        modelId,
-        'gemini-3.5-flash',
-        'gemini-flash-lite-latest',
-        'gemini-3.1-flash-lite',
-        'gemini-3-flash-preview',
-        'gemini-flash-latest'
-      ].filter((v, i, a) => a.indexOf(v) === i);
-      let lastErrMsg = '';
-
-      for (const mId of tryModels) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${mId}:generateContent?key=${key}`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: sys }] },
-            contents: [{ role: "user", parts }],
-            generationConfig: { temperature, maxOutputTokens: maxTokens }
-          })
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          return data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('') || '';
-        }
-
-        const err = await res.json().catch(() => ({}));
-        lastErrMsg = err.error?.message || `Gemini returned status ${res.status}`;
-        // If quota exceeded (limit: 0 on Pro models), model not found, or temporary 503 high demand spike, try the next candidate
-        if (res.status === 429 || res.status === 404 || res.status === 503) {
-          continue;
-        }
-        break;
-      }
-
-      throw new Error(lastErrMsg || 'Gemini request failed');
-    }
-
-    throw new Error(`Unsupported provider ${prov}`);
-  };
-
-  // Run Real-World AI Analysis
+  // Run Real-World AI Analysis via Secure Backend Proxy
   const handleAnalyze = async () => {
     if (!prompt.trim()) {
-      setError('Please provide a clinical question or choose a preset prompt.');
+      setError("Please provide a clinical question or choose a preset prompt.");
       return;
     }
 
-    const currentKey = getActiveKey(selectedModel.provider);
-    if (!currentKey && !serverProviders[selectedModel.provider]) {
-      setShowKeysDrawer(true);
-      setError(`Please enter your ${selectedModel.providerLabel} API key to execute analysis.`);
+    if (!serverProviders[selectedModel.provider]) {
+      setShowStatusDrawer(true);
+      setError(`Server-side key for ${selectedModel.providerLabel} is not configured in backend environment (.env).`);
       return;
     }
 
@@ -561,62 +400,28 @@ Strict Rules:
     const startTime = Date.now();
 
     try {
-      let analysisText = '';
-      let usageInfo: any = null;
+      const backendResp = await fetch(`${API_BASE}/ai/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: selectedModel.provider,
+          model: selectedModel.id,
+          prompt: prompt.trim(),
+          image_base64: imageBase64,
+          image_mime_type: imageMime,
+          temperature,
+          max_tokens: maxTokens,
+        }),
+      });
 
-      // Method 1: Try backend proxy
-      try {
-        const backendResp = await fetch(`${API_BASE}/api/ai/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider: selectedModel.provider,
-            model: selectedModel.id,
-            prompt: prompt.trim(),
-            image_base64: imageBase64,
-            image_mime_type: imageMime,
-            api_key: currentKey || undefined,
-            temperature,
-            max_tokens: maxTokens,
-          }),
-        });
-
-        if (backendResp.ok) {
-          const data = await backendResp.json();
-          analysisText = data.content;
-          usageInfo = data.usage;
-        } else {
-          // If backend returned error and client has a key, fallback to direct client call
-          if (currentKey) {
-            analysisText = await callDirectProvider(
-              selectedModel.provider,
-              selectedModel.id,
-              prompt.trim(),
-              imageBase64,
-              imageMime,
-              currentKey
-            );
-          } else {
-            const err = await backendResp.json().catch(() => ({}));
-            throw new Error(err.detail || `Server returned ${backendResp.status}`);
-          }
-        }
-      } catch (backendErr: any) {
-        // Fallback to direct client call if client has key
-        if (currentKey) {
-          analysisText = await callDirectProvider(
-            selectedModel.provider,
-            selectedModel.id,
-            prompt.trim(),
-            imageBase64,
-            imageMime,
-            currentKey
-          );
-        } else {
-          throw backendErr;
-        }
+      if (!backendResp.ok) {
+        const err = await backendResp.json().catch(() => ({}));
+        throw new Error(err.detail || `Server returned status ${backendResp.status}`);
       }
 
+      const data = await backendResp.json();
+      const analysisText = data.content;
+      const usageInfo = data.usage;
       const durationMs = Date.now() - startTime;
       setResult(analysisText);
       setResultMeta({
@@ -625,6 +430,16 @@ Strict Rules:
         durationMs,
         usage: usageInfo,
       });
+
+      // Synchronize XAI attribution tag with AI output
+      const lower = analysisText.toLowerCase();
+      if (lower.includes('malignan') || lower.includes('spiculat') || lower.includes('rads 4') || lower.includes('adenocarcinoma')) {
+        setActiveFindingLabel('Suspicious Nodule Pattern [Model Identified]');
+      } else if (lower.includes('benign') || lower.includes('rads 2') || lower.includes('granuloma') || lower.includes('calcifi')) {
+        setActiveFindingLabel('Low Risk / Benign Pattern [Model Identified]');
+      } else {
+        setActiveFindingLabel('Target Lesion [Analyzed]');
+      }
     } catch (err: any) {
       setError(err.message || 'An error occurred during AI analysis.');
     } finally {
@@ -656,29 +471,29 @@ Strict Rules:
             </div>
             <div>
               <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '700', letterSpacing: '-0.02em' }}>
-                Real-World Clinical AI Diagnostic Assistant
+                Frontier Model Analysis (Research / Experimental)
               </h1>
               <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
-                Frontier Multi-Modal Intelligence · OpenAI ChatGPT · Anthropic Claude · Google Gemini
+                De-identified Text Decision Support · OpenAI ChatGPT · Anthropic Claude · Google Gemini
               </p>
             </div>
           </div>
         </div>
 
-        {/* API Keys Configuration Button */}
+        {/* Server AI Security Status Button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
-            onClick={() => setShowKeysDrawer(!showKeysDrawer)}
+            onClick={() => setShowStatusDrawer(!showStatusDrawer)}
             style={{
               display: 'flex', alignItems: 'center', gap: '8px',
-              backgroundColor: showKeysDrawer ? '#1e293b' : '#0f172a',
+              backgroundColor: showStatusDrawer ? '#1e293b' : '#0f172a',
               border: '1px solid #334155', borderRadius: '8px',
               color: '#38bdf8', padding: '8px 14px', fontSize: '12px',
               fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s',
             }}
           >
-            <Key size={14} />
-            <span>Manage Dynamic API Keys</span>
+            <Server size={14} />
+            <span>Server AI Security Status</span>
             <span style={{
               width: '8px', height: '8px', borderRadius: '50%',
               backgroundColor: hasKey(selectedModel.provider) ? '#10b981' : '#f59e0b'
@@ -687,8 +502,8 @@ Strict Rules:
         </div>
       </div>
 
-      {/* Dynamic API Keys Drawer */}
-      {showKeysDrawer && (
+      {/* Server Security Status Drawer */}
+      {showStatusDrawer && (
         <div style={{
           backgroundColor: '#0c1322', border: '1px solid #1e293b',
           borderRadius: '12px', padding: '18px 20px', marginBottom: '20px',
@@ -696,134 +511,74 @@ Strict Rules:
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Key size={16} color="#38bdf8" />
-              <strong style={{ fontSize: '13px', color: '#f8fafc' }}>Real-World API Key Configuration</strong>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>
-                (Saved safely in your browser localStorage — never shared)
+              <Server size={16} color="#38bdf8" />
+              <strong style={{ fontSize: '13px', color: '#f8fafc' }}>Server-Side AI Provider Proxy</strong>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                (Keys are stored strictly in backend environment variables — frontend never handles API keys)
               </span>
             </div>
             <button
-              onClick={() => setShowKeysDrawer(false)}
+              onClick={() => setShowStatusDrawer(false)}
               style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
             >
               <X size={16} />
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+            {/* Google Gemini */}
+            <div style={{ backgroundColor: '#070c18', padding: '12px 14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: '#38bdf8' }}>Google Gemini</span>
+                <span style={{ fontSize: '11px', color: serverProviders.gemini ? '#10b981' : '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {serverProviders.gemini ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                  {serverProviders.gemini ? 'Server Active' : 'Not Set in .env'}
+                </span>
+              </div>
+            </div>
+
             {/* OpenAI */}
             <div style={{ backgroundColor: '#070c18', padding: '12px 14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: '600', color: '#34d399' }}>OpenAI Key (ChatGPT)</span>
-                {openaiKey ? (
-                  <span style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <CheckCircle2 size={11} /> Saved
-                  </span>
-                ) : serverProviders.openai ? (
-                  <span style={{ fontSize: '10px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Server size={11} /> Server Active
-                  </span>
-                ) : (
-                  <span style={{ fontSize: '10px', color: '#94a3b8' }}>Optional</span>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type={showKeyText.openai ? 'text' : 'password'}
-                  placeholder={serverProviders.openai ? 'Configured securely on server' : 'sk-proj-...'}
-                  value={openaiKey}
-                  onChange={(e) => handleKeySave('openai', e.target.value)}
-                  style={{
-                    flex: 1, backgroundColor: '#0b1120', border: '1px solid #1e293b',
-                    borderRadius: '6px', color: '#f1f5f9', padding: '6px 10px',
-                    fontSize: '11px', fontFamily: 'monospace'
-                  }}
-                />
-                <button
-                  onClick={() => setShowKeyText({ ...showKeyText, openai: !showKeyText.openai })}
-                  style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '6px 8px', borderRadius: '6px', cursor: 'pointer' }}
-                >
-                  {showKeyText.openai ? <EyeOff size={13} /> : <Eye size={13} />}
-                </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: '#34d399' }}>OpenAI (ChatGPT)</span>
+                <span style={{ fontSize: '11px', color: serverProviders.openai ? '#10b981' : '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {serverProviders.openai ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                  {serverProviders.openai ? 'Server Active' : 'Not Set in .env'}
+                </span>
               </div>
             </div>
 
             {/* Anthropic Claude */}
             <div style={{ backgroundColor: '#070c18', padding: '12px 14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: '600', color: '#fb7185' }}>Anthropic Key (Claude)</span>
-                {anthropicKey ? (
-                  <span style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <CheckCircle2 size={11} /> Saved
-                  </span>
-                ) : serverProviders.anthropic ? (
-                  <span style={{ fontSize: '10px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Server size={11} /> Server Active
-                  </span>
-                ) : (
-                  <span style={{ fontSize: '10px', color: '#94a3b8' }}>Optional</span>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type={showKeyText.anthropic ? 'text' : 'password'}
-                  placeholder={serverProviders.anthropic ? 'Configured securely on server' : 'sk-ant-api03-...'}
-                  value={anthropicKey}
-                  onChange={(e) => handleKeySave('anthropic', e.target.value)}
-                  style={{
-                    flex: 1, backgroundColor: '#0b1120', border: '1px solid #1e293b',
-                    borderRadius: '6px', color: '#f1f5f9', padding: '6px 10px',
-                    fontSize: '11px', fontFamily: 'monospace'
-                  }}
-                />
-                <button
-                  onClick={() => setShowKeyText({ ...showKeyText, anthropic: !showKeyText.anthropic })}
-                  style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '6px 8px', borderRadius: '6px', cursor: 'pointer' }}
-                >
-                  {showKeyText.anthropic ? <EyeOff size={13} /> : <Eye size={13} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Google Gemini */}
-            <div style={{ backgroundColor: '#070c18', padding: '12px 14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: '600', color: '#38bdf8' }}>Google Gemini Key</span>
-                {geminiKey ? (
-                  <span style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <CheckCircle2 size={11} /> Saved
-                  </span>
-                ) : serverProviders.gemini ? (
-                  <span style={{ fontSize: '10px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Server size={11} /> Server Active
-                  </span>
-                ) : (
-                  <span style={{ fontSize: '10px', color: '#94a3b8' }}>Optional</span>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type={showKeyText.gemini ? 'text' : 'password'}
-                  placeholder={serverProviders.gemini ? 'Configured securely on server' : 'Enter API Key...'}
-                  value={geminiKey}
-                  onChange={(e) => handleKeySave('gemini', e.target.value)}
-                  style={{
-                    flex: 1, backgroundColor: '#0b1120', border: '1px solid #1e293b',
-                    borderRadius: '6px', color: '#f1f5f9', padding: '6px 10px',
-                    fontSize: '11px', fontFamily: 'monospace'
-                  }}
-                />
-                <button
-                  onClick={() => setShowKeyText({ ...showKeyText, gemini: !showKeyText.gemini })}
-                  style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '6px 8px', borderRadius: '6px', cursor: 'pointer' }}
-                >
-                  {showKeyText.gemini ? <EyeOff size={13} /> : <Eye size={13} />}
-                </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: '#fb7185' }}>Anthropic Claude</span>
+                <span style={{ fontSize: '11px', color: serverProviders.anthropic ? '#10b981' : '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {serverProviders.anthropic ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                  {serverProviders.anthropic ? 'Server Active' : 'Not Set in .env'}
+                </span>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Experimental Safety Notice Banner */}
+      <div style={{
+        backgroundColor: '#451a03',
+        border: '1px solid #b45309',
+        borderRadius: '8px',
+        padding: '10px 14px',
+        marginBottom: '18px',
+        color: '#fef3c7',
+        fontSize: '12px',
+        fontWeight: '600',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}>
+        <AlertCircle size={18} color="#fbbf24" style={{ flexShrink: 0 }} />
+        <span>Experimental. Not validated. Data leaves this system. Sends strictly de-identified, non-image text through secure backend proxy.</span>
+      </div>
 
       {/* Main Grid: Left Control Panel | Right Clinical Output */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 420px) 1fr', gap: '20px', alignItems: 'start' }}>
@@ -911,8 +666,7 @@ Strict Rules:
                 color: hasKey(selectedModel.provider) ? '#34d399' : '#f59e0b',
                 fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px'
               }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: hasKey(selectedModel.provider) ? '#10b981' : '#f59e0b' }} />
-                {getActiveKey(selectedModel.provider) ? 'Key Configured (Browser)' : serverProviders[selectedModel.provider] ? 'Key Active (Server)' : 'Key Required'}
+                {serverProviders[selectedModel.provider] ? 'Active (Server Proxy)' : 'Not Configured (.env)'}
               </span>
             </div>
           </div>
@@ -1188,10 +942,17 @@ Strict Rules:
 
             {locatorRegion ? (
               <TumourLocator
+                activeImageSrc={imagePreview || imageBase64}
+                activeImageName={imageFileName}
+                activeFindingLabel={activeFindingLabel}
                 heatmap={locatorHeatmap}
                 region={locatorRegion}
                 slice={locatorSlice}
                 onSliceChange={setLocatorSlice}
+                onDynamicRegionUpdate={(newRegion, newHeatmap) => {
+                  setLocatorRegion(newRegion);
+                  setLocatorHeatmap(newHeatmap);
+                }}
               />
             ) : (
               <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>

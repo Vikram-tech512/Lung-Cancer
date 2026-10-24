@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ThemeProvider } from './context/ThemeContext';
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -14,7 +15,6 @@ import { AdminPage } from './pages/AdminPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { RadiologistReviewPage } from './pages/RadiologistReviewPage';
 import { ResearchDashboardPage } from './pages/ResearchDashboardPage';
-
 import { ClinicalDisclaimerBanner } from './components/ClinicalDisclaimerBanner';
 
 export const App: React.FC = () => {
@@ -67,13 +67,22 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#060911' }}>
-      <Navbar currentRoute={currentRoute} navigate={navigate} />
-      <main style={{ flex: 1 }}>
-        {renderPage()}
-      </main>
-      <ClinicalDisclaimerBanner />
-    </div>
+    <ThemeProvider>
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: 'var(--bg-main)',
+          color: 'var(--text-main)',
+          transition: 'background-color 0.3s ease, color 0.3s ease',
+        }}
+      >
+        <Navbar currentRoute={currentRoute} navigate={navigate} />
+        <main style={{ flex: 1 }}>{renderPage()}</main>
+        <ClinicalDisclaimerBanner />
+      </div>
+    </ThemeProvider>
   );
 };
 

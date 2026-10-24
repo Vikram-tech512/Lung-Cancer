@@ -49,7 +49,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Lung Cancer AI Platform Backend")
     parser.add_argument("--reload", action="store_true", help="Enable hot reload")
-    listen_port = int(os.environ.get("X_ZOHO_CATALYST_LISTEN_PORT", os.environ.get("PORT", 8000)))
+    listen_port = int(os.environ.get("PORT", 8000))
     parser.add_argument("--port", type=int, default=listen_port, help="Port to bind")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind")
     args, _ = parser.parse_known_args()

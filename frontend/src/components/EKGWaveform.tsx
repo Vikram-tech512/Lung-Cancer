@@ -57,6 +57,17 @@ export const EKGWaveform: React.FC<EKGWaveformProps> = ({
     return res;
   }, [imageProfile, verdictClass, area]);
 
+  // Robust helper to guarantee valid color formats for HTML5 Canvas (CSS var() strings throw in addColorStop)
+  const strokeColor = React.useMemo(() => {
+    if (!color) return verdictClass === 'MALIGNANT' ? '#f43f5e' : '#10b981';
+    if (color.startsWith('#') || color.startsWith('rgb')) return color;
+    if (color.includes('rose') || color.includes('red') || color.includes('malig')) return '#f43f5e';
+    if (color.includes('emerald') || color.includes('green') || color.includes('benign')) return '#10b981';
+    if (color.includes('cyan') || color.includes('blue')) return '#06b6d4';
+    if (color.includes('purple') || color.includes('violet')) return '#a855f7';
+    return verdictClass === 'MALIGNANT' ? '#f43f5e' : '#10b981';
+  }, [color, verdictClass]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -76,47 +87,114 @@ export const EKGWaveform: React.FC<EKGWaveformProps> = ({
     const render = () => {
       if (!running) return;
 
-      sweepRef.current = (sweepRef.current + speed) % width;
-      const sweepX = sweepRef.current;
-      const phase = sweepX / width;
+      try {
+        sweepRef.current = (sweepRef.current + speed) % width;
+        const sweepX = sweepRef.current;
+        const phase = sweepX / width;
 
-      // Broadcast phase to parent for synchronized CT canvas laser line
-      if (onSweepPhase) {
-        onSweepPhase(phase);
-      }
+        // Broadcast phase to parent for synchronized CT canvas laser line
+        if (onSweepPhase) {
+          onSweepPhase(phase);
+        }
 
-      ctx.clearRect(0, 0, width, h);
+        ctx.clearRect(0, 0, width, h);
 
-      // 1. Telemetry Medical Grid
-      ctx.strokeStyle = 'rgba(30, 41, 59, 0.55)';
-      ctx.lineWidth = 0.7;
-      ctx.setLineDash([2, 4]);
+        // 1. Telemetry Medical Grid
+        ctx.strokeStyle = 'rgba(30, 41, 59, 0.55)';
+        ctx.lineWidth = 0.7;
+        ctx.setLineDash([2, 4]);
 
-      // Baseline & tolerance guide levels
-      ctx.beginPath();
-      ctx.moveTo(0, h * 0.82);
-      ctx.lineTo(width, h * 0.82); // Parenchyma baseline
-      ctx.moveTo(0, h * 0.22);
-      ctx.lineTo(width, h * 0.22); // Target nodule peak threshold
-      ctx.stroke();
-
-      // Vertical interval ticks
-      for (let gx = 0; gx < width; gx += 35) {
+        // Baseline & tolerance guide levels
         ctx.beginPath();
-        ctx.moveTo(gx, 0);
-        ctx.lineTo(gx, h);
+        ctx.moveTo(0, h * 0.82);
+        ctx.lineTo(width, h * 0.82); // Parenchyma baseline
+        ctx.moveTo(0, h * 0.22);
+        ctx.lineTo(width, h * 0.22); // Target nodule peak threshold
         ctx.stroke();
-      }
-      ctx.setLineDash([]);
 
-      const ptsCount = resolvedProfile.length;
-      const numSamples = 120;
-      const dx = width / numSamples;
+        // Vertical interval ticks
+        for (let gx = 0; gx < width; gx += 35) {
+          ctx.beginPath();
+          ctx.moveTo(gx, 0);
+          ctx.lineTo(gx, h);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
 
-      // 2. Tolerance Envelope Band (Shaded area between Upper and Lower tolerance bounds)
-      if (viewMode === 'TRANSECT' || viewMode === 'ENVELOPE') {
+        const ptsCount = resolvedProfile.length;
+        const numSamples = 120;
+        const dx = width / numSamples;
+
+        // 2. Tolerance Envelope Band (Shaded area between Upper and Lower tolerance bounds)
+        if (viewMode === 'TRANSECT' || viewMode === 'ENVELOPE') {
+          ctx.beginPath();
+          // Top boundary (+tol)
+          for (let i = 0; i <= numSamples; i++) {
+            const x = i * dx;
+            const sampleIdx = (x / width) * (ptsCount - 1);
+            const baseI = Math.floor(sampleIdx);
+            const frac = sampleIdx - baseI;
+            const v1 = resolvedProfile[baseI] || 0;
+            const v2 = resolvedProfile[Math.min(ptsCount - 1, baseI + 1)] || 0;
+            const val = v1 + (v2 - v1) * frac;
+            const upperVal = Math.min(1.0, val * (1 + tolPercent));
+            const y = h * 0.88 - upperVal * (h * 0.75);
+
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+
+          // Bottom boundary (-tol) in reverse
+          for (let i = numSamples; i >= 0; i--) {
+            const x = i * dx;
+            const sampleIdx = (x / width) * (ptsCount - 1);
+            const baseI = Math.floor(sampleIdx);
+            const frac = sampleIdx - baseI;
+            const v1 = resolvedProfile[baseI] || 0;
+            const v2 = resolvedProfile[Math.min(ptsCount - 1, baseI + 1)] || 0;
+            const val = v1 + (v2 - v1) * frac;
+            const lowerVal = Math.max(0.02, val * (1 - tolPercent));
+            const y = h * 0.88 - lowerVal * (h * 0.75);
+            ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+          ctx.fillStyle = isMalignant ? 'rgba(244, 63, 94, 0.14)' : 'rgba(16, 185, 129, 0.14)';
+          ctx.fill();
+
+          // Upper & Lower Tolerance boundary dashed strokes
+          ctx.strokeStyle = isMalignant ? 'rgba(244, 63, 94, 0.4)' : 'rgba(16, 185, 129, 0.4)';
+          ctx.lineWidth = 0.8;
+          ctx.setLineDash([2, 3]);
+          ctx.beginPath();
+          for (let i = 0; i <= numSamples; i++) {
+            const x = i * dx;
+            const sampleIdx = (x / width) * (ptsCount - 1);
+            const baseI = Math.floor(sampleIdx);
+            const frac = sampleIdx - baseI;
+            const v1 = resolvedProfile[baseI] || 0;
+            const v2 = resolvedProfile[Math.min(ptsCount - 1, baseI + 1)] || 0;
+            const val = v1 + (v2 - v1) * frac;
+            const upperVal = Math.min(1.0, val * (1 + tolPercent));
+            const y = h * 0.88 - upperVal * (h * 0.75);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // 3. Main Measured Attenuation Signal Profile
         ctx.beginPath();
-        // Top boundary (+tol)
+        const grad = ctx.createLinearGradient(0, 0, width, 0);
+        grad.addColorStop(0, strokeColor);
+        grad.addColorStop(Math.min(1, Math.max(0, sweepX / width)), '#ffffff');
+        grad.addColorStop(1, strokeColor);
+
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 2.2;
+        ctx.shadowColor = strokeColor;
+        ctx.shadowBlur = 8;
+
         for (let i = 0; i <= numSamples; i++) {
           const x = i * dx;
           const sampleIdx = (x / width) * (ptsCount - 1);
@@ -125,116 +203,52 @@ export const EKGWaveform: React.FC<EKGWaveformProps> = ({
           const v1 = resolvedProfile[baseI] || 0;
           const v2 = resolvedProfile[Math.min(ptsCount - 1, baseI + 1)] || 0;
           const val = v1 + (v2 - v1) * frac;
-          const upperVal = Math.min(1.0, val * (1 + tolPercent));
-          const y = h * 0.88 - upperVal * (h * 0.75);
+          const y = h * 0.88 - val * (h * 0.75);
 
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
 
-        // Bottom boundary (-tol) in reverse
-        for (let i = numSamples; i >= 0; i--) {
-          const x = i * dx;
-          const sampleIdx = (x / width) * (ptsCount - 1);
-          const baseI = Math.floor(sampleIdx);
-          const frac = sampleIdx - baseI;
-          const v1 = resolvedProfile[baseI] || 0;
-          const v2 = resolvedProfile[Math.min(ptsCount - 1, baseI + 1)] || 0;
-          const val = v1 + (v2 - v1) * frac;
-          const lowerVal = Math.max(0.02, val * (1 - tolPercent));
-          const y = h * 0.88 - lowerVal * (h * 0.75);
-          ctx.lineTo(x, y);
-        }
+        // 4. Synchronized Telemetry Scanner Head
+        const sweepSampleIdx = (sweepX / width) * (ptsCount - 1);
+        const sweepBaseI = Math.floor(sweepSampleIdx);
+        const sweepFrac = sweepSampleIdx - sweepBaseI;
+        const sv1 = resolvedProfile[sweepBaseI] || 0;
+        const sv2 = resolvedProfile[Math.min(ptsCount - 1, sweepBaseI + 1)] || 0;
+        const sweepVal = sv1 + (sv2 - sv1) * sweepFrac;
+        const sweepY = h * 0.88 - sweepVal * (h * 0.75);
 
-        ctx.closePath();
-        ctx.fillStyle = isMalignant ? 'rgba(244, 63, 94, 0.14)' : 'rgba(16, 185, 129, 0.14)';
+        // Vertical Laser Scanner Line
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sweepX, 0);
+        ctx.lineTo(sweepX, h);
+        ctx.stroke();
+
+        // Scanner Head Core Dot
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(sweepX, sweepY, 3.5, 0, Math.PI * 2);
         ctx.fill();
 
-        // Upper & Lower Tolerance boundary dashed strokes
-        ctx.strokeStyle = isMalignant ? 'rgba(244, 63, 94, 0.4)' : 'rgba(16, 185, 129, 0.4)';
-        ctx.lineWidth = 0.8;
-        ctx.setLineDash([2, 3]);
+        // Outer Pulse Halo
+        ctx.fillStyle = strokeColor;
+        ctx.shadowColor = strokeColor;
+        ctx.shadowBlur = 14;
         ctx.beginPath();
-        for (let i = 0; i <= numSamples; i++) {
-          const x = i * dx;
-          const sampleIdx = (x / width) * (ptsCount - 1);
-          const baseI = Math.floor(sampleIdx);
-          const frac = sampleIdx - baseI;
-          const v1 = resolvedProfile[baseI] || 0;
-          const v2 = resolvedProfile[Math.min(ptsCount - 1, baseI + 1)] || 0;
-          const val = v1 + (v2 - v1) * frac;
-          const upperVal = Math.min(1.0, val * (1 + tolPercent));
-          const y = h * 0.88 - upperVal * (h * 0.75);
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.arc(sweepX, sweepY, 6.5, 0, Math.PI * 2);
+        ctx.globalAlpha = 0.45;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.shadowBlur = 0;
+      } catch (err) {
+        console.error('EKG render frame error:', err);
       }
-
-      // 3. Main Measured Attenuation Signal Profile
-      ctx.beginPath();
-      const grad = ctx.createLinearGradient(0, 0, width, 0);
-      grad.addColorStop(0, color);
-      grad.addColorStop(Math.min(1, Math.max(0, sweepX / width)), '#ffffff');
-      grad.addColorStop(1, color);
-
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 2.2;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 8;
-
-      for (let i = 0; i <= numSamples; i++) {
-        const x = i * dx;
-        const sampleIdx = (x / width) * (ptsCount - 1);
-        const baseI = Math.floor(sampleIdx);
-        const frac = sampleIdx - baseI;
-        const v1 = resolvedProfile[baseI] || 0;
-        const v2 = resolvedProfile[Math.min(ptsCount - 1, baseI + 1)] || 0;
-        const val = v1 + (v2 - v1) * frac;
-        const y = h * 0.88 - val * (h * 0.75);
-
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // 4. Synchronized Telemetry Scanner Head
-      const sweepSampleIdx = (sweepX / width) * (ptsCount - 1);
-      const sweepBaseI = Math.floor(sweepSampleIdx);
-      const sweepFrac = sweepSampleIdx - sweepBaseI;
-      const sv1 = resolvedProfile[sweepBaseI] || 0;
-      const sv2 = resolvedProfile[Math.min(ptsCount - 1, sweepBaseI + 1)] || 0;
-      const sweepVal = sv1 + (sv2 - sv1) * sweepFrac;
-      const sweepY = h * 0.88 - sweepVal * (h * 0.75);
-
-      // Vertical Laser Scanner Line
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(sweepX, 0);
-      ctx.lineTo(sweepX, h);
-      ctx.stroke();
-
-      // Scanner Head Core Dot
-      ctx.fillStyle = '#ffffff';
-      ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.arc(sweepX, sweepY, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Outer Pulse Halo
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 14;
-      ctx.beginPath();
-      ctx.arc(sweepX, sweepY, 6.5, 0, Math.PI * 2);
-      ctx.globalAlpha = 0.45;
-      ctx.fill();
-      ctx.globalAlpha = 1.0;
-      ctx.shadowBlur = 0;
 
       animRef.current = requestAnimationFrame(render);
     };

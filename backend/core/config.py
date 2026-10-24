@@ -8,6 +8,33 @@ Includes zero-dependency fallback for host environments.
 
 from __future__ import annotations
 import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    # Search for .env starting from current directory up to 3 levels
+    cur = Path(__file__).resolve().parent
+    for _ in range(4):
+        candidate = cur / ".env"
+        if candidate.exists():
+            load_dotenv(candidate, override=False)
+            break
+        cur = cur.parent
+except ImportError:
+    pass
+
+def _resolve_secret_key() -> str:
+    key = os.environ.get("SECRET_KEY", "").strip()
+    if not key:
+        env = os.environ.get("ENV", "production").lower()
+        if env in ("production", "prod"):
+            raise RuntimeError(
+                "CRITICAL SECURITY CONFIGURATION ERROR: 'SECRET_KEY' environment variable "
+                "is missing or empty in production mode. Refusing to start."
+            )
+        # Development / test mode fallback with audible warning
+        return "insecure-dev-key-please-set-SECRET_KEY-in-environment"
+    return key
 
 try:
     from pydantic_settings import BaseSettings
@@ -17,7 +44,7 @@ try:
         PUBLIC_DOMAIN: str = os.getenv("PUBLIC_DOMAIN", "lungcancerai.example.com")
         API_V1_STR: str = "/api"
         ENV: str = os.getenv("ENV", "production")
-        SECRET_KEY: str = os.getenv("SECRET_KEY", "super-secret-production-key-lung-cancer-ai-2026")
+        SECRET_KEY: str = _resolve_secret_key()
         ALGORITHM: str = "HS256"
         ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
         DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///data/lung_cancer_ai.db")
@@ -40,7 +67,7 @@ except ImportError:
         PUBLIC_DOMAIN: str = os.getenv("PUBLIC_DOMAIN", "lungcancerai.example.com")
         API_V1_STR: str = "/api"
         ENV: str = os.getenv("ENV", "production")
-        SECRET_KEY: str = os.getenv("SECRET_KEY", "super-secret-production-key-lung-cancer-ai-2026")
+        SECRET_KEY: str = _resolve_secret_key()
         ALGORITHM: str = "HS256"
         ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
         DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///data/lung_cancer_ai.db")

@@ -20,20 +20,22 @@
   "3D ResNet-50": [
     {
       "model_name": "3D ResNet-50",
-      "version": "v1.0.0",
-      "stage": "NOT_TRAINED",
+      "version": "v1.1.0-exp",
+      "stage": "EXPERIMENTAL",
       "architecture": "3D ResNet-50 Bottleneck + MC Dropout (T=30)",
       "input_dimension": "(1, 64, 64, 64)",
       "metrics": {
-        "auc_roc": 0.0,
-        "sensitivity": 0.0,
+        "auc_roc": 0.6471,
+        "sensitivity": 1.0,
         "specificity": 0.0,
-        "ece": 0.0
+        "ece": 0.532,
+        "brier_score": 0.4088,
+        "optimal_temperature": 3.3978
       },
-      "created_at": "2026-09-25 13:34:53",
-      "checkpoint_path": null,
-      "patient_split_hash": null,
-      "notes": "Primary 3D volumetric classifier"
+      "created_at": "2026-10-24 09:06:51",
+      "checkpoint_path": "checkpoints_3d/resnet3d_luna16_best.pt",
+      "patient_split_hash": "42_LUNA16_resnet3d",
+      "notes": "EXPERIMENTAL 1-epoch, 10-scan smoke test on LUNA16 subset0. Awaiting full 10-fold LUNA16 cross-validation before STAGING promotion."
     }
   ],
   "3D Swin Transformer": [

@@ -7,10 +7,10 @@ export const ClinicalDisclaimerBanner: React.FC<{ compact?: boolean }> = ({ comp
   return (
     <div
       style={{
-        backgroundColor: '#0a0f1d',
-        borderTop: '1px solid #1c2638',
-        padding: compact ? '6px 16px' : '10px 24px',
-        color: '#f59e0b',
+        backgroundColor: 'var(--bg-surface)',
+        borderTop: '1px solid var(--border)',
+        padding: compact ? '6px 16px' : '8px 24px',
+        color: 'var(--accent-amber)',
         fontSize: compact ? '11px' : '12px',
         display: 'flex',
         alignItems: 'center',
@@ -18,7 +18,8 @@ export const ClinicalDisclaimerBanner: React.FC<{ compact?: boolean }> = ({ comp
         gap: '8px',
         textAlign: 'center',
         fontWeight: 500,
-        letterSpacing: '0.01em'
+        letterSpacing: '0.01em',
+        transition: 'background-color 0.3s ease, border-color 0.3s ease',
       }}
     >
       <span style={{ fontSize: '13px' }}>⚠️</span>

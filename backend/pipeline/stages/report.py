@@ -86,7 +86,7 @@ class ReportStage:
         unc_out  = ctx.get(PipelineStage.UNCERTAINTY) or {}
         xai_out  = ctx.get(PipelineStage.XAI) or {}
 
-        # Derive largest nodule diameter
+        # Derive largest nodule diameter and candidate measurements
         candidates = det_out.get("candidates", [])
         largest_nodule_mm = (
             max((c["diameter_mm"] for c in candidates), default=None)
@@ -94,7 +94,9 @@ class ReportStage:
         )
 
         mal_prob = ens_out.get("malignant_prob", cls_out.get("consensus_prob", 0.5))
-        lung_rads_cat, recommendation = _lung_rads(mal_prob, largest_nodule_mm)
+        # Clinical safety: Lung-RADS category must NEVER be auto-assigned by the AI
+        lung_rads_cat = None
+        recommendation = "For radiologist review. Lung-RADS category to be assigned manually by reviewing radiologist."
 
         # Top-10 radiomics features
         top_radiomics = self._top_radiomics(rad_out)
@@ -131,16 +133,16 @@ class ReportStage:
                 },
                 "3_classification": {
                     model: {
-                        "malignant_prob": res.get("malignant_prob"),
-                        "label": "malignant" if res.get("malignant_prob", 0) > 0.5 else "benign",
+                        "nodule_prob": res.get("malignant_prob"),
+                        "label": "For radiologist review",
                     }
                     for model, res in cls_out.items()
                     if isinstance(res, dict) and "malignant_prob" in res
                 },
                 "4_ensemble": {
                     "strategy":        ens_out.get("strategy"),
-                    "malignant_prob":  ens_out.get("malignant_prob"),
-                    "label":           ens_out.get("label"),
+                    "nodule_prob":     ens_out.get("malignant_prob"),
+                    "label":           "For radiologist review",
                     "confidence_band": ens_out.get("confidence_band"),
                 },
                 "5_uncertainty": {
@@ -159,8 +161,10 @@ class ReportStage:
                 "7_xai": xai_out.get("summary", {}),
             },
 
-            "lung_rads": lung_rads_cat,
+            "lung_rads": None,
+            "lung_rads_assigned_by_radiologist": None,
             "recommendation": recommendation,
+            "disclaimer": "Research use only. Not a medical device. Not for clinical decisions."
         }
 
         # Persist to disk
@@ -168,7 +172,7 @@ class ReportStage:
         log.info(
             "report_generated",
             case_id=ctx.case_id,
-            lung_rads=lung_rads_cat,
+            lung_rads=None,
             recommendation=recommendation,
         )
         return report

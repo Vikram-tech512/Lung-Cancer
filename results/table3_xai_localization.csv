@@ -1,0 +1,2 @@
+xai_method,pointing_game_accuracy,lesion_mask_dice,mean_centroid_error_mm,disclaimer
+3D Grad-CAM (Target: Conv3 Layer4),0.0,0.0,25.59,MODEL ATTRIBUTION — NOT CLINICAL EVIDENCE

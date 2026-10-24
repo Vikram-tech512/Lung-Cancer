@@ -36,6 +36,7 @@ interface CaseItem {
   cyRel: number;
   radiusRel?: number;
   isAutoDetected?: boolean;
+  hasLesion?: boolean;
 }
 
 interface DetectedLesion {
@@ -169,8 +170,10 @@ function computeInferenceForFile(file: { name: string; size: number }, imageUrl?
   let crosshairLabel = '2+';
   let cxRel = 0.50;
   let cyRel = 0.50;
+  let hasLesion = false;
 
   if (name.includes('large_cell_002')) {
+    hasLesion = true;
     verdictClass = 'MALIGNANT';
     verdictProb = 92.4;
     uncertainty = 'LOW';
@@ -265,13 +268,14 @@ function computeInferenceForFile(file: { name: string; size: number }, imageUrl?
     densityPercent = Number(((area / 50000) * 100).toFixed(1));
     compactness = isMalignant ? Number((0.39 + v2 * 0.14).toFixed(2)) : Number((0.85 + v2 * 0.10).toFixed(2));
     lobularity = isMalignant ? Number((0.37 + v1 * 0.16).toFixed(2)) : Number((0.06 + v1 * 0.07).toFixed(2));
-    cxRel = 0.35 + v1 * 0.30;
-    cyRel = 0.38 + v2 * 0.26;
-    anatomicMark = cxRel < 0.5 ? 'RT 1' : 'LT 2';
-    crosshairLabel = isMalignant ? '2+' : '1+';
+    hasLesion = false;
+    anatomicMark = 'UNLOCALIZED';
+    crosshairLabel = 'N/A';
+    cxRel = 0.5;
+    cyRel = 0.5;
   }
 
-  centroid = `${Math.round(cxRel * 540)}, ${Math.round(cyRel * 480)}`;
+  centroid = hasLesion ? `${Math.round(cxRel * 540)}, ${Math.round(cyRel * 480)}` : 'Localization unavailable';
   const latencyMs = Math.round(3100 + v1 * 1600);
   const pid = `#00${Math.abs(hash % 900000) + 100000}`;
 
@@ -302,7 +306,8 @@ function computeInferenceForFile(file: { name: string; size: number }, imageUrl?
     imageUrl,
     cxRel,
     cyRel,
-    isAutoDetected: true
+    isAutoDetected: hasLesion,
+    hasLesion
   };
 }
 
@@ -329,7 +334,8 @@ const PRESET_CASES: CaseItem[] = [
     imageUrl: '/samples/malignant_sample.png',
     cxRel: 0.52,
     cyRel: 0.52,
-    isAutoDetected: true
+    isAutoDetected: true,
+    hasLesion: true
   },
   {
     id: 'case-benign',
@@ -353,7 +359,8 @@ const PRESET_CASES: CaseItem[] = [
     imageUrl: '/samples/benign_sample.png',
     cxRel: 0.754,
     cyRel: 0.631,
-    isAutoDetected: true
+    isAutoDetected: true,
+    hasLesion: true
   }
 ];
 
@@ -403,11 +410,16 @@ export const CTWorkstationPage: React.FC<CTWorkstationProps> = ({ studyId, navig
       // Perform automated computer vision lesion localization on the loaded image
       const detected = detectTumorInImage(img);
       if (detected) {
+        newCase.hasLesion = true;
         newCase.cxRel = detected.cxRel;
         newCase.cyRel = detected.cyRel;
         newCase.anatomicMark = detected.anatomicMark;
         newCase.centroid = `${Math.round(detected.cxRel * 540)}, ${Math.round(detected.cyRel * 480)}`;
         newCase.area = detected.areaPixels;
+      } else {
+        newCase.hasLesion = false;
+        newCase.anatomicMark = 'UNLOCALIZED';
+        newCase.centroid = 'Localization unavailable';
       }
 
       setCases(prev => [newCase, ...prev]);
@@ -528,6 +540,30 @@ export const CTWorkstationPage: React.FC<CTWorkstationProps> = ({ studyId, navig
       }
 
       // 2. Exact Tumor Location Coordinates
+      if (activeCase.hasLesion === false || activeCase.anatomicMark === 'UNLOCALIZED') {
+        ctx.save();
+        const tagText = '🎯 Localization unavailable (No focal nodule identified)';
+        ctx.font = 'bold 11px JetBrains Mono, monospace';
+        const textMetrics = ctx.measureText(tagText);
+        const pillW = textMetrics.width + 18;
+        const pillH = 24;
+        ctx.fillStyle = 'rgba(8, 12, 22, 0.92)';
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        if (typeof (ctx as any).roundRect === 'function') {
+          (ctx as any).roundRect(14, 14, pillW, pillH, 4);
+        } else {
+          ctx.rect(14, 14, pillW, pillH);
+        }
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(tagText, 23, 30);
+        ctx.restore();
+        return;
+      }
+
       const alpha = opacity / 100;
       const isMalignant = activeCase.verdictClass === 'MALIGNANT';
       const cx = (activeCase.cxRel !== undefined ? activeCase.cxRel : 0.52) * w;
@@ -729,7 +765,11 @@ export const CTWorkstationPage: React.FC<CTWorkstationProps> = ({ studyId, navig
             gap: '6px'
           }}>
             <Target size={13} color="#06b6d4" />
-            <span>FOCAL LESION: [X: {currentPixelX}, Y: {currentPixelY}] · {activeCase.anatomicMark}</span>
+            <span>
+              {activeCase.hasLesion === false || activeCase.anatomicMark === 'UNLOCALIZED'
+                ? 'FOCAL LESION: [Unavailable] · Localization not identified'
+                : `FOCAL LESION: [X: ${currentPixelX}, Y: ${currentPixelY}] · ${activeCase.anatomicMark}`}
+            </span>
           </div>
 
           {isProcessing && (

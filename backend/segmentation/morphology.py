@@ -185,25 +185,21 @@ def analyze_nodule_morphology(
     cx_norm = (M["m10"] / (M["m00"] + 1e-8)) / w
     cy_norm = (M["m01"] / (M["m00"] + 1e-8)) / h
 
-    lobes = {"RUL": "Clear", "RML": "Clear", "RLL": "Clear", "LUL": "Clear", "Lingula": "Clear", "LLL": "Clear"}
-    primary_lobe = "RUL"
-    # Radiological convention: Left side of image is Patient Right
-    if cx_norm < 0.50:
-        if cy_norm < 0.38:
-            primary_lobe = "RUL"
-        elif cy_norm < 0.64:
-            primary_lobe = "RML"
-        else:
-            primary_lobe = "RLL"
-    else:
-        if cy_norm < 0.42:
-            primary_lobe = "LUL"
-        elif cy_norm < 0.62:
-            primary_lobe = "Lingula"
-        else:
-            primary_lobe = "LLL"
-
-    lobes[primary_lobe] = "Primary" if predicted_class.lower() == "malignant" else "Nodule"
+    # In 2D axial slices, determining 3D lobe (RUL/RML/RLL) without volumetric Z series
+    # is anatomically unverifiable. Only laterality (hemithorax) is observable.
+    is_patient_right = cx_norm < 0.50
+    hemi = "Right Hemithorax" if is_patient_right else "Left Hemithorax"
+    primary_lobe = f"{hemi} (Lobe localization unavailable on 2D slice)"
+    lobes = {
+        "RUL": "Unknown (2D slice)",
+        "RML": "Unknown (2D slice)",
+        "RLL": "Unknown (2D slice)",
+        "LUL": "Unknown (2D slice)",
+        "Lingula": "Unknown (2D slice)",
+        "LLL": "Unknown (2D slice)",
+        "laterality": hemi,
+        "status": "Volumetric CT series required for anatomical lobe segmentation"
+    }
 
     # 8. Dynamic ACR Lung-RADS v2022 Staging Criteria
     is_mal = predicted_class.lower() == "malignant"

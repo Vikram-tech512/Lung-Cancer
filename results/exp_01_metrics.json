@@ -1,0 +1,101 @@
+{
+  "timestamp": "2026-10-24 09:06:51",
+  "dataset": "LUNA16 (Grand Challenge)",
+  "cohort_patients": 10,
+  "cohort_candidates": 234,
+  "test_candidates": 20,
+  "discrimination": {
+    "auc": 0.6471,
+    "auc_95_ci": [
+      0.2632,
+      0.9412
+    ],
+    "accuracy_raw": 0.15,
+    "accuracy_cal": 0.15,
+    "sensitivity_raw": 1.0,
+    "specificity_raw": 0.0
+  },
+  "calibration": {
+    "optimal_temperature": 3.3978,
+    "ece_uncalibrated": 0.7771,
+    "ece_calibrated": 0.532,
+    "ece_reduction_percent": 31.5,
+    "mce_uncalibrated": 0.8872,
+    "mce_calibrated": 0.5482,
+    "brier_uncalibrated": 0.7294,
+    "brier_calibrated": 0.4088
+  },
+  "uncertainty_mc_dropout": {
+    "passes": 30,
+    "tier_counts": {
+      "Low": 6,
+      "Moderate": 14,
+      "High": 0
+    },
+    "tier_accuracy": {
+      "Low": 0.1667,
+      "Moderate": 0.1429,
+      "High": 0.0
+    }
+  },
+  "robustness": {
+    "perturbation_functions_count": 5,
+    "perturbation_conditions_count": 6,
+    "conditions": [
+      {
+        "perturbation_condition": "baseline",
+      "mean_abs_delta_raw": 0.0,
+      "mean_abs_delta_calibrated": 0.0,
+      "delta_reduction": 0.0,
+      "vulnerability_flags": 0
+    },
+    {
+      "perturbation_condition": "hu_shift_+50",
+      "mean_abs_delta_raw": 0.0752,
+      "mean_abs_delta_calibrated": 0.0794,
+      "delta_reduction": -0.0042,
+      "vulnerability_flags": 1
+    },
+    {
+      "perturbation_condition": "hu_shift_-50",
+      "mean_abs_delta_raw": 0.0716,
+      "mean_abs_delta_calibrated": 0.0585,
+      "delta_reduction": 0.0131,
+      "vulnerability_flags": 1
+    },
+    {
+      "perturbation_condition": "low_dose_noise",
+      "mean_abs_delta_raw": 0.0591,
+      "mean_abs_delta_calibrated": 0.0872,
+      "delta_reduction": -0.0282,
+      "vulnerability_flags": 1
+    },
+    {
+      "perturbation_condition": "slice_thickness_2.5mm",
+      "mean_abs_delta_raw": 0.0746,
+      "mean_abs_delta_calibrated": 0.0722,
+      "delta_reduction": 0.0024,
+      "vulnerability_flags": 1
+    },
+    {
+      "perturbation_condition": "ring_artifact",
+      "mean_abs_delta_raw": 0.0669,
+      "mean_abs_delta_calibrated": 0.0592,
+      "delta_reduction": 0.0077,
+      "vulnerability_flags": 0
+    },
+    {
+      "perturbation_condition": "respiratory_motion",
+      "mean_abs_delta_raw": 0.0637,
+      "mean_abs_delta_calibrated": 0.0615,
+      "delta_reduction": 0.0022,
+      "vulnerability_flags": 0
+    }
+  ]
+},
+"xai_localization": {
+    "pointing_game_accuracy": 0.0,
+    "mean_mask_dice": 0.0,
+    "mean_centroid_error_mm": 25.59
+  }
+}

@@ -3,7 +3,7 @@ backend/reports/generator.py
 ============================
 Automated clinical PDF report generator.
 Compiles study metadata, DICOM QC audit, 3D lesion morphometry,
-multimodal ensemble verdicts, and regulatory disclaimers.
+multimodal ensemble model findings, and regulatory disclaimers.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ class ReportGenerator:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def generate_pdf(self, study_data: Dict[str, Any], verdict_data: Dict[str, Any], morph_data: Dict[str, Any]) -> str:
+    def generate_pdf(self, study_data: Dict[str, Any], findings_data: Dict[str, Any], morph_data: Dict[str, Any]) -> str:
         study_id = study_data.get("study_id", "UNKNOWN")
         report_filename = f"Report_{study_id}_{int(datetime.datetime.utcnow().timestamp())}.pdf"
         output_path = self.output_dir / report_filename
@@ -74,9 +74,9 @@ class ReportGenerator:
 
             # Regulatory Disclaimer Box
             story.append(Paragraph(
-                "<b>MANDATORY NOTICE: RESEARCH USE ONLY — NOT AN APPROVED CLINICAL DIAGNOSTIC DEVICE.</b> "
-                "This report provides algorithmic predictions and quantitative morphometry for decision-support and academic study. "
-                "Definitive diagnosis requires qualified board-certified physician consultation.",
+                "<b>MANDATORY NOTICE: RESEARCH USE ONLY — NOT A MEDICAL DEVICE.</b> "
+                "This report provides research model outputs and quantitative morphometry for radiologist review and academic benchmarking. "
+                "Not for clinical decisions. Definitive assessment requires qualified board-certified radiological evaluation.",
                 disclaimer_style
             ))
             story.append(Spacer(1, 14))
@@ -100,18 +100,18 @@ class ReportGenerator:
             story.append(t1)
             story.append(Spacer(1, 10))
 
-            # Consensus Verdict
-            story.append(Paragraph("2. Multimodal Consensus Verdict", section_heading))
-            verdict_val = verdict_data.get("ensemble_verdict", "INDETERMINATE")
-            prob_val = verdict_data.get("ensemble_probability", 0.5) * 100
+            # Model Findings Summary
+            story.append(Paragraph("2. Model Findings & Attributions (For Radiologist Review)", section_heading))
+            findings_val = findings_data.get("findings_summary", findings_data.get("ensemble_verdict", "For radiologist review"))
+            prob_val = findings_data.get("ensemble_probability", 0.5) * 100
             
-            verdict_table_data = [
-                ["Consensus Verdict", verdict_val],
-                ["Malignancy Probability", f"{prob_val:.1f}% (95% CI: [{verdict_data.get('ci_lower', 0)*100:.1f}% - {verdict_data.get('ci_upper', 1)*100:.1f}%])"],
-                ["Disagreement Entropy", f"{verdict_data.get('disagreement_entropy', 0.0):.3f}"],
-                ["Active Models Evaluated", "3D ResNet-50, 3D Swin Transformer, HybridViT, Radiomics XGBoost"]
+            findings_table_data = [
+                ["Model Output", findings_val],
+                ["Nodule Probability (Model Output)", f"{prob_val:.1f}% (95% CI: [{findings_data.get('ci_lower', 0)*100:.1f}% - {findings_data.get('ci_upper', 1)*100:.1f}%])"],
+                ["Disagreement Entropy", f"{findings_data.get('disagreement_entropy', 0.0):.3f}"],
+                ["Evaluated Architectures", "3D ResNet-50, 3D Swin Transformer, HybridViT, Radiomics XGBoost"]
             ]
-            t2 = Table(verdict_table_data, colWidths=[160, 380])
+            t2 = Table(findings_table_data, colWidths=[180, 360])
             t2.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f1f5f9')),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
@@ -143,7 +143,7 @@ class ReportGenerator:
 
             # Footer
             story.append(Paragraph(
-                f"Generated on {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC | Engine Version: 2.0.0-production",
+                f"Generated on {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC | Research use only. Not a medical device. Not for clinical decisions.",
                 sub_style
             ))
 
@@ -151,7 +151,7 @@ class ReportGenerator:
         except ImportError:
             # Simple text/HTML fallback if reportlab is not yet installed in host environment
             with open(output_path, "w", encoding="utf-8") as f:
-                f.write(f"LUNG CANCER AI REPORT\nStudy: {study_id}\nVerdict: {verdict_data.get('ensemble_verdict')}\n")
+                f.write(f"LUNG CANCER AI FINDINGS REPORT (RUO)\nStudy: {study_id}\nFindings: {findings_data.get('findings_summary', 'For radiologist review')}\nResearch use only. Not a medical device. Not for clinical decisions.\n")
 
         return str(output_path.as_posix())
 

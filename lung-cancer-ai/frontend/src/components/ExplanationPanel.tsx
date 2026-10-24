@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { X, MapPin, Ruler, Layers, Activity, AlertTriangle } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 interface ExplanationPanelProps {
   noduleData: {
@@ -21,274 +23,296 @@ interface ExplanationPanelProps {
   onClose?: () => void;
 }
 
+type Tab = 'summary' | 'ensemble';
+
+const tabLabels: Record<Tab, string> = {
+  summary: 'Overview',
+  ensemble: 'Model Agreement',
+};
+
 export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({ noduleData, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'summary' | 'attribution' | 'ensemble'>('summary');
-  const [method, setMethod] = useState<'cel_gradcam' | 'integrated_gradients' | 'attention_rollout'>('cel_gradcam');
+  const [activeTab, setActiveTab] = useState<Tab>('summary');
+  const { theme } = useTheme();
+
+  const isDark = theme === 'dark';
+  const risk = noduleData.probability;
+  const isHighRisk = risk > 0.6;
+  const riskColor = isHighRisk ? 'var(--risk-high)' : 'var(--risk-low)';
+  const riskLabel = isHighRisk ? 'High Risk' : 'Low Risk';
+
+  // ── shared styles ────────────────────────────────────────────
+  const panel: React.CSSProperties = {
+    backgroundColor: 'var(--bg-card)',
+    border: '1px solid var(--border)',
+    borderRadius: '12px',
+    overflow: 'hidden',
+    color: 'var(--text-main)',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    boxShadow: 'var(--shadow-elevated)',
+  };
+
+  const header: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '14px 18px',
+    borderBottom: '1px solid var(--border-subtle)',
+    background: isDark
+      ? 'linear-gradient(135deg, rgba(37,99,235,0.08), rgba(14,165,233,0.05))'
+      : 'linear-gradient(135deg, rgba(37,99,235,0.04), rgba(14,165,233,0.02))',
+  };
+
+  const stat: React.CSSProperties = {
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '8px',
+    padding: '12px 14px',
+  };
+
+  const statLabel: React.CSSProperties = {
+    fontSize: '10px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    color: 'var(--text-muted)',
+    marginBottom: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  };
+
+  const statValue: React.CSSProperties = {
+    fontSize: '15px',
+    fontWeight: 700,
+    color: 'var(--text-main)',
+    lineHeight: 1.2,
+  };
+
+  const statSub: React.CSSProperties = {
+    fontSize: '11px',
+    color: 'var(--text-secondary)',
+    marginTop: '2px',
+  };
 
   return (
-    <div style={{
-      backgroundColor: '#0d131f',
-      border: '1px solid #1e293b',
-      borderRadius: '8px',
-      padding: '16px',
-      color: '#e2e8f0',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
-    }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '12px', marginBottom: '14px' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#38bdf8' }} />
-            3D Explainable Decision Support — Nodule #{noduleData.id.slice(-4)}
-          </h3>
-          <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-            Multi-angle volumetric characterization & contrastive model attribution
-          </p>
+    <div style={panel}>
+      {/* ── Header ── */}
+      <div style={header}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px', height: '32px', borderRadius: '8px',
+            background: 'linear-gradient(135deg, var(--primary), var(--accent-cyan))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Activity size={16} color="#fff" />
+          </div>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>
+              Nodule #{noduleData.id.slice(-4)}
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+              {noduleData.location} · Slice {noduleData.slice}
+            </div>
+          </div>
         </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              fontSize: '18px',
-              padding: '4px 8px'
-            }}
-          >
-            ✕
-          </button>
-        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Risk badge */}
+          <span style={{
+            padding: '3px 10px',
+            borderRadius: '20px',
+            fontSize: '11px',
+            fontWeight: 700,
+            background: isHighRisk ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
+            color: riskColor,
+            border: `1px solid ${isHighRisk ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
+          }}>
+            {riskLabel}
+          </span>
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              style={{
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '4px',
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: '1px solid #1e293b' }}>
-        {(['summary', 'attribution', 'ensemble'] as const).map(tab => (
+      {/* ── Tabs ── */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid var(--border-subtle)',
+        padding: '0 18px',
+        gap: '4px',
+      }}>
+        {(Object.keys(tabLabels) as Tab[]).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             style={{
               background: 'none',
               border: 'none',
-              borderBottom: activeTab === tab ? '2px solid #38bdf8' : '2px solid transparent',
-              color: activeTab === tab ? '#38bdf8' : '#64748b',
-              padding: '6px 12px',
-              fontSize: '13px',
-              fontWeight: 500,
+              borderBottom: activeTab === tab ? '2px solid var(--accent-cyan)' : '2px solid transparent',
+              color: activeTab === tab ? 'var(--accent-cyan)' : 'var(--text-muted)',
+              padding: '10px 12px',
+              fontSize: '12px',
+              fontWeight: activeTab === tab ? 700 : 500,
               cursor: 'pointer',
-              textTransform: 'capitalize'
+              transition: 'color 0.15s ease',
             }}
           >
-            {tab === 'summary' ? 'Clinical Overview' : tab === 'attribution' ? 'Feature Attribution' : 'Model Agreement'}
+            {tabLabels[tab]}
           </button>
         ))}
       </div>
 
-      {/* Tab 1: Clinical Overview */}
-      {activeTab === 'summary' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
-            {/* WHERE */}
-            <div style={{ backgroundColor: '#131d2e', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-              <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#38bdf8', fontWeight: 600 }}>Where (Localization)</span>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginTop: '4px' }}>{noduleData.location}</div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Axial Slice: #{noduleData.slice} • Mid-thoracic</div>
-            </div>
+      {/* ── Content ── */}
+      <div style={{ padding: '16px 18px' }}>
 
-            {/* WHAT & HOW LARGE */}
-            <div style={{ backgroundColor: '#131d2e', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-              <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#38bdf8', fontWeight: 600 }}>How Large (Morphometry)</span>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginTop: '4px' }}>
-                {noduleData.diameter_mm.toFixed(1)} mm max • {noduleData.volume_mm3.toFixed(0)} mm³
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Sphericity: {noduleData.sphericity.toFixed(2)}</div>
-            </div>
-          </div>
+        {/* ── Tab: Overview ── */}
+        {activeTab === 'summary' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
-            {/* WHAT CHARACTERISTICS */}
-            <div style={{ backgroundColor: '#131d2e', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-              <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#38bdf8', fontWeight: 600 }}>Characteristics (Phenotype)</span>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginTop: '4px', textTransform: 'capitalize' }}>
-                {noduleData.attenuation.replace('_', '-')} • {noduleData.margin} margin
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Spiculation Index: {noduleData.spiculation_index.toFixed(2)}</div>
-            </div>
-
-            {/* HOW CERTAIN & EXPLANATION RELIABILITY */}
-            <div style={{ backgroundColor: '#131d2e', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#38bdf8', fontWeight: 600 }}>Calibrated Risk & Uncertainty</span>
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: (noduleData.disagreement_entropy > 0.4 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(56, 189, 248, 0.2)'),
-                  color: (noduleData.disagreement_entropy > 0.4 ? '#f87171' : '#38bdf8'),
-                  border: `1px solid ${noduleData.disagreement_entropy > 0.4 ? '#ef4444' : '#0284c7'}`
-                }}>
-                  Reliability: {noduleData.disagreement_entropy > 0.4 ? 'LOW' : noduleData.disagreement_entropy > 0.25 ? 'MODERATE' : 'HIGH'}
-                </span>
-              </div>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: noduleData.probability > 0.6 ? '#f87171' : '#34d399', marginTop: '4px' }}>
-                {(noduleData.probability * 100).toFixed(1)}% Malignancy Risk
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                95% CI: [{(noduleData.ci_lower * 100).toFixed(0)}% - {(noduleData.ci_upper * 100).toFixed(0)}%] • {noduleData.uncertainty_level} Uncertainty
-              </div>
-            </div>
-          </div>
-
-          {/* Research Contribution 1: Mandatory Low Reliability Abstention Warning */}
-          {noduleData.disagreement_entropy > 0.4 && (
+            {/* Risk meter row */}
             <div style={{
-              backgroundColor: '#450a0a',
-              border: '1px solid #dc2626',
-              borderRadius: '6px',
-              padding: '8px 12px',
-              fontSize: '11px',
-              color: '#fecaca',
+              ...stat,
               display: 'flex',
               alignItems: 'center',
-              gap: '8px'
+              justifyContent: 'space-between',
             }}>
-              <span style={{ fontSize: '14px' }}>⚠️</span>
               <div>
-                <strong>REVIEW REQUIRED (Explanation Reliability: LOW):</strong> Attribution maps from Grad-CAM, Integrated Gradients, and perturbations diverge. Algorithmic outputs are non-deterministic for this lesion.
+                <div style={{ ...statLabel }}><Activity size={10} /> Malignancy Risk</div>
+                <div style={{ ...statValue, fontSize: '22px', color: riskColor }}>
+                  {(risk * 100).toFixed(1)}%
+                </div>
+                <div style={statSub}>
+                  95% CI: {(noduleData.ci_lower * 100).toFixed(0)}% – {(noduleData.ci_upper * 100).toFixed(0)}%
+                  &nbsp;·&nbsp;{noduleData.uncertainty_level} uncertainty
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ ...statLabel, justifyContent: 'flex-end' }}>Reliability</div>
+                <div style={{
+                  fontSize: '13px', fontWeight: 700,
+                  color: noduleData.disagreement_entropy > 0.4
+                    ? 'var(--risk-high)'
+                    : noduleData.disagreement_entropy > 0.25
+                    ? 'var(--accent-amber)'
+                    : 'var(--risk-low)',
+                }}>
+                  {noduleData.disagreement_entropy > 0.4 ? 'Low' : noduleData.disagreement_entropy > 0.25 ? 'Moderate' : 'High'}
+                </div>
               </div>
             </div>
-          )}
 
-          <div style={{
-            fontSize: '11px',
-            color: '#64748b',
-            backgroundColor: '#090d16',
-            padding: '8px 12px',
-            borderRadius: '4px',
-            borderLeft: '3px solid #38bdf8',
-            marginTop: '4px'
-          }}>
-            <strong>Radiological Note:</strong> Morphological phenotype is characterized according to Fleischner Society criteria. Histopathological subtype cannot and should not be inferred from CT imaging alone.
+            {/* Stats grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div style={stat}>
+                <div style={statLabel}><MapPin size={10} /> Location</div>
+                <div style={statValue}>{noduleData.location}</div>
+                <div style={statSub}>Axial slice #{noduleData.slice}</div>
+              </div>
+
+              <div style={stat}>
+                <div style={statLabel}><Ruler size={10} /> Size</div>
+                <div style={statValue}>{noduleData.diameter_mm.toFixed(1)} mm</div>
+                <div style={statSub}>{noduleData.volume_mm3.toFixed(0)} mm³ volume</div>
+              </div>
+
+              <div style={stat}>
+                <div style={statLabel}><Layers size={10} /> Attenuation</div>
+                <div style={statValue} className="capitalize">
+                  {noduleData.attenuation.replace('_', '-')}
+                </div>
+                <div style={statSub}>{noduleData.margin} margin</div>
+              </div>
+
+              <div style={stat}>
+                <div style={statLabel}><Activity size={10} /> Morphology</div>
+                <div style={statValue}>SI {noduleData.spiculation_index.toFixed(2)}</div>
+                <div style={statSub}>Sphericity {noduleData.sphericity.toFixed(2)}</div>
+              </div>
+            </div>
+
+            {/* Low reliability warning */}
+            {noduleData.disagreement_entropy > 0.4 && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                backgroundColor: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                fontSize: '12px',
+                color: 'var(--risk-high)',
+              }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                <span>Model outputs diverge significantly — radiologist review required.</span>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Tab 2: Feature Attribution */}
-      {activeTab === 'attribution' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', color: '#94a3b8' }}>Attribution Method:</span>
-            {(['cel_gradcam', 'integrated_gradients', 'attention_rollout'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setMethod(m)}
-                style={{
-                  backgroundColor: method === m ? '#1e293b' : 'transparent',
-                  color: method === m ? '#38bdf8' : '#64748b',
-                  border: method === m ? '1px solid #38bdf8' : '1px solid #1e293b',
-                  borderRadius: '4px',
-                  padding: '4px 8px',
-                  fontSize: '11px',
-                  cursor: 'pointer'
-                }}
-              >
-                {m === 'cel_gradcam' ? 'CEL Grad-CAM 3D' : m === 'integrated_gradients' ? 'Integrated Gradients' : 'Attention Rollout'}
-              </button>
+        {/* ── Tab: Model Agreement ── */}
+        {activeTab === 'ensemble' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px',
+            }}>
+              <span>Architecture breakdown</span>
+              <span>Entropy: {noduleData.disagreement_entropy.toFixed(2)}</span>
+            </div>
+
+            {noduleData.models.map((mod, idx) => (
+              <div key={idx} style={{
+                ...stat,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)' }}>{mod.name}</span>
+                  <span style={{
+                    fontSize: '13px', fontWeight: 700,
+                    color: mod.calibrated > 0.5 ? 'var(--risk-high)' : 'var(--risk-low)',
+                  }}>
+                    {(mod.calibrated * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="progress-track">
+                  <div
+                    className="progress-bar"
+                    style={{
+                      width: `${mod.calibrated * 100}%`,
+                      background: mod.calibrated > 0.5
+                        ? 'linear-gradient(90deg, var(--accent-amber), var(--risk-high))'
+                        : 'linear-gradient(90deg, var(--accent-cyan), var(--risk-low))',
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Uncertainty: {mod.uncertainty}</span>
+                  <span>Raw: {(mod.prob * 100).toFixed(1)}%</span>
+                </div>
+              </div>
             ))}
           </div>
-
-          {/* Attribution Visual Representation */}
-          <div style={{
-            position: 'relative',
-            height: '180px',
-            backgroundColor: '#050811',
-            borderRadius: '6px',
-            overflow: 'hidden',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '1px solid #1e293b'
-          }}>
-            {/* Background CT Patch Simulation */}
-            <div style={{
-              width: '120px',
-              height: '120px',
-              borderRadius: '50%',
-              backgroundColor: '#1e293b',
-              boxShadow: 'inset 0 0 20px #0f172a',
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              {/* Heatmap overlay */}
-              <div style={{
-                width: '60px',
-                height: '60px',
-                borderRadius: '50%',
-                background: 'radial-gradient(circle, rgba(239,68,68,0.85) 0%, rgba(245,158,11,0.6) 45%, rgba(59,130,246,0) 80%)',
-                filter: 'blur(3px)'
-              }} />
-            </div>
-
-            {/* Mandatory Attribution Disclaimer Banner */}
-            <div style={{
-              position: 'absolute',
-              bottom: '8px',
-              backgroundColor: 'rgba(15, 23, 42, 0.85)',
-              border: '1px solid #334155',
-              padding: '3px 8px',
-              borderRadius: '4px',
-              fontSize: '10px',
-              fontWeight: 600,
-              letterSpacing: '0.06em',
-              color: '#f59e0b'
-            }}>
-              MODEL ATTRIBUTION — NOT CLINICAL EVIDENCE
-            </div>
-          </div>
-
-          <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.4' }}>
-            Contrastive Explainability Learning (CEL) suppresses spurious adjacent vascular bifurcations and concentrates high activation (red) on the irregular, non-calcified nodule margin.
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Model Agreement */}
-      {activeTab === 'ensemble' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#94a3b8' }}>
-            <span>Architecture Breakdown</span>
-            <span>Disagreement Entropy: {noduleData.disagreement_entropy.toFixed(2)}</span>
-          </div>
-
-          {noduleData.models.map((mod, idx) => (
-            <div key={idx} style={{ backgroundColor: '#131d2e', padding: '8px 12px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                <span style={{ fontWeight: 600, color: '#f1f5f9' }}>{mod.name}</span>
-                <span style={{ color: mod.calibrated > 0.5 ? '#f87171' : '#34d399', fontWeight: 600 }}>
-                  {(mod.calibrated * 100).toFixed(1)}% P(Malignant)
-                </span>
-              </div>
-              <div style={{ height: '6px', backgroundColor: '#1e293b', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${mod.calibrated * 100}%`,
-                  backgroundColor: mod.calibrated > 0.5 ? '#ef4444' : '#10b981',
-                  borderRadius: '3px'
-                }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
-                <span>Raw: {(mod.prob * 100).toFixed(1)}%</span>
-                <span>Uncertainty: {mod.uncertainty}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
