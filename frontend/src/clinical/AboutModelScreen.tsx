@@ -8,20 +8,24 @@ import { API_BASE } from '../services/api';
 export const AboutModelScreen: React.FC = () => {
   const [metricsData, setMetricsData] = useState<any>(null);
   const [uncertaintyConfig, setUncertaintyConfig] = useState<any>(null);
+  const [modelInfo, setModelInfo] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     let active = true;
 
-    // Load real test metrics and uncertainty config
+    // Load real test metrics, uncertainty config and dynamic model info
     Promise.all([
       fetch(`${API_BASE}/model/metrics`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE}/config/uncertainty`).then(r => r.ok ? r.json() : null)
+      fetch(`${API_BASE}/config/uncertainty`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE}/model/info`).then(r => r.ok ? r.json() : null)
     ])
-    .then(([mRes, uRes]) => {
+    .then(([mRes, uRes, iRes]) => {
       if (!active) return;
       if (mRes && mRes.metrics) setMetricsData(mRes.metrics);
       if (uRes) setUncertaintyConfig(uRes);
+      if (iRes) setModelInfo(iRes);
+      else if (mRes && mRes.model_info) setModelInfo(mRes.model_info);
     })
     .catch(() => {})
     .finally(() => {
@@ -48,6 +52,10 @@ export const AboutModelScreen: React.FC = () => {
   };
 
   const uncPasses = metricsData?.uncertainty_mc_dropout?.passes || 30;
+  const testCandidateCount = metricsData?.test_candidates || 20;
+  const testPatientCount = metricsData?.cohort_patients || 10;
+  const modelVer = modelInfo?.model_version || metricsData?.model_info?.model_version || 'v1.1.0-exp';
+  const modelStage = modelInfo?.stage || modelInfo?.status || 'EXPERIMENTAL';
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -66,7 +74,7 @@ export const AboutModelScreen: React.FC = () => {
               background: 'rgba(217, 119, 6, 0.15)', color: 'var(--accent-amber)',
               border: '1px solid rgba(217, 119, 6, 0.3)', letterSpacing: '0.04em'
             }}>
-              VALIDATION STATUS: EXPERIMENTAL
+              VALIDATION STATUS: {modelStage}
             </span>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
               Awaiting multi-center clinical cross-validation
@@ -85,7 +93,7 @@ export const AboutModelScreen: React.FC = () => {
           display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px',
           color: 'var(--text-muted)', textAlign: 'right'
         }}>
-          <div>Version: <strong style={{ color: 'var(--text-main)', fontFamily: 'ui-monospace, monospace' }}>v2.0.0-cpu</strong></div>
+          <div>Version: <strong style={{ color: 'var(--text-main)', fontFamily: 'ui-monospace, monospace' }}>{modelVer}</strong></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
             <Calendar size={13} /> Last updated: 2026-10-24
           </div>
@@ -142,19 +150,25 @@ export const AboutModelScreen: React.FC = () => {
         background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
         borderRadius: '4px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <h2 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <BarChart2 size={15} color="var(--primary)" /> Benchmark Test Performance (Results Traced from results/exp_01_metrics.json)
+            <BarChart2 size={15} color="var(--primary)" /> Benchmark Test Performance (Traced from results/exp_01_metrics.json)
           </h2>
-          <span style={{ fontSize: '11px', color: 'var(--accent-emerald)', fontWeight: 600 }}>
-            Zero synthetic numbers
+          <span style={{
+            fontSize: '11px', color: 'var(--text-main)', background: 'var(--bg-deepest)',
+            padding: '2px 8px', borderRadius: '3px', border: '1px solid var(--border-subtle)', fontWeight: 600
+          }}>
+            Test Cohort: N = {testCandidateCount} candidates ({testPatientCount} scans)
           </span>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
           
           <div style={{ background: 'var(--bg-deepest)', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>ROC AUC (Area Under Curve)</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>ROC AUC</span>
+              <span style={{ fontSize: '10px', color: 'var(--accent-amber)', fontWeight: 600 }}>N = {testCandidateCount}</span>
+            </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
               {discrimination.auc.toFixed(3)}
             </div>
@@ -164,7 +178,23 @@ export const AboutModelScreen: React.FC = () => {
           </div>
 
           <div style={{ background: 'var(--bg-deepest)', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Expected Calibration Error (ECE)</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Sensitivity / Specificity</span>
+              <span style={{ fontSize: '10px', color: 'var(--accent-amber)', fontWeight: 600 }}>N = {testCandidateCount}</span>
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-main)', marginTop: '4px' }}>
+              Sens: {(discrimination.sensitivity_raw * 100).toFixed(0)}% · Spec: {(discrimination.specificity_raw * 100).toFixed(0)}%
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              Raw Accuracy: {(discrimination.accuracy_raw * 100).toFixed(1)}%
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--bg-deepest)', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Calibration Error (ECE)</span>
+              <span style={{ fontSize: '10px', color: 'var(--accent-amber)', fontWeight: 600 }}>N = {testCandidateCount}</span>
+            </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
               {calibration.ece_calibrated.toFixed(3)}
             </div>
@@ -174,22 +204,15 @@ export const AboutModelScreen: React.FC = () => {
           </div>
 
           <div style={{ background: 'var(--bg-deepest)', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Epistemic Uncertainty Estimation</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Uncertainty Passes</span>
+              <span style={{ fontSize: '10px', color: 'var(--accent-amber)', fontWeight: 600 }}>N = {testCandidateCount}</span>
+            </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
               T = {uncPasses}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Monte Carlo Dropout passes
-            </div>
-          </div>
-
-          <div style={{ background: 'var(--bg-deepest)', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Scanner Perturbation Robustness</div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--accent-emerald)', marginTop: '2px' }}>
-              5 Conditions
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              HU shift, noise, slice decimation
+              MC Dropout passes per candidate
             </div>
           </div>
 
@@ -201,9 +224,22 @@ export const AboutModelScreen: React.FC = () => {
         background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
         borderRadius: '4px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px'
       }}>
-        <h2 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          Uncertainty Tier Definitions (Dynamic Config)
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
+          <h2 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Uncertainty Tier Definitions (Configurable Defaults)
+          </h2>
+          <span style={{ fontSize: '11px', color: 'var(--accent-amber)', fontWeight: 600 }}>
+            Configurable defaults · Not clinically validated
+          </span>
+        </div>
+        
+        <div style={{
+          fontSize: '12px', color: 'var(--text-muted)', background: 'var(--bg-deepest)',
+          padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-subtle)'
+        }}>
+          <strong>Note:</strong> Uncertainty tier cutoffs are configurable default heuristics for research evaluation and risk stratification. They are not validated diagnostic decision boundaries.
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '12px' }}>
           
           <div style={{
@@ -212,7 +248,7 @@ export const AboutModelScreen: React.FC = () => {
           }}>
             <div style={{ fontWeight: 700, color: 'var(--accent-emerald)' }}>Low Uncertainty (Entropy &lt; 0.30)</div>
             <div style={{ color: 'var(--text-body)', marginTop: '4px', lineHeight: 1.4 }}>
-              High predictive concordance across stochastic forward passes. Finding is well-represented in training distribution.
+              High predictive concordance across stochastic forward passes.
             </div>
           </div>
 
@@ -222,7 +258,7 @@ export const AboutModelScreen: React.FC = () => {
           }}>
             <div style={{ fontWeight: 700, color: 'var(--accent-amber)' }}>Moderate Uncertainty (0.30 - 0.70)</div>
             <div style={{ color: 'var(--text-body)', marginTop: '4px', lineHeight: 1.4 }}>
-              Borderline model agreement. Review recommended; physical caliper verification suggested.
+              Borderline model agreement. Review recommended; manual caliper verification advised.
             </div>
           </div>
 
@@ -232,7 +268,7 @@ export const AboutModelScreen: React.FC = () => {
           }}>
             <div style={{ fontWeight: 700, color: 'var(--accent-red)' }}>High Uncertainty (Entropy &gt; 0.70)</div>
             <div style={{ color: 'var(--text-body)', marginTop: '4px', lineHeight: 1.4 }}>
-              Divergent stochastic outputs or out-of-distribution input. Automatic deferral: <em>"Radiologist review required"</em>.
+              Divergent stochastic outputs or out-of-distribution input. Automatic deferral flag displayed.
             </div>
           </div>
 

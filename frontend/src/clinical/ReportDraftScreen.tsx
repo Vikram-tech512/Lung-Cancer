@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, Download, CheckCircle2, ShieldCheck, AlertTriangle, 
   Printer, ArrowLeft, Lock, UserCheck
 } from 'lucide-react';
 import { FindingItem } from './StudyViewerScreen';
+import { API_BASE } from '../services/api';
 
 interface ReportDraftScreenProps {
   studyId: string;
@@ -34,8 +35,34 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
 
   const nowIso = new Date().toISOString();
 
-  // Model provenance
-  const modelVersion = 'v2.0.0-cpu';
+  // Model provenance dynamically loaded from backend
+  const [modelVersion, setModelVersion] = useState<string>('v1.1.0-exp');
+  const [modelStage, setModelStage] = useState<string>('EXPERIMENTAL');
+  const [isUninformative, setIsUninformative] = useState<boolean>(true);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetch(`${API_BASE}/model/info`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE}/model/metrics`).then(r => r.ok ? r.json() : null)
+    ]).then(([info, met]) => {
+      if (!active) return;
+      if (info && info.model_version) {
+        setModelVersion(info.model_version);
+        if (info.stage) setModelStage(info.stage);
+      }
+      if (met && met.metrics && met.metrics.discrimination) {
+        const disc = met.metrics.discrimination;
+        const aucCi = disc.auc_95_ci || [0.2632, 0.9412];
+        const spec = disc.specificity_raw !== undefined ? disc.specificity_raw : 0.0;
+        const crossesPointFive = (aucCi[0] <= 0.5 && aucCi[1] >= 0.5) || aucCi[0] < 0.5;
+        const lowSpec = spec < 0.5;
+        setIsUninformative(crossesPointFive || lowSpec);
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   const inputHash = 'sha256:' + (studyId.slice(-8) || '7c1d33ba');
   const qaStatus = 'PASS (All 10 checks verified)';
 
@@ -181,8 +208,17 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
             <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '4px 0 0 0', color: 'var(--text-main)' }}>
               Thoracic CT Nodule Assessment Report (Draft)
             </h1>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              Study ID: <strong style={{ color: 'var(--text-main)', fontFamily: 'ui-monospace, monospace' }}>{studyId}</strong> · Date: {nowIso.split('T')[0]}
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Study ID: <strong style={{ color: 'var(--text-main)', fontFamily: 'ui-monospace, monospace' }}>{studyId}</strong> · Date: {nowIso.split('T')[0]}</span>
+              {studyId.includes('DEMO') && (
+                <span style={{
+                  fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
+                  background: 'rgba(217, 119, 6, 0.15)', color: 'var(--accent-amber)',
+                  border: '1px solid rgba(217, 119, 6, 0.3)', fontWeight: 600
+                }}>
+                  Demo data
+                </span>
+              )}
             </div>
           </div>
 
@@ -224,7 +260,9 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
           }}>
             <div>
               <span style={{ color: 'var(--text-muted)' }}>Model Version:</span>
-              <div style={{ fontWeight: 600, color: 'var(--text-body)', fontFamily: 'ui-monospace, monospace' }}>{modelVersion}</div>
+              <div style={{ fontWeight: 600, color: 'var(--text-body)', fontFamily: 'ui-monospace, monospace' }}>
+                {modelVersion} <span style={{ fontSize: '10px', color: 'var(--accent-amber)' }}>({modelStage})</span>
+              </div>
             </div>
             <div>
               <span style={{ color: 'var(--text-muted)' }}>Input Hash:</span>
@@ -266,7 +304,24 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
                     <td style={{ padding: '10px 12px', color: 'var(--text-body)' }}>{f.lobe}</td>
                     <td style={{ padding: '10px 12px', fontWeight: 600 }}>{f.diameter_mm.toFixed(1)} mm</td>
                     <td style={{ padding: '10px 12px', color: 'var(--text-body)' }}>{f.volume_mm3} mm³</td>
-                    <td style={{ padding: '10px 12px', color: 'var(--text-body)' }}>{(f.nodule_prob * 100).toFixed(1)}%</td>
+                    <td style={{ padding: '10px 12px', color: 'var(--text-body)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {isUninformative ? (
+                          <strong style={{ color: 'var(--accent-amber)', fontSize: '11px', fontStyle: 'italic' }}>
+                            Not informative yet
+                          </strong>
+                        ) : (
+                          <span>{(f.nodule_prob * 100).toFixed(1)}%</span>
+                        )}
+                        <span style={{
+                          fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
+                          background: 'rgba(217, 119, 6, 0.15)', color: 'var(--accent-amber)',
+                          border: '1px solid rgba(217, 119, 6, 0.3)', fontWeight: 600
+                        }}>
+                          Experimental model: not validated
+                        </span>
+                      </div>
+                    </td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{
                         padding: '2px 6px', borderRadius: '3px', fontSize: '11px', fontWeight: 600,

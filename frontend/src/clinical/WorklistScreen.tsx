@@ -16,6 +16,7 @@ export interface WorklistCase {
   assigned_reader: string;
   slice_count?: number;
   qc_status?: string;
+  is_demo?: boolean;
 }
 
 interface WorklistScreenProps {
@@ -348,7 +349,19 @@ export const WorklistScreen: React.FC<WorklistScreenProps> = ({ onSelectStudy })
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
                     <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-main)', fontFamily: 'ui-monospace, monospace' }}>
-                      {c.patient_id || 'PT-DEIDENTIFIED'}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{c.patient_id || 'PT-DEIDENTIFIED'}</span>
+                        {(c.is_demo || c.study_id.includes('DEMO') || c.patient_id.includes('DEMO')) && (
+                          <span style={{
+                            fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
+                            background: 'rgba(217, 119, 6, 0.15)', color: 'var(--accent-amber)',
+                            border: '1px solid rgba(217, 119, 6, 0.3)', fontWeight: 600,
+                            fontFamily: 'system-ui, sans-serif'
+                          }}>
+                            Demo data
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400 }}>{c.study_id}</div>
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-body)' }}>

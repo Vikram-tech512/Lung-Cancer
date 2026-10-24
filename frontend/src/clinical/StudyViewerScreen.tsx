@@ -77,10 +77,34 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
   const [heatmapLoading, setHeatmapLoading] = useState<boolean>(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [modelInfo, setModelInfo] = useState<{ model_version: string; status: string } | null>(null);
+  const [isUninformative, setIsUninformative] = useState<boolean>(true);
 
   // Load study metadata & nodules
   useEffect(() => {
     let active = true;
+
+    // Fetch dynamic model info & metrics from backend registry/results
+    Promise.all([
+      fetch(`${API_BASE}/model/info`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE}/model/metrics`).then(r => r.ok ? r.json() : null)
+    ]).then(([info, met]) => {
+      if (!active) return;
+      if (info) {
+        setModelInfo({
+          model_version: info.model_version || 'v1.1.0-exp',
+          status: info.status || 'EXPERIMENTAL'
+        });
+      }
+      if (met && met.metrics && met.metrics.discrimination) {
+        const disc = met.metrics.discrimination;
+        const aucCi = disc.auc_95_ci || [0.2632, 0.9412];
+        const spec = disc.specificity_raw !== undefined ? disc.specificity_raw : 0.0;
+        const crossesPointFive = (aucCi[0] <= 0.5 && aucCi[1] >= 0.5) || aucCi[0] < 0.5;
+        const lowSpec = spec < 0.5;
+        setIsUninformative(crossesPointFive || lowSpec);
+      }
+    }).catch(() => {});
 
     // Fetch QC
     fetch(`${API_BASE}/dicom/${encodeURIComponent(studyId)}/quality`)
@@ -109,6 +133,7 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (!active || !data) return;
+        const currentVersion = modelInfo?.model_version || 'v1.1.0-exp';
         if (data.nodules && data.nodules.length > 0) {
           const mapped: FindingItem[] = data.nodules.map((n: any, idx: number) => {
             const diam = n.diameter_mm || 11.4;
@@ -124,7 +149,7 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
               nodule_prob: prob,
               uncertainty_tier: tier,
               review_status: 'pending',
-              model_version: 'v2.0.0-cpu',
+              model_version: currentVersion,
               input_hash: 'sha256:' + (studyId.slice(-6) || '7c1d33'),
             };
           });
@@ -142,7 +167,7 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
             nodule_prob: 0.742,
             uncertainty_tier: 'Moderate',
             review_status: 'pending',
-            model_version: 'v2.0.0-cpu',
+            model_version: currentVersion,
             input_hash: 'sha256:7c1d33ba',
           };
           setFindings([defaultFinding]);
@@ -505,8 +530,19 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
             <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
               Study Information
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px', fontFamily: 'ui-monospace, monospace' }}>
-              {studyId}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', fontFamily: 'ui-monospace, monospace' }}>
+                {studyId}
+              </span>
+              {(studyId.includes('DEMO') || studyMeta.patient_id.includes('DEMO')) && (
+                <span style={{
+                  fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
+                  background: 'rgba(217, 119, 6, 0.15)', color: 'var(--accent-amber)',
+                  border: '1px solid rgba(217, 119, 6, 0.3)', fontWeight: 600
+                }}>
+                  Demo data
+                </span>
+              )}
             </div>
           </div>
 
@@ -845,25 +881,40 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
                     {f.lobe}
                   </div>
 
-                  {/* Nodule probability with uncertainty tier next to it */}
+                  {/* Nodule probability with uncertainty tier next to it and safety chip */}
                   <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    marginTop: '2px', fontSize: '12px'
+                    display: 'flex', flexDirection: 'column', gap: '4px',
+                    marginTop: '4px', fontSize: '12px'
                   }}>
-                    <div>
-                      <span style={{ color: 'var(--text-muted)' }}>Nodule probability: </span>
-                      <strong style={{ color: 'var(--text-main)' }}>{(f.nodule_prob * 100).toFixed(1)}%</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Nodule probability: </span>
+                        {isUninformative ? (
+                          <strong style={{ color: 'var(--accent-amber)', fontSize: '11px', fontStyle: 'italic' }}>
+                            Not informative yet
+                          </strong>
+                        ) : (
+                          <strong style={{ color: 'var(--text-main)' }}>{(f.nodule_prob * 100).toFixed(1)}%</strong>
+                        )}
+                        <span style={{
+                          padding: '1px 5px', borderRadius: '3px', fontSize: '10px', fontWeight: 600,
+                          background: 'rgba(217, 119, 6, 0.15)', color: 'var(--accent-amber)',
+                          border: '1px solid rgba(217, 119, 6, 0.3)'
+                        }}>
+                          Experimental model: not validated
+                        </span>
+                      </div>
+                      
+                      {/* Uncertainty tier badge */}
+                      <span style={{
+                        padding: '2px 6px', borderRadius: '3px', fontSize: '10px', fontWeight: 700,
+                        background: f.uncertainty_tier === 'High' ? 'rgba(220, 38, 38, 0.15)' : (f.uncertainty_tier === 'Moderate' ? 'rgba(217, 119, 6, 0.15)' : 'rgba(22, 163, 74, 0.15)'),
+                        color: f.uncertainty_tier === 'High' ? 'var(--accent-red)' : (f.uncertainty_tier === 'Moderate' ? 'var(--accent-amber)' : 'var(--accent-emerald)'),
+                        border: `1px solid ${f.uncertainty_tier === 'High' ? 'rgba(220, 38, 38, 0.3)' : (f.uncertainty_tier === 'Moderate' ? 'rgba(217, 119, 6, 0.3)' : 'rgba(22, 163, 74, 0.3)')}`
+                      }}>
+                        {f.uncertainty_tier} Uncertainty
+                      </span>
                     </div>
-                    
-                    {/* Uncertainty tier badge */}
-                    <span style={{
-                      padding: '2px 6px', borderRadius: '3px', fontSize: '10px', fontWeight: 700,
-                      background: f.uncertainty_tier === 'High' ? 'rgba(220, 38, 38, 0.15)' : (f.uncertainty_tier === 'Moderate' ? 'rgba(217, 119, 6, 0.15)' : 'rgba(22, 163, 74, 0.15)'),
-                      color: f.uncertainty_tier === 'High' ? 'var(--accent-red)' : (f.uncertainty_tier === 'Moderate' ? 'var(--accent-amber)' : 'var(--accent-emerald)'),
-                      border: `1px solid ${f.uncertainty_tier === 'High' ? 'rgba(220, 38, 38, 0.3)' : (f.uncertainty_tier === 'Moderate' ? 'rgba(217, 119, 6, 0.3)' : 'rgba(22, 163, 74, 0.3)')}`
-                    }}>
-                      {f.uncertainty_tier} Uncertainty
-                    </span>
                   </div>
 
                   {/* High uncertainty amber review requirement notice */}

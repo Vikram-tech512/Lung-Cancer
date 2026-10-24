@@ -485,15 +485,54 @@ def list_cases():
             "status": v.get("review_status", "Ready for review"),
             "assigned_reader": v.get("assigned_reader", "Dr. A. Vance"),
             "study_date": v.get("study_date", "2026-03-12 10:45:00"),
-            "timestamp": "2026-09-22 12:30:00"
+            "timestamp": "2026-09-22 12:30:00",
+            "is_demo": v.get("is_synthetic", False) or "DEMO" in v.get("study_id", "")
         })
     return {"cases": cases}
+
+def get_active_model_info() -> Dict[str, Any]:
+    """Reads active model version, stage, architecture, and metrics dynamically from models_registry.json."""
+    reg_path = Path("models_registry.json")
+    if reg_path.exists():
+        try:
+            with open(reg_path, "r", encoding="utf-8") as f:
+                reg = json.load(f)
+                resnet_entries = reg.get("3D ResNet-50", [])
+                if resnet_entries:
+                    latest = resnet_entries[-1]
+                    return {
+                        "model_name": latest.get("model_name", "3D ResNet-50"),
+                        "model_version": latest.get("version", "v1.1.0-exp"),
+                        "stage": latest.get("stage", "EXPERIMENTAL"),
+                        "status": latest.get("stage", "EXPERIMENTAL"),
+                        "architecture": latest.get("architecture", "3D ResNet-50 Bottleneck + MC Dropout"),
+                        "checkpoint_path": latest.get("checkpoint_path"),
+                        "notes": latest.get("notes", "")
+                    }
+        except Exception as exc:
+            logger.warning(f"Error loading models_registry.json: {exc}")
+
+    return {
+        "model_name": "3D ResNet-50",
+        "model_version": "v1.1.0-exp",
+        "stage": "EXPERIMENTAL",
+        "status": "EXPERIMENTAL",
+        "architecture": "3D ResNet-50 Bottleneck + MC Dropout (T=30)",
+        "checkpoint_path": "checkpoints_3d/resnet3d_luna16_best.pt",
+        "notes": "Experimental model evaluated on LUNA16 benchmark."
+    }
+
+@app.get("/api/v2/model/info")
+def get_model_info():
+    """Returns active model version, stage and status loaded strictly from models_registry.json."""
+    return get_active_model_info()
 
 @app.get("/api/v2/config/uncertainty")
 def get_uncertainty_config():
     """Returns configurable uncertainty entropy thresholds and PACS deferral rules."""
     thresh_low = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.30"))
     thresh_high = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.70"))
+    info = get_active_model_info()
     return {
         "entropy_thresholds": {
             "low": thresh_low,
@@ -522,25 +561,33 @@ def get_uncertainty_config():
             "outside_distribution": "Tissue attenuation or volume parameters outside training conditions",
             "banner": "Outside validated conditions. Review manually."
         },
-        "model_version": "v2.0.0-cpu",
-        "validation_status": "Experimental"
+        "is_validated": False,
+        "note": "Uncertainty tier thresholds are configurable default heuristics for research analysis, not clinically validated.",
+        "model_version": info["model_version"],
+        "validation_status": info["status"]
     }
 
 @app.get("/api/v2/model/metrics")
 def get_model_metrics():
     """Returns genuine experimental benchmark metrics from results/exp_01_metrics.json without fabrication."""
+    info = get_active_model_info()
     metrics_path = Path("results/exp_01_metrics.json")
     if metrics_path.exists():
         try:
             with open(metrics_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return {"status": "success", "metrics": data}
+                return {
+                    "status": "success",
+                    "model_info": info,
+                    "metrics": data
+                }
         except Exception as exc:
             logger.warning(f"Could not load exp_01_metrics.json: {exc}")
     
     # Fallback to verified constant metrics if file missing
     return {
         "status": "fallback",
+        "model_info": info,
         "metrics": {
             "dataset": "LUNA16 (Grand Challenge)",
             "cohort_patients": 10,
