@@ -10,19 +10,28 @@
         0,
         1
       ],
-      "scan_count": 178
+      "scan_count": 178,
+      "candidate_positives": 308,
+      "annotated_nodules": 240,
+      "notes": "Candidate positives are candidate-level from candidates_V2.csv (class=1). Annotated nodules are ground-truth lesions from annotations.csv."
     },
     "val": {
       "subsets": [
         2
       ],
-      "scan_count": 89
+      "scan_count": 89,
+      "candidate_positives": 181,
+      "annotated_nodules": 128,
+      "notes": "Candidate positives are candidate-level from candidates_V2.csv (class=1). Annotated nodules are ground-truth lesions from annotations.csv."
     },
     "test": {
       "subsets": [
         3
       ],
-      "scan_count": 89
+      "scan_count": 89,
+      "candidate_positives": 158,
+      "annotated_nodules": 119,
+      "notes": "Candidate positives are candidate-level from candidates_V2.csv (class=1). Annotated nodules are ground-truth lesions from annotations.csv."
     }
   },
   "subset_breakdown": {
@@ -30,25 +39,33 @@
       "scans": 89,
       "total_candidates": 79135,
       "positives": 138,
-      "negatives": 78997
+      "negatives": 78997,
+      "candidate_positives": 138,
+      "annotated_nodules": 112
     },
     "1": {
       "scans": 89,
       "total_candidates": 71012,
       "positives": 170,
-      "negatives": 70842
+      "negatives": 70842,
+      "candidate_positives": 170,
+      "annotated_nodules": 128
     },
     "2": {
       "scans": 89,
       "total_candidates": 74458,
       "positives": 181,
-      "negatives": 74277
+      "negatives": 74277,
+      "candidate_positives": 181,
+      "annotated_nodules": 128
     },
     "3": {
       "scans": 89,
       "total_candidates": 75950,
       "positives": 158,
-      "negatives": 75792
+      "negatives": 75792,
+      "candidate_positives": 158,
+      "annotated_nodules": 119
     }
   },
   "summary": {
@@ -56,7 +73,10 @@
     "total_candidates": 300555,
     "total_positives": 647,
     "total_negatives": 299908,
-    "annotations_in_subsets_0_to_3": 487
+    "annotations_in_subsets_0_to_3": 487,
+    "candidate_positives_total": 647,
+    "annotated_nodules_total": 487,
+    "candidate_level_note": "Positives reported in candidate_positives are candidate-level (from candidates_V2.csv); multiple candidate proposals may localize to the same annotated nodule, or generator proposals with class=1."
   },
   "scans": {
     "train_scans": [
