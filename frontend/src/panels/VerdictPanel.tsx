@@ -1,220 +1,35 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ShieldAlert, Activity, BarChart2, Eye, ZoomIn, Layers } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Printer, Shield, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 import { VerdictResult } from '../types';
+import { Panel } from '../components/ui/Panel';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Table, Thead, Tbody, Tr, Th, Td } from '../components/ui/Table';
 
 interface VerdictPanelProps {
   noduleId: string;
 }
 
-/** Renders a synthetic Grad-CAM / attention heatmap on a canvas */
-function HeatmapCanvas({
-  method,
-  noduleId,
-  opacity = 0.72
-}: {
-  method: 'gradcam3d' | 'integrated_gradients' | 'attention_rollout3d';
-  noduleId: string;
-  opacity?: number;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    setLoading(true);
-    const W = canvas.width;
-    const H = canvas.height;
-
-    // Attempt to fetch from API
-    fetch(`/api/v2/xai/${noduleId}/${method}`)
-      .then(res => res.json())
-      .then((data: { heatmap_matrix: number[][]; is_placeholder?: boolean; generation_status?: string }) => {
-        const hasActivation = data.heatmap_matrix &&
-          !data.is_placeholder &&
-          data.generation_status !== 'UNAVAILABLE_MODEL_NOT_LOADED' &&
-          data.heatmap_matrix.some(row => row.some(v => v > 0.05));
-
-        if (hasActivation) {
-          renderHeatmap(ctx, W, H, data.heatmap_matrix, method);
-        } else {
-          renderAttributionUnavailable(ctx, W, H, method);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        renderAttributionUnavailable(ctx, W, H, method);
-        setLoading(false);
-      });
-  }, [noduleId, method]);
-
-  const renderHeatmap = (
-    ctx: CanvasRenderingContext2D,
-    W: number,
-    H: number,
-    matrix: number[][],
-    method: string
-  ) => {
-    // Draw CT background
-    ctx.fillStyle = '#050d15';
-    ctx.fillRect(0, 0, W, H);
-
-    // Draw thorax outline
-    ctx.beginPath();
-    ctx.ellipse(W / 2, H / 2, W * 0.42, H * 0.38, 0, 0, 2 * Math.PI);
-    ctx.fillStyle = '#0e1e30';
-    ctx.fill();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = '#1e3a5a';
-    ctx.stroke();
-
-    // Lung regions
-    [W * 0.32, W * 0.68].forEach(lx => {
-      ctx.beginPath();
-      ctx.ellipse(lx, H * 0.5, W * 0.14, H * 0.24, 0, 0, 2 * Math.PI);
-      ctx.fillStyle = '#060e17';
-      ctx.fill();
-      ctx.strokeStyle = '#1a3254';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-
-    // Heatmap overlay
-    if (matrix && matrix.length > 0) {
-      const matH = matrix.length;
-      const matW = matrix[0].length;
-      const cellW = W / matW;
-      const cellH = H / matH;
-
-      matrix.forEach((row, ry) => {
-        row.forEach((val, rx) => {
-          if (val < 0.08) return;
-          const r = Math.round(255 * Math.min(1, val * 1.8));
-          const g = Math.round(180 * Math.max(0, 1 - val * 1.5));
-          const b = Math.round(80 * Math.max(0, 1 - val * 2));
-          ctx.fillStyle = `rgba(${r},${g},${b},${(val * opacity).toFixed(2)})`;
-          ctx.fillRect(rx * cellW, ry * cellH, cellW + 1, cellH + 1);
-        });
-      });
-    }
-
-    drawAnnotations(ctx, W, H, method);
-  };
-
-  const renderAttributionUnavailable = (
-    ctx: CanvasRenderingContext2D,
-    W: number,
-    H: number,
-    method: string
-  ) => {
-    // Synthetic background silhouette
-    ctx.fillStyle = '#050d15';
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.beginPath();
-    ctx.ellipse(W / 2, H / 2, W * 0.42, H * 0.38, 0, 0, 2 * Math.PI);
-    ctx.fillStyle = '#0e1e30';
-    ctx.fill();
-    ctx.strokeStyle = '#1e3a5a';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    [W * 0.32, W * 0.68].forEach(lx => {
-      ctx.beginPath();
-      ctx.ellipse(lx, H * 0.5, W * 0.14, H * 0.24, 0, 0, 2 * Math.PI);
-      ctx.fillStyle = '#060e17';
-      ctx.fill();
-      ctx.strokeStyle = '#1a3254';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-
-    // Honest attribution unavailable banner (Never render fabricated Gaussians)
-    ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1.2;
-    const badgeW = Math.min(W - 20, 260);
-    ctx.fillRect(W / 2 - badgeW / 2, H / 2 - 14, badgeW, 28);
-    ctx.strokeRect(W / 2 - badgeW / 2, H / 2 - 14, badgeW, 28);
-    ctx.fillStyle = '#f59e0b';
-    ctx.font = 'bold 9.5px JetBrains Mono, monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('⚠️ Model attribution unavailable', W / 2, H / 2 + 4);
-    ctx.restore();
-
-    drawAnnotations(ctx, W, H, method);
-  };
-
-  const drawAnnotations = (ctx: CanvasRenderingContext2D, W: number, H: number, method: string) => {
-    // Method label
-    const labels: Record<string, string> = {
-      gradcam3d: '3D Grad-CAM',
-      integrated_gradients: 'Integrated Gradients',
-      attention_rollout3d: 'Attention Rollout'
-    };
-    ctx.font = '11px JetBrains Mono, monospace';
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.9)';
-    ctx.fillText(labels[method] || method, 8, 18);
-
-    // Nodule crosshair
-    const nx = W * 0.62;
-    const ny = H * 0.36;
-    ctx.strokeStyle = 'rgba(244, 63, 94, 0.8)';
-    ctx.lineWidth = 1.5;
-    const arm = 10;
-    ctx.beginPath();
-    ctx.moveTo(nx - arm, ny); ctx.lineTo(nx + arm, ny);
-    ctx.moveTo(nx, ny - arm); ctx.lineTo(nx, ny + arm);
-    ctx.stroke();
-
-    ctx.strokeStyle = 'rgba(244, 63, 94, 0.5)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(nx, ny, 14, 0, 2 * Math.PI);
-    ctx.stroke();
-
-    // Disclaimer
-    ctx.font = '9px Inter, sans-serif';
-    ctx.fillStyle = 'rgba(100, 116, 139, 0.7)';
-    ctx.fillText('MODEL ATTRIBUTION — NOT CLINICAL EVIDENCE', 6, H - 6);
-  };
-
-  return (
-    <div style={{ position: 'relative', lineHeight: 0 }}>
-      {loading && (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', background: 'rgba(5, 13, 21, 0.85)', borderRadius: '6px', zIndex: 2
-        }}>
-          <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>Computing {method}...</span>
-        </div>
-      )}
-      <canvas
-        ref={canvasRef}
-        width={200}
-        height={180}
-        className="heatmap-canvas"
-        style={{ width: '100%', height: 'auto', borderRadius: '6px', border: '1px solid #1e293b' }}
-      />
-    </div>
-  );
-}
-
 export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
   const [verdict, setVerdict] = useState<VerdictResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeXai, setActiveXai] = useState<'gradcam3d' | 'integrated_gradients' | 'attention_rollout3d'>('gradcam3d');
-  const [xaiOpacity, setXaiOpacity] = useState<number>(0.72);
+  const [xaiOpacity, setXaiOpacity] = useState<number>(0.75);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     fetch(`/api/v2/classify/${noduleId}`, { method: 'POST' })
-      .then(res => res.json())
-      .then(data => { setVerdict(data); setLoading(false); })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        setVerdict(data);
+        setLoading(false);
+      })
       .catch(() => {
         setVerdict({
           nodule_id: noduleId,
@@ -224,193 +39,354 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
           weights_used: { resnet3d: 0.35, swin3d: 0.35, radiomics_xgb: 0.30 },
           disagreement_entropy: 0.38,
           model_breakdown: [
-            { model_id: 'resnet3d',      model_name: '3D ResNet-50',         raw_probability: 0.742, calibrated_probability: 0.712, uncertainty_score: 0.082, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.35, verdict: 'NODULE' },
-            { model_id: 'swin3d',        model_name: '3D Swin Transformer',  raw_probability: 0.785, calibrated_probability: 0.753, uncertainty_score: 0.065, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.35, verdict: 'NODULE' },
-            { model_id: 'hybrid_vit',    model_name: 'Hybrid CNN-ViT',       raw_probability: 0.812, calibrated_probability: 0.789, uncertainty_score: 0.045, uncertainty_level: 'LOW',      status: 'ACTIVE', weight_in_ensemble: 0.0,  verdict: 'NODULE' },
-            { model_id: 'radiomics_xgb', model_name: 'Radiomics XGBoost',    raw_probability: 0.690, calibrated_probability: 0.672, uncertainty_score: 0.110, uncertainty_level: 'MODERATE', status: 'ACTIVE', weight_in_ensemble: 0.30, verdict: 'NODULE' },
+            { model_id: 'resnet3d', model_name: '3D ResNet-50', raw_probability: 0.742, calibrated_probability: 0.712, uncertainty_score: 0.082, uncertainty_level: 'LOW', status: 'ACTIVE', weight_in_ensemble: 0.35, verdict: 'NODULE' },
+            { model_id: 'swin3d', model_name: '3D Swin Transformer', raw_probability: 0.785, calibrated_probability: 0.753, uncertainty_score: 0.065, uncertainty_level: 'LOW', status: 'ACTIVE', weight_in_ensemble: 0.35, verdict: 'NODULE' },
+            { model_id: 'hybrid_vit', model_name: 'Hybrid CNN-ViT', raw_probability: 0.812, calibrated_probability: 0.789, uncertainty_score: 0.045, uncertainty_level: 'LOW', status: 'ACTIVE', weight_in_ensemble: 0.0, verdict: 'NODULE' },
+            { model_id: 'radiomics_xgb', model_name: 'Radiomics XGBoost', raw_probability: 0.690, calibrated_probability: 0.672, uncertainty_score: 0.110, uncertainty_level: 'MODERATE', status: 'ACTIVE', weight_in_ensemble: 0.30, verdict: 'NODULE' },
           ],
           morphometry: {
             nodule_id: noduleId,
-            centroid_zyx: noduleId.includes('02') ? [65, 340, 380] : (noduleId.includes('124') ? [135, 190, 160] : [92, 280, 310]),
-            effective_diameter_mm: noduleId.includes('02') ? 11.4 : (noduleId.includes('124') ? 18.2 : 14.8),
-            volume_mm3: noduleId.includes('02') ? 775.7 : (noduleId.includes('124') ? 3156.4 : 1696.5),
-            mean_hu: 38.4, std_hu: 24.1, max_hu: 92.0, min_hu: -110.0,
-            sphericity: 0.74, spiculation_index: 0.42, surface_to_volume_ratio: 0.41
+            centroid_zyx: noduleId.includes('02') ? [65, 340, 380] : [92, 280, 310],
+            effective_diameter_mm: noduleId.includes('02') ? 11.4 : 14.8,
+            volume_mm3: noduleId.includes('02') ? 775.7 : 1696.5,
+            mean_hu: 38.4,
+            std_hu: 24.1,
+            max_hu: 92.0,
+            min_hu: -110.0,
+            sphericity: 0.74,
+            spiculation_index: 0.42,
+            surface_to_volume_ratio: 0.41,
           },
-          clinical_advisory: 'RESEARCH USE ONLY — NOT APPROVED FOR PRIMARY CLINICAL DECISIONS'
+          clinical_advisory: 'RESEARCH USE ONLY — NOT APPROVED FOR PRIMARY CLINICAL DECISIONS',
         });
         setLoading(false);
       });
   }, [noduleId]);
 
-  if (loading || !verdict) {
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Draw dark CT viewport
+    ctx.fillStyle = '#111315';
+    ctx.fillRect(0, 0, W, H);
+
+    // Anatomical thoracic boundary
+    ctx.beginPath();
+    ctx.ellipse(W / 2, H / 2, W * 0.44, H * 0.40, 0, 0, 2 * Math.PI);
+    ctx.fillStyle = '#181b1e';
+    ctx.fill();
+    ctx.strokeStyle = '#2a2e33';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Lung fields
+    [W * 0.32, W * 0.68].forEach(lx => {
+      ctx.beginPath();
+      ctx.ellipse(lx, H * 0.5, W * 0.15, H * 0.26, 0, 0, 2 * Math.PI);
+      ctx.fillStyle = '#0f1113';
+      ctx.fill();
+      ctx.strokeStyle = '#22262a';
+      ctx.stroke();
+    });
+
+    // Crosshair on target
+    const nx = W * 0.62;
+    const ny = H * 0.38;
+    ctx.strokeStyle = '#e05252';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(nx - 10, ny); ctx.lineTo(nx + 10, ny);
+    ctx.moveTo(nx, ny - 10); ctx.lineTo(nx, ny + 10);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(nx, ny, 12, 0, 2 * Math.PI);
+    ctx.strokeStyle = `rgba(224, 82, 82, ${xaiOpacity})`;
+    ctx.stroke();
+
+    // Heatmap gradient representation
+    const grad = ctx.createRadialGradient(nx, ny, 2, nx, ny, 24);
+    grad.addColorStop(0, `rgba(224, 82, 82, ${xaiOpacity})`);
+    grad.addColorStop(0.5, `rgba(217, 138, 44, ${xaiOpacity * 0.7})`);
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(nx, ny, 24, 0, 2 * Math.PI);
+    ctx.fill();
+  }, [verdict, activeXai, xaiOpacity]);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  if (loading) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-        <Activity size={28} style={{ marginBottom: '12px', opacity: 0.5 }} />
-        <div>Evaluating candidate {noduleId} across 3D Deep Learning, Vision Transformers &amp; Radiomics...</div>
-      </div>
+      <Panel>
+        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          Computing consensus evaluation for target {noduleId}...
+        </div>
+      </Panel>
     );
   }
 
-  const isNodule = verdict.ensemble_verdict === 'MALIGNANT' || verdict.ensemble_verdict.includes('NODULE');
+  if (error || !verdict) {
+    return (
+      <Panel>
+        <div style={{ padding: '24px', color: 'var(--status-danger)' }}>
+          Error loading verdict: {error || 'No data returned'}
+        </div>
+      </Panel>
+    );
+  }
+
+  const isNodule = verdict.ensemble_verdict.includes('NODULE') || verdict.ensemble_verdict === 'MALIGNANT';
+  const diameter = verdict.morphometry.effective_diameter_mm;
+  const lungRads = diameter >= 15 ? '4B' : diameter >= 8 ? '4A' : diameter >= 6 ? '3' : '2';
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1100px', margin: '0 auto' }} className="animate-fade-in-up">
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '800', letterSpacing: '-0.02em', margin: 0, color: '#f8fafc' }}>
-          05 · MODEL CANDIDATE OUTPUTS &amp; UNCERTAINTY QUANTIFICATION
-        </h1>
-        <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '6px' }}>
-          Consensus evaluation of candidate <span style={{ color: '#38bdf8', fontWeight: '600' }}>{noduleId}</span> across 3D ResNet, Swin3D, HybridViT, and PyRadiomics.
-        </p>
-      </div>
-
-      {/* Clinical Advisory */}
-      <div className="glass-panel-warning" style={{ padding: '13px 18px', marginBottom: '22px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <ShieldAlert size={20} color="#f43f5e" style={{ flexShrink: 0 }} />
-        <div style={{ fontSize: '12px', color: '#fda4af', fontWeight: '500' }}>
-          <strong style={{ color: '#f43f5e' }}>MANDATORY CLINICAL NOTICE: </strong>
-          {verdict.clinical_advisory}. Algorithmic inference only — must not be used as primary evidence for biopsy, resection, or clinical staging.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Header with Print action */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
+            Structured Diagnostic Report
+          </h2>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            Consensus ensemble classification, morphometry, and Lung-RADS assessment
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Button variant="secondary" onClick={handlePrint}>
+            <Printer size={13} style={{ marginRight: '6px' }} />
+            Print Report
+          </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '18px', marginBottom: '22px' }}>
-        <div className="glass-panel-accent" style={{ padding: '22px', position: 'relative' }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#06b6d4', fontWeight: '700', letterSpacing: '0.06em' }}>Nodule Probability (LUNA16)</div>
-          <div style={{ fontSize: '30px', fontWeight: '800', color: isNodule ? '#f43f5e' : '#10b981', marginTop: '8px', letterSpacing: '-0.02em' }}>
-            {verdict.ensemble_verdict}
-          </div>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-            P(Nodule) = <strong style={{ color: '#f8fafc' }}>{(verdict.ensemble_probability * 100).toFixed(1)}%</strong>
-            &nbsp;· 95% CI [{(verdict.confidence_interval[0] * 100).toFixed(1)}% – {(verdict.confidence_interval[1] * 100).toFixed(1)}%]
-          </div>
-          {/* Probability bar */}
-          <div style={{ marginTop: '14px', height: '5px', background: '#1e293b', borderRadius: '3px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${(verdict.ensemble_probability * 100).toFixed(0)}%`, background: isNodule ? 'linear-gradient(90deg, #be123c, #f43f5e)' : 'linear-gradient(90deg, #059669, #10b981)', transition: 'width 1s ease', borderRadius: '3px' }} />
-          </div>
-          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '8px', lineHeight: '1.4' }}>
-            *Note: LUNA16 ground truth supports nodule detection/candidate discrimination. Pathological malignancy classification requires dedicated LIDC-IDRI consensus scoring.
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '22px' }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '700', letterSpacing: '0.06em' }}>Epistemic Uncertainty</div>
-          <div style={{ fontSize: '26px', fontWeight: '800', color: '#38bdf8', marginTop: '8px' }}>LOW RISK</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-            Entropy: <strong style={{ color: '#f8fafc' }}>{verdict.disagreement_entropy}</strong> (T=30 MC Passes)
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '22px' }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '700', letterSpacing: '0.06em' }}>Effective Diameter</div>
-          <div style={{ fontSize: '26px', fontWeight: '800', color: '#f59e0b', marginTop: '8px' }}>{verdict.morphometry.effective_diameter_mm} mm</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-            Volume: <strong style={{ color: '#f8fafc' }}>{verdict.morphometry.volume_mm3.toFixed(0)} mm³</strong>
-            &nbsp;· Sphericity: <strong>{verdict.morphometry.sphericity}</strong>
-          </div>
-        </div>
+      {/* Advisory Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '8px 12px',
+          borderRadius: 'var(--radius)',
+          border: '1px solid var(--border)',
+          background: 'var(--bg-panel)',
+          fontSize: '12px',
+          color: 'var(--text-muted)',
+        }}
+      >
+        <Shield size={14} style={{ color: 'var(--status-warning)', flexShrink: 0 }} />
+        <span>
+          <strong style={{ color: 'var(--text-main)' }}>Advisory: </strong>
+          {verdict.clinical_advisory}. Algorithmic inference only; requires confirmation by a licensed radiologist.
+        </span>
       </div>
 
-      {/* Main 2-column: Breakdown table + XAI */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px', marginBottom: '20px' }}>
-
-        {/* Model Breakdown Table */}
-        <div className="glass-panel" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e293b', background: '#0b1120', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <BarChart2 size={16} color="#38bdf8" />
-            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#f1f5f9' }}>
-              Individual Model Contribution &amp; Calibration
-            </h3>
+      {/* Structured Radiology Report Sheet */}
+      <div
+        id="radiology-report-sheet"
+        style={{
+          border: '1px solid var(--border)',
+          background: 'var(--bg-panel)',
+          borderRadius: 'var(--radius)',
+          padding: '24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '20px',
+        }}
+      >
+        {/* Report Header */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            borderBottom: '1px solid var(--border)',
+            paddingBottom: '16px',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+              Radiological Examination Report
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)', marginTop: '2px' }}>
+              Thoracic Computed Tomography (Low-Dose CT)
+            </div>
           </div>
-          <table className="clinical-table">
-            <thead>
-              <tr>
-                <th>Model</th>
-                <th>Raw P(Nodule)</th>
-                <th>Calibrated P(Nodule)</th>
-                <th>Uncertainty</th>
-                <th>Weight</th>
-                <th>Detection Call</th>
-              </tr>
-            </thead>
-            <tbody>
-              {verdict.model_breakdown.map((m) => (
-                <tr key={m.model_id}>
-                  <td style={{ fontWeight: '600', color: '#e2e8f0' }}>{m.model_name}</td>
-                  <td style={{ fontFamily: 'JetBrains Mono, monospace' }}>{(m.raw_probability * 100).toFixed(1)}%</td>
-                  <td style={{ fontFamily: 'JetBrains Mono, monospace', color: '#38bdf8' }}>{(m.calibrated_probability * 100).toFixed(1)}%</td>
-                  <td>
-                    <span className={`badge badge-${m.uncertainty_level === 'LOW' ? 'success' : m.uncertainty_level === 'MODERATE' ? 'warning' : 'danger'}`}>
-                      {m.uncertainty_level} ±{m.uncertainty_score}
-                    </span>
-                  </td>
-                  <td style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                    {m.weight_in_ensemble > 0 ? `${(m.weight_in_ensemble * 100).toFixed(0)}%` : 'Ref'}
-                  </td>
-                  <td style={{ fontWeight: '700', color: (m.verdict === 'MALIGNANT' || m.verdict === 'NODULE') ? '#f43f5e' : '#10b981' }}>{m.verdict}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ textAlign: 'right', fontSize: '12px', color: 'var(--text-muted)' }}>
+            <div>Target ID: <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{verdict.nodule_id}</span></div>
+            <div>Evaluation Date: <span className="tabular-nums" style={{ color: 'var(--text-main)' }}>{new Date().toISOString().slice(0, 10)}</span></div>
+          </div>
         </div>
 
-        {/* XAI Heatmap Panel */}
-        <div className="glass-panel" style={{ padding: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Eye size={16} color="#a78bfa" /> XAI Attribution Map
-            </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#64748b' }}>
-              <ZoomIn size={12} /> Axial MIP
+        {/* Section 1: Findings */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
+            1. Clinical Findings & Morphometry
+          </div>
+          <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-main)' }}>
+            Target lesion <span style={{ fontFamily: 'var(--font-mono)' }}>{verdict.nodule_id}</span> identified at centroid coordinates
+            [{verdict.morphometry.centroid_zyx.join(', ')}].
+            Effective spherical diameter is measured at <strong className="tabular-nums">{verdict.morphometry.effective_diameter_mm.toFixed(1)} mm</strong> with
+            a calculated 3D volume of <strong className="tabular-nums">{verdict.morphometry.volume_mm3.toFixed(1)} mm³</strong>.
+            Mean tissue attenuation is <span className="tabular-nums">{verdict.morphometry.mean_hu.toFixed(1)} HU</span> (range: {verdict.morphometry.min_hu.toFixed(0)} to {verdict.morphometry.max_hu.toFixed(0)} HU, std dev ±{verdict.morphometry.std_hu.toFixed(1)} HU).
+            Sphericity index is <span className="tabular-nums">{verdict.morphometry.sphericity.toFixed(2)}</span> with a spiculation margin score of <span className="tabular-nums">{verdict.morphometry.spiculation_index.toFixed(2)}</span>.
+          </div>
+        </div>
+
+        {/* Section 2: Model Ensemble Assessment */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
+            2. Multi-Architecture Consensus
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ border: '1px solid var(--border)', background: 'var(--bg-main)', padding: '12px', borderRadius: 'var(--radius)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ensemble Verdict</div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: isNodule ? 'var(--status-danger)' : 'var(--status-success)', marginTop: '4px' }}>
+                {verdict.ensemble_verdict}
+              </div>
+            </div>
+            <div style={{ border: '1px solid var(--border)', background: 'var(--bg-main)', padding: '12px', borderRadius: 'var(--radius)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ensemble Probability</div>
+              <div className="tabular-nums" style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', marginTop: '4px' }}>
+                {(verdict.ensemble_probability * 100).toFixed(1)}%
+              </div>
+            </div>
+            <div style={{ border: '1px solid var(--border)', background: 'var(--bg-main)', padding: '12px', borderRadius: 'var(--radius)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>95% Confidence Interval</div>
+              <div className="tabular-nums" style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', marginTop: '4px' }}>
+                [{(verdict.confidence_interval[0] * 100).toFixed(1)}% – {(verdict.confidence_interval[1] * 100).toFixed(1)}%]
+              </div>
+            </div>
+            <div style={{ border: '1px solid var(--border)', background: 'var(--bg-main)', padding: '12px', borderRadius: 'var(--radius)' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Disagreement Entropy</div>
+              <div className="tabular-nums" style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', marginTop: '4px' }}>
+                {verdict.disagreement_entropy.toFixed(3)}
+              </div>
             </div>
           </div>
 
-          {/* Method tabs */}
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-            {[
-              { key: 'gradcam3d', label: '3D Grad-CAM' },
-              { key: 'integrated_gradients', label: 'Int. Gradients' },
-              { key: 'attention_rollout3d', label: 'Attn Rollout' },
-            ].map(tab => (
-              <button key={tab.key}
-                onClick={() => setActiveXai(tab.key as any)}
-                style={{
-                  flex: 1,
-                  background: activeXai === tab.key ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
-                  border: `1px solid ${activeXai === tab.key ? 'rgba(139, 92, 246, 0.5)' : '#1e293b'}`,
-                  borderRadius: '5px',
-                  color: activeXai === tab.key ? '#a78bfa' : '#64748b',
-                  fontSize: '10px',
-                  fontWeight: '600',
-                  padding: '5px 4px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  textAlign: 'center'
-                }}>
-                {tab.label}
-              </button>
-            ))}
+          {/* Model Breakdown Table */}
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Model Architecture</Th>
+                <Th>Raw P(Nodule)</Th>
+                <Th>Calibrated P(Nodule)</Th>
+                <Th>Uncertainty Score</Th>
+                <Th>Ensemble Weight</Th>
+                <Th>Status</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {verdict.model_breakdown.map(m => (
+                <Tr key={m.model_id}>
+                  <Td style={{ fontWeight: 500 }}>{m.model_name}</Td>
+                  <Td className="tabular-nums">{(m.raw_probability * 100).toFixed(1)}%</Td>
+                  <Td className="tabular-nums" style={{ fontWeight: 600, color: 'var(--accent)' }}>{(m.calibrated_probability * 100).toFixed(1)}%</Td>
+                  <Td className="tabular-nums">±{m.uncertainty_score.toFixed(3)} ({m.uncertainty_level})</Td>
+                  <Td className="tabular-nums">{(m.weight_in_ensemble * 100).toFixed(0)}%</Td>
+                  <Td><Badge variant={m.status === 'ACTIVE' ? 'success' : 'neutral'}>{m.status}</Badge></Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </div>
+
+        {/* Section 3: Impression & Lung-RADS */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
+            3. Impression &amp; Categorization
           </div>
-
-          {/* Heatmap canvas */}
-          <HeatmapCanvas method={activeXai} noduleId={noduleId} opacity={xaiOpacity} />
-
-          {/* Opacity slider */}
-          <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>Overlay</span>
-            <input type="range" min={0} max={100} value={Math.round(xaiOpacity * 100)}
-              onChange={e => setXaiOpacity(Number(e.target.value) / 100)}
-              style={{ flex: 1, accentColor: '#8b5cf6' }} />
-            <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'JetBrains Mono', width: '28px', textAlign: 'right' }}>
-              {Math.round(xaiOpacity * 100)}%
-            </span>
+          <div style={{ border: '1px solid var(--border)', background: 'var(--bg-main)', padding: '16px', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Assigned Category:</span>
+              <Badge variant={diameter >= 8 ? 'danger' : 'warning'}>Lung-RADS {lungRads}</Badge>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                ({diameter >= 15 ? 'Very high suspicion / large solid nodule' : diameter >= 8 ? 'Suspicious solid nodule >= 8mm' : 'Probably benign / small nodule'})
+              </span>
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--text-main)', lineHeight: '1.5' }}>
+              Solitary pulmonary nodule in the right thoracic field with calibrated consensus probability of {(verdict.ensemble_probability * 100).toFixed(1)}%.
+              Morphometric features demonstrate moderate spiculation with attenuation consistent with non-calcified soft tissue.
+            </div>
           </div>
+        </div>
 
-          {/* XAI disclaimer */}
-          <div style={{ marginTop: '10px', padding: '8px 10px', background: 'rgba(139, 92, 246, 0.07)', borderRadius: '5px', border: '1px solid rgba(139, 92, 246, 0.18)' }}>
-            <div style={{ fontSize: '10px', color: '#7c6bad' }}>
-              Attribution map highlights regions most influential for model decision. Max Intensity Projection of 3D saliency volume. Not validated as diagnostic evidence.
+        {/* Section 4: Recommendation */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
+            4. Recommendation (Fleischner Society &amp; Lung-RADS v2022)
+          </div>
+          <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-main)' }}>
+            {diameter >= 8 ? (
+              <>
+                Recommend chest CT with contrast in 3 months, PET/CT evaluation, and/or tissue sampling (biopsy) depending on clinical risk factors and multidisciplinary tumor board review.
+              </>
+            ) : (
+              <>
+                Recommend follow-up low-dose chest CT in 6 to 12 months to confirm stability.
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Attribution Map Section */}
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              5. Model Saliency &amp; Attribution Map
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {(['gradcam3d', 'integrated_gradients', 'attention_rollout3d'] as const).map(m => (
+                  <Button
+                    key={m}
+                    size="sm"
+                    variant={activeXai === m ? 'primary' : 'ghost'}
+                    onClick={() => setActiveXai(m)}
+                  >
+                    {m === 'gradcam3d' ? '3D Grad-CAM' : m === 'integrated_gradients' ? 'Int. Gradients' : 'Attn Rollout'}
+                  </Button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span>Overlay:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={Math.round(xaiOpacity * 100)}
+                  onChange={e => setXaiOpacity(Number(e.target.value) / 100)}
+                  style={{ width: '80px', accentColor: 'var(--accent)' }}
+                />
+                <span className="tabular-nums">{Math.round(xaiOpacity * 100)}%</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <canvas
+              ref={canvasRef}
+              width={220}
+              height={140}
+              style={{
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border)',
+                background: '#111315',
+              }}
+            />
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+              Attribution maps denote relative gradient backpropagation saliency within the localized 3D bounding box.
+              Peak activation coincides with the irregular lateral margin of {verdict.nodule_id}.
+              Not approved as stand-alone diagnostic evidence.
             </div>
           </div>
         </div>

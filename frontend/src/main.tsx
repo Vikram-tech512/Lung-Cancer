@@ -1,7 +1,7 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import './index.css'
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -25,38 +25,40 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#0a0f1d',
-          color: '#f8fafc',
-          padding: '24px',
-          fontFamily: 'Inter, sans-serif',
-          textAlign: 'center'
-        }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#f43f5e', marginBottom: '8px' }}>
-            Clinical Workstation Initialization Error
+        <div
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#16181b',
+            color: '#e6edf3',
+            padding: '24px',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            textAlign: 'center',
+          }}
+        >
+          <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#e05252', marginBottom: '8px' }}>
+            Workstation Rendering Error
           </h2>
-          <p style={{ color: '#94a3b8', fontSize: '13px', maxWidth: '500px', marginBottom: '16px' }}>
+          <p style={{ color: '#8b949e', fontSize: '13px', maxWidth: '500px', marginBottom: '16px' }}>
             {this.state.error?.message || 'An unexpected rendering error occurred.'}
           </p>
           <button
             onClick={() => window.location.reload()}
             style={{
-              background: '#0284c7',
-              color: '#fff',
+              background: '#3b82c4',
+              color: '#ffffff',
               border: 'none',
-              borderRadius: '6px',
-              padding: '10px 18px',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer'
+              borderRadius: '2px',
+              padding: '8px 16px',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
             }}
           >
-            Reload Workstation
+            Reload Interface
           </button>
         </div>
       );
@@ -70,5 +72,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
-  </React.StrictMode>,
-)
+  </React.StrictMode>
+);

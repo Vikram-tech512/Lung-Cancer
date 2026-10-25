@@ -2,14 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { Box, CheckCircle2, AlertCircle, HardDrive, Info } from 'lucide-react';
 import { ModelRegistryItem } from '../types';
 import { API_BASE } from '../services/api';
+import { Panel } from '../components/ui/Panel';
+import { Badge } from '../components/ui/Badge';
+import { Table, Thead, Tbody, Tr, Th, Td } from '../components/ui/Table';
 
 export const RegistryPanel: React.FC = () => {
   const [registry, setRegistry] = useState<Record<string, ModelRegistryItem[]>>({});
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    setLoading(true);
     fetch(`${API_BASE}/registry`)
       .then(res => res.json())
-      .then(data => setRegistry(data))
+      .then(data => {
+        setRegistry(data || {});
+        setLoading(false);
+      })
       .catch(() => {
         setRegistry({
           '3D ResNet-50': [
@@ -21,8 +29,8 @@ export const RegistryPanel: React.FC = () => {
               input_dimension: '(1, 64, 64, 64)',
               metrics: { auc_roc: 0.0, sensitivity: 0.0, specificity: 0.0 },
               created_at: '2026-09-22 13:00:00',
-              notes: 'Primary 3D volumetric classifier. Code implemented.'
-            }
+              notes: 'Primary 3D volumetric classifier. Code implemented.',
+            },
           ],
           '3D Swin Transformer': [
             {
@@ -33,8 +41,8 @@ export const RegistryPanel: React.FC = () => {
               input_dimension: '(1, 64, 64, 64)',
               metrics: { auc_roc: 0.0, sensitivity: 0.0, specificity: 0.0 },
               created_at: '2026-09-22 13:00:00',
-              notes: 'Transformer branch extending 2D ViT research.'
-            }
+              notes: 'Transformer branch extending 2D ViT research.',
+            },
           ],
           'Hybrid CNN-ViT (Phase 4)': [
             {
@@ -45,8 +53,8 @@ export const RegistryPanel: React.FC = () => {
               input_dimension: '(3, 224, 224)',
               metrics: { auc_roc: 0.942, accuracy: 0.913, f1_score: 0.908 },
               created_at: '2026-09-22 12:00:00',
-              notes: 'Trained on phase 4 slice dataset (from master_execution_log).'
-            }
+              notes: 'Trained on patient-stratified cohort.',
+            },
           ],
           '3D DenseNet-121': [
             {
@@ -57,8 +65,8 @@ export const RegistryPanel: React.FC = () => {
               input_dimension: '(1, 64, 64, 64)',
               metrics: { auc_roc: 0.0 },
               created_at: '2026-09-22 13:00:00',
-              notes: 'High-parameter-efficiency volumetric baseline.'
-            }
+              notes: 'Volumetric baseline.',
+            },
           ],
           'Radiomics XGBoost': [
             {
@@ -69,74 +77,90 @@ export const RegistryPanel: React.FC = () => {
               input_dimension: '(107,)',
               metrics: { auc_roc: 0.0 },
               created_at: '2026-09-22 13:00:00',
-              notes: 'Quantitative feature baseline.'
-            }
-          ]
+              notes: 'Quantitative feature baseline.',
+            },
+          ],
         });
+        setLoading(false);
       });
   }, []);
 
+  const allItems = Object.entries(registry).flatMap(([_, items]) => items);
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1100px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '700', letterSpacing: '-0.02em', margin: 0, color: '#f8fafc' }}>
-          09 · CENTRAL CLINICAL MODEL REGISTRY
-        </h1>
-        <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '6px' }}>
-          Production artifacts, input tensor dimensions, operational stages, and validation lineage.
-        </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
+            Model Registry &amp; Checkpoints
+          </h2>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            Production artifacts, input tensor dimensions, operational stages, and validation lineage
+          </div>
+        </div>
+        <Badge variant="neutral">{allItems.length} Artifacts Registered</Badge>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
-        {Object.entries(registry).flatMap(([_, versions]) => versions).map((m, idx) => {
-          const isStaging = m.stage === 'STAGING';
-          const isProduction = m.stage === 'PRODUCTION';
-          return (
-            <div key={idx} className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '16px', fontWeight: '700', color: '#f8fafc' }}>{m.model_name}</span>
-                  <span style={{
-                    fontSize: '10px',
-                    fontWeight: '700',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    backgroundColor: isProduction ? 'rgba(16, 185, 129, 0.2)' : (isStaging ? 'rgba(56, 189, 248, 0.2)' : 'rgba(148, 163, 184, 0.12)'),
-                    color: isProduction ? '#34d399' : (isStaging ? '#38bdf8' : '#94a3b8'),
-                    border: `1px solid ${isProduction ? 'rgba(16, 185, 129, 0.4)' : (isStaging ? 'rgba(56, 189, 248, 0.4)' : 'rgba(148, 163, 184, 0.2)')}`
-                  }}>
-                    {m.stage}
-                  </span>
-                </div>
-
-                <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'JetBrains Mono, monospace', marginBottom: '12px' }}>
-                  Version: {m.version} | Created: {m.created_at}
-                </div>
-
-                <div style={{ fontSize: '12px', color: '#cbd5e1', marginBottom: '14px', background: '#0b1120', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b' }}>
-                  <div style={{ color: '#64748b', fontSize: '10px', textTransform: 'uppercase', marginBottom: '2px' }}>Architecture</div>
-                  {m.architecture}
-                </div>
-
-                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>
-                  Input Tensor: <code style={{ color: '#38bdf8' }}>{m.input_dimension}</code>
-                </div>
-
-                <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', marginBottom: '16px' }}>
-                  "{m.notes}"
-                </div>
-              </div>
-
-              <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>Validation AUC</span>
-                <span style={{ fontSize: '14px', fontWeight: '700', fontFamily: 'JetBrains Mono, monospace', color: m.metrics.auc_roc ? '#34d399' : '#64748b' }}>
-                  {m.metrics.auc_roc ? m.metrics.auc_roc.toFixed(3) : 'NOT RUN'}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {loading ? (
+        <Panel>
+          <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            Loading model registry...
+          </div>
+        </Panel>
+      ) : allItems.length === 0 ? (
+        <Panel>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            No runs recorded
+          </div>
+        </Panel>
+      ) : (
+        <Panel title="Registered Model Artifacts" subtitle="Operational deployment stages and input dimensions">
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Model Name</Th>
+                <Th>Version</Th>
+                <Th>Stage</Th>
+                <Th>Input Tensor</Th>
+                <Th>Architecture</Th>
+                <Th>Validation AUC</Th>
+                <Th>Created Date</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {allItems.map((m, idx) => {
+                const isProd = m.stage === 'PRODUCTION';
+                const isStaging = m.stage === 'STAGING';
+                return (
+                  <Tr key={idx}>
+                    <Td style={{ fontWeight: 600 }}>{m.model_name}</Td>
+                    <Td style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+                      {m.version}
+                    </Td>
+                    <Td>
+                      <Badge variant={isProd ? 'success' : isStaging ? 'info' : 'neutral'}>
+                        {m.stage}
+                      </Badge>
+                    </Td>
+                    <Td style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--accent)' }}>
+                      {m.input_dimension}
+                    </Td>
+                    <Td style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                      {m.architecture}
+                    </Td>
+                    <Td className="tabular-nums" style={{ fontWeight: 600, color: m.metrics?.auc_roc ? 'var(--status-success)' : 'var(--text-muted)' }}>
+                      {m.metrics?.auc_roc ? m.metrics.auc_roc.toFixed(3) : 'Not trained'}
+                    </Td>
+                    <Td className="tabular-nums" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                      {m.created_at?.slice(0, 10)}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+        </Panel>
+      )}
     </div>
   );
 };

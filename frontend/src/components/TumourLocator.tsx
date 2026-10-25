@@ -756,10 +756,10 @@ export const TumourLocator: React.FC<Props> = ({
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: '12px',
-        background: '#090d16',
-        padding: '10px 14px',
-        borderRadius: '8px',
-        border: '1px solid #1e293b'
+        background: 'var(--bg-panel)',
+        padding: '8px 12px',
+        borderRadius: 'var(--radius)',
+        border: '1px solid var(--border)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
@@ -768,19 +768,18 @@ export const TumourLocator: React.FC<Props> = ({
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '6px 14px',
-              borderRadius: '6px',
+              padding: '6px 12px',
+              borderRadius: 'var(--radius)',
               fontSize: '12px',
               fontWeight: 600,
               cursor: 'pointer',
-              border: viewMode === 'publication' ? '1px solid #38bdf8' : '1px solid #334155',
-              background: viewMode === 'publication' ? 'rgba(56, 189, 248, 0.15)' : '#0f172a',
-              color: viewMode === 'publication' ? '#38bdf8' : '#94a3b8',
-              transition: 'all 0.15s ease'
+              border: `1px solid ${viewMode === 'publication' ? 'var(--accent)' : 'var(--border)'}`,
+              background: viewMode === 'publication' ? 'rgba(59, 130, 196, 0.12)' : 'var(--bg-main)',
+              color: viewMode === 'publication' ? 'var(--text-main)' : 'var(--text-muted)',
             }}
           >
-            <Layers size={14} />
-            Explainable Localization (Image · Label · Heatmap)
+            <Layers size={13} />
+            Localization Triptych (Image / Label / Heatmap)
           </button>
 
           <button
@@ -789,73 +788,60 @@ export const TumourLocator: React.FC<Props> = ({
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '6px 14px',
-              borderRadius: '6px',
+              padding: '6px 12px',
+              borderRadius: 'var(--radius)',
               fontSize: '12px',
               fontWeight: 600,
               cursor: 'pointer',
-              border: viewMode === 'interactive' ? '1px solid #10b981' : '1px solid #334155',
-              background: viewMode === 'interactive' ? 'rgba(16, 185, 129, 0.15)' : '#0f172a',
-              color: viewMode === 'interactive' ? '#34d399' : '#94a3b8',
-              transition: 'all 0.15s ease'
+              border: `1px solid ${viewMode === 'interactive' ? 'var(--status-success)' : 'var(--border)'}`,
+              background: viewMode === 'interactive' ? 'rgba(60, 179, 113, 0.12)' : 'var(--bg-main)',
+              color: viewMode === 'interactive' ? 'var(--text-main)' : 'var(--text-muted)',
             }}
           >
-            <Sliders size={14} />
+            <Sliders size={13} />
             Interactive 3D Slice Explorer
           </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12px', color: 'var(--text-muted)' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={showLabels}
               onChange={e => setShowLabels(e.target.checked)}
-              style={{ accentColor: '#22c55e', cursor: 'pointer' }}
+              style={{ accentColor: 'var(--status-success)', cursor: 'pointer' }}
             />
-            Show Green Bounding Box &amp; Arrow
+            Show Bounding Box &amp; Callout
           </label>
         </div>
       </div>
 
       {/* VIEW MODE A: EXACT 3-COLUMN LAYOUT (Image · Label with Arrow · Heatmap) */}
       {viewMode === 'publication' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
           {/* UPLOAD & ANALYZE ACTIVE SAMPLE BANNER */}
           <div style={{
-            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(8, 15, 29, 0.95))',
-            borderRadius: '10px',
-            border: '1px solid #1e293b',
-            padding: '16px 20px',
+            background: 'var(--bg-panel)',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border)',
+            padding: '12px 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: '14px'
+            gap: '12px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{
-                width: '38px', height: '38px', borderRadius: '8px',
-                background: 'linear-gradient(135deg, #0284c7, #06b6d4)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(2, 132, 199, 0.35)'
-              }}>
-                <Sparkles size={20} color="#ffffff" />
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                {activeImageSrc ? `Active Diagnostic Scan: ${activeImageName || 'Uploaded Slice'}` : 'CT Localization & Slice Attribution'}
               </div>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '800', color: '#f8fafc' }}>
-                  {activeImageSrc ? `Active Diagnostic Scan: ${activeImageName || 'Uploaded Slice'}` : 'CT Localization & Slice Attribution'}
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                  {activeImageSrc 
-                    ? 'Dynamic XAI bounding box, high-visibility callout arrow, and Grad-CAM thermal heatmap generated for your uploaded scan.'
-                    : 'Drop or select any CT image above to analyze with green bounding box, clearly visible callout arrow, and Grad-CAM attribution focus.'}
-                </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Algorithmic bounding box and Grad-CAM backpropagated attribution mapping.
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="file"
                 ref={uploadInputRef}
@@ -866,23 +852,21 @@ export const TumourLocator: React.FC<Props> = ({
               <button
                 onClick={() => uploadInputRef.current?.click()}
                 style={{
-                  background: 'linear-gradient(135deg, #0284c7, #06b6d4)',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '9px 18px',
+                  background: 'var(--bg-main)',
+                  color: 'var(--text-main)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                  padding: '6px 12px',
                   fontSize: '12px',
-                  fontWeight: '700',
+                  fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  boxShadow: '0 4px 12px rgba(2, 132, 199, 0.35)',
-                  transition: 'all 0.15s ease'
                 }}
               >
-                <Upload size={15} />
-                <span>Upload Alternative Scan</span>
+                <Upload size={13} />
+                <span>Upload Scan</span>
               </button>
             </div>
           </div>

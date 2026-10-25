@@ -1,353 +1,295 @@
 /* ==========================================================================
-   Lung Cancer AI Clinical Platform — Radiology Workstation Design System
-   PACS-Standard Neutral UI | 14px Base | 8px Grid | WCAG AA Contrast
+   Clinical Workstation Design System (PACS / Radiology Standard)
+   - Neutral dark gray palette (#16181b background, #1e2125 panels, #2a2e33 borders)
+   - Accent color: clinical blue (#3b82c4)
+   - Semantic status colors: green (#22c55e), amber (#eab308), red (#ef4444)
+   - Flat panels, 1px borders, 2-4px radius, 13px base typography
+   - Strict absence of glassmorphism, blur, glows, neon, or drop shadows
    ========================================================================== */
 
-/* --------------------------------------------------------------------------
-   CSS Variables — Dark Mode (Default PACS Reading Room)
-   -------------------------------------------------------------------------- */
-:root,
-[data-theme="dark"] {
-  --bg-deepest:    #0b0f19;
-  --bg-main:       #0f172a;
-  --bg-surface:    #1e293b;
-  --bg-card:       #1e293b;
-  --bg-card-hover: #334155;
-  --bg-input:      #0f172a;
-
-  --border-subtle:  #334155;
-  --border-card:    #334155;
-  --border-accent:  #0284c7;
-
-  --primary:        #0284c7;
-  --primary-hover:  #0369a1;
-  --accent-amber:   #d97706;  /* Review required / caution */
-  --accent-red:     #dc2626;  /* Urgent / QA failure */
-  --accent-emerald: #16a34a;  /* Verified / Passed */
-
-  --text-main:   #f8fafc;
-  --text-body:   #e2e8f0;
-  --text-muted:  #94a3b8;
-  --text-faint:  #64748b;
-
-  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-card:   0 1px 3px rgba(0, 0, 0, 0.2);
-
+:root {
+  --bg-app: #16181b;
+  --bg-panel: #1e2125;
+  --bg-surface: #24282e;
+  --bg-hover: #2a2f36;
+  --bg-active: #313740;
+  
+  --border-color: #2a2e33;
+  --border-focus: #3b82c4;
+  --border-light: #363b42;
+  
+  --accent-color: #3b82c4;
+  --accent-hover: #4a90d9;
+  --accent-active: #2c6ea8;
+  --accent-subtle: #1c2b3a;
+  
+  --status-pass: #22c55e;
+  --status-pass-bg: #132819;
+  --status-pass-border: #1e4d29;
+  
+  --status-warning: #eab308;
+  --status-warning-bg: #2c2510;
+  --status-warning-border: #524213;
+  
+  --status-fail: #ef4444;
+  --status-fail-bg: #2d1515;
+  --status-fail-border: #571e1e;
+  
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-inverse: #0f1114;
+  
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+  
   --radius-xs: 2px;
-  --radius-sm: 4px;
+  --radius-sm: 3px;
   --radius-md: 4px;
-
-  --spacing-1: 4px;
-  --spacing-2: 8px;
-  --spacing-3: 16px;
-  --spacing-4: 24px;
-  --spacing-5: 32px;
-
-  --pacs-viewport-bg: #000000;
-  --pacs-grid: rgba(255, 255, 255, 0.05);
-
-  color-scheme: dark;
 }
 
-/* --------------------------------------------------------------------------
-   CSS Variables — Light Mode (Standard Clinical Office / PACS Day Mode)
-   -------------------------------------------------------------------------- */
-[data-theme="light"],
-.theme-light {
-  --bg-deepest:    #f1f5f9;
-  --bg-main:       #f8fafc;
-  --bg-surface:    #ffffff;
-  --bg-card:       #ffffff;
-  --bg-card-hover: #f1f5f9;
-  --bg-input:      #f8fafc;
-
-  --border-subtle:  #cbd5e1;
-  --border-card:    #cbd5e1;
-  --border-accent:  #0284c7;
-
-  --primary:        #0284c7;
-  --primary-hover:  #0369a1;
-  --accent-amber:   #b45309;  /* Review required */
-  --accent-red:     #b91c1c;  /* Urgent */
-  --accent-emerald: #15803d;  /* Verified */
-
-  --text-main:   #0f172a;
-  --text-body:   #334155;
-  --text-muted:  #64748b;
-  --text-faint:  #94a3b8;
-
-  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-card:   0 1px 3px rgba(0, 0, 0, 0.06);
-
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 4px;
-
-  --spacing-1: 4px;
-  --spacing-2: 8px;
-  --spacing-3: 16px;
-  --spacing-4: 24px;
-  --spacing-5: 32px;
-
-  --pacs-viewport-bg: #000000;
-  --pacs-grid: rgba(255, 255, 255, 0.05);
-
-  color-scheme: light;
-}
-
-/* --------------------------------------------------------------------------
-   Reset & Base Typography (14px base, System Font Stack)
-   -------------------------------------------------------------------------- */
 *, *::before, *::after {
   box-sizing: border-box;
-}
-
-html {
-  font-size: 14px;
-}
-
-body {
   margin: 0;
   padding: 0;
-  background-color: var(--bg-main);
-  color: var(--text-main);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 14px;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
   line-height: 1.45;
-  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+/* Tabular numbers for clinical measurements */
+.tabular-nums, .num, input[type="number"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Monospace for identifiers */
+.mono, .font-mono, .uid, .id-tag {
+  font-family: var(--font-mono);
+}
+
+/* Focus outlines for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--border-focus);
+  outline: none;
+}
+
+/* Table styles */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+th {
+  background-color: var(--bg-surface);
+  color: var(--text-secondary);
   font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0;
-  color: var(--text-main);
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-code, pre, .font-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
 }
 
-/* --------------------------------------------------------------------------
-   PACS UI Panels & Cards
-   -------------------------------------------------------------------------- */
-.medical-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
+tr:hover td {
+  background-color: var(--bg-hover);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-app);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: var(--radius-xs);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Utility classes */
+.panel {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-card);
 }
 
-.medical-header-tag {
-  color: var(--accent-cyan);
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.glass-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
-}
-
-/* --------------------------------------------------------------------------
-   Medical Case Cards (List View)
-   -------------------------------------------------------------------------- */
-.medical-case-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 9px 12px;
+.panel-header {
+  padding: 8px 12px;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  user-select: none;
 }
 
-.medical-case-card:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-accent);
+.panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.medical-case-card.active-malignant {
-  border: 1px solid var(--accent-rose) !important;
-  background: rgba(239, 68, 68, 0.08);
+.panel-body {
+  padding: 12px;
 }
 
-.medical-case-card.active-benign {
-  border: 1px solid var(--accent-emerald) !important;
-  background: rgba(16, 185, 129, 0.08);
-}
-
-/* --------------------------------------------------------------------------
-   Buttons
-   -------------------------------------------------------------------------- */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 5px 10px;
   border-radius: var(--radius-sm);
-  font-family: 'Inter', sans-serif;
   font-size: 12px;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  text-decoration: none;
+  font-weight: 500;
+  transition: background-color 0.1s ease;
+  border: 1px solid transparent;
 }
 
 .btn-primary {
-  background: var(--primary);
+  background-color: var(--accent-color);
   color: #ffffff;
 }
-.btn-primary:hover {
-  background: #0369a1;
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--accent-hover);
 }
 
 .btn-secondary {
-  background: var(--bg-surface);
-  color: var(--text-body);
-  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-color);
 }
-.btn-secondary:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--text-faint);
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-hover);
 }
 
-/* --------------------------------------------------------------------------
-   Badges
-   -------------------------------------------------------------------------- */
+.btn-danger {
+  background-color: var(--status-fail);
+  color: #ffffff;
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: #dc2626;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
 }
 
-.badge-success {
-  background: rgba(16, 185, 129, 0.12);
-  color: var(--accent-emerald);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.badge-danger {
-  background: rgba(239, 68, 68, 0.12);
-  color: var(--accent-rose);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+.badge-pass {
+  background-color: var(--status-pass-bg);
+  color: var(--status-pass);
+  border-color: var(--status-pass-border);
 }
 
 .badge-warning {
-  background: rgba(245, 158, 11, 0.12);
-  color: var(--accent-amber);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background-color: var(--status-warning-bg);
+  color: var(--status-warning);
+  border-color: var(--status-warning-border);
 }
 
-.badge-info {
-  background: rgba(6, 182, 212, 0.12);
-  color: var(--accent-cyan);
-  border: 1px solid rgba(6, 182, 212, 0.3);
+.badge-fail {
+  background-color: var(--status-fail-bg);
+  color: var(--status-fail);
+  border-color: var(--status-fail-border);
 }
 
-/* --------------------------------------------------------------------------
-   Nav Tabs
-   -------------------------------------------------------------------------- */
-.nav-tab {
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  padding: 12px 16px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-  font-family: 'Inter', sans-serif;
+.badge-neutral {
+  background-color: var(--bg-surface);
+  color: var(--text-secondary);
+  border-color: var(--border-color);
 }
 
-.nav-tab:hover {
-  color: var(--text-main);
+.badge-accent {
+  background-color: var(--accent-subtle);
+  color: var(--accent-color);
+  border-color: rgba(59, 130, 196, 0.3);
 }
 
-.nav-tab.active {
-  color: var(--accent-cyan);
-  border-bottom-color: var(--accent-cyan);
-  font-weight: 700;
-}
-
-/* --------------------------------------------------------------------------
-   DICOM Viewport Grid
-   -------------------------------------------------------------------------- */
-.dicom-grid {
-  background-color: var(--pacs-viewport-bg);
-  background-image:
-    linear-gradient(var(--pacs-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--pacs-grid) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-
-/* --------------------------------------------------------------------------
-   Form Inputs
-   -------------------------------------------------------------------------- */
-input[type="text"],
-input[type="number"],
-select,
-textarea {
-  background: var(--bg-input);
-  color: var(--text-main);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 8px 11px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  outline: none;
-  transition: border-color 0.15s ease;
-  width: 100%;
-}
-
-input[type="text"]:focus,
-input[type="number"]:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--accent-cyan);
-}
-
-/* --------------------------------------------------------------------------
-   Theme Switcher Button
-   -------------------------------------------------------------------------- */
-.theme-toggle-btn {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  border-radius: 6px;
-  padding: 6px 9px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* Viewport crosshair & HUD overlays */
+.viewport-hud {
+  position: absolute;
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
-  transition: all 0.15s ease;
+  color: #00e5ff;
+  pointer-events: none;
+  line-height: 1.25;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
 }
+.viewport-hud.top-left { top: 6px; left: 6px; }
+.viewport-hud.top-right { top: 6px; right: 6px; text-align: right; }
+.viewport-hud.bottom-left { bottom: 6px; left: 6px; }
+.viewport-hud.bottom-right { bottom: 6px; right: 6px; text-align: right; }
 
-.theme-toggle-btn:hover {
-  color: var(--text-main);
-  border-color: var(--border-accent);
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .printable-area {
+    display: block !important;
+  }
 }
