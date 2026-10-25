@@ -181,46 +181,16 @@ class PipelineOrchestrator:
     def _build_runner(self, stage: PipelineStage):
         """Lazy-import and instantiate the stage runner."""
         if stage == PipelineStage.DICOM_QA:
-            class DicomQARunner:
-                def run(self, ctx: PipelineContext) -> Dict[str, Any]:
-                    from backend.dicom.validator import DICOMValidator
-                    d_dir = getattr(ctx, "dicom_dir", None)
-                    if d_dir and Path(d_dir).exists() and Path(d_dir).is_dir():
-                        res = DICOMValidator.validate_series(d_dir)
-                        return {"passed": res.status != "REJECT", "status": res.status, "findings": res.findings, "slice_count": res.slice_count}
-                    return {"passed": True, "status": "PASS", "findings": ["Dataset/in-memory QC validation verified"], "slice_count": 184}
-            return DicomQARunner()
+            from backend.pipeline.stage_adapters import DicomQAStage
+            return DicomQAStage()
 
         if stage == PipelineStage.PREPROCESSING:
-            class PreprocessingRunner:
-                def __init__(self, device: str = "cpu"):
-                    self.device = device
-                def run(self, ctx: PipelineContext) -> Dict[str, Any]:
-                    import numpy as np
-                    from backend.preprocessing.ct_pipeline import CTPipeline
-                    pipeline = CTPipeline()
-                    vol = ctx.get("raw_volume")
-                    if vol is None:
-                        vol = np.random.normal(-750, 100, (32, 32, 32)).astype(np.float32)
-                    norm_vol = pipeline.apply_window(vol)
-                    return {"volume": norm_vol, "spacing": (1.0, 1.0, 1.0)}
-            return PreprocessingRunner(device=self.device)
+            from backend.pipeline.stage_adapters import CTPreprocessingPipeline
+            return CTPreprocessingPipeline(device=self.device)
 
         if stage == PipelineStage.SEGMENTATION:
-            class SegmentationRunner:
-                def __init__(self, checkpoint_dir: Path, device: str = "cpu"):
-                    self.checkpoint_dir = checkpoint_dir
-                    self.device = device
-                def run(self, ctx: PipelineContext) -> Dict[str, Any]:
-                    import numpy as np
-                    prep = ctx.get(PipelineStage.PREPROCESSING) or {}
-                    vol = prep.get("volume")
-                    if vol is not None:
-                        mask = (vol > 0.6).astype(np.uint8)
-                    else:
-                        mask = np.zeros((32, 32, 32), dtype=np.uint8)
-                    return {"lung_mask": mask, "nodule_mask": mask}
-            return SegmentationRunner(
+            from backend.pipeline.stage_adapters import SegmentationInference
+            return SegmentationInference(
                 checkpoint_dir=self.checkpoint_dir, device=self.device
             )
 
@@ -237,19 +207,8 @@ class PipelineOrchestrator:
             )
 
         if stage == PipelineStage.RADIOMICS:
-            class RadiomicsRunner:
-                def run(self, ctx: PipelineContext) -> Dict[str, Any]:
-                    import numpy as np
-                    from backend.pipeline.radiomics.pipeline import RadiomicsPipeline
-                    pipe = RadiomicsPipeline(use_cache=False)
-                    prep = ctx.get(PipelineStage.PREPROCESSING) or {}
-                    vol = prep.get("volume")
-                    if vol is None:
-                        vol = np.zeros((32, 32, 32), dtype=np.float32)
-                    mask = np.ones_like(vol, dtype=np.uint8)
-                    feats = pipe.extract_features(vol, mask)
-                    return {"features": feats, "feature_count": len(feats)}
-            return RadiomicsRunner()
+            from backend.pipeline.stage_adapters import RadiomicsExtractor
+            return RadiomicsExtractor()
 
         if stage == PipelineStage.ENSEMBLE:
             from backend.pipeline.stages.ensemble import EnsembleStage
@@ -260,18 +219,12 @@ class PipelineOrchestrator:
             return XAIStage(device=self.device)
 
         if stage == PipelineStage.UNCERTAINTY:
-            class UncertaintyRunner:
-                def __init__(self, device: str = "cpu"):
-                    self.device = device
-                def run(self, ctx: PipelineContext) -> Dict[str, Any]:
-                    return {"predictive_std": 0.042, "entropy": 0.12, "tier": "LOW", "status": "computed"}
-            return UncertaintyRunner(device=self.device)
+            from backend.pipeline.stage_adapters import MCDropoutAdapter
+            return MCDropoutAdapter(device=self.device)
 
         if stage == PipelineStage.CALIBRATION:
-            class CalibrationRunner:
-                def run(self, ctx: PipelineContext) -> Dict[str, Any]:
-                    return {"optimal_temperature": 1.05, "status": "calibrated"}
-            return CalibrationRunner()
+            from backend.pipeline.stage_adapters import TemperatureScalerAdapter
+            return TemperatureScalerAdapter()
 
         if stage == PipelineStage.REPORT:
             from backend.pipeline.stages.report import ReportStage
@@ -287,6 +240,7 @@ class PipelineOrchestrator:
         dicom_dir: str | Path,
         case_id: Optional[str] = None,
         extra_clinical: Optional[Dict[str, Any]] = None,
+        raw_volume: Optional[Any] = None,
     ) -> PipelineReport:
         """
         Execute the full ML pipeline for a single CT case.
@@ -296,6 +250,7 @@ class PipelineOrchestrator:
         dicom_dir : path to folder with DICOM slices (or a .nii.gz file)
         case_id   : optional identifier; auto-generated from path if absent
         extra_clinical : additional clinical metadata (age, sex, smoking_pack_years)
+        raw_volume : optional in-memory 3D CT volume array
 
         Returns
         -------
@@ -309,6 +264,8 @@ class PipelineOrchestrator:
             dicom_dir=dicom_path,
             enabled_stages=self.enabled_stages,
         )
+        if raw_volume is not None:
+            ctx.set("raw_volume", raw_volume)
         if extra_clinical:
             ctx.set("clinical_meta", extra_clinical)
 

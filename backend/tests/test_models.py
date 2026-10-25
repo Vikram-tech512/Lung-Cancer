@@ -69,5 +69,5 @@ def test_multimodal_ensemble():
     }
     result = ensemble.predict(preds)
     assert 0.0 <= result.ensemble_probability <= 1.0
-    assert result.ensemble_verdict in ["BENIGN", "MALIGNANT", "INDETERMINATE"]
+    assert result.ensemble_verdict in ["NON_NODULE", "NODULE", "INDETERMINATE"]
     assert len(result.individual_predictions) == 3

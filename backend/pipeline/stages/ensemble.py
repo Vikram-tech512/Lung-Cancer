@@ -86,21 +86,30 @@ class EnsembleStage:
     # Feature extraction helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _extract_dl_prob(cls_out: Dict) -> float:
-        """Mean malignant probability from all DL heads."""
+    def _positive_class_prob(d: Dict) -> float:
+        """Helper to read either nodule_prob or malignant_prob."""
+        if not isinstance(d, dict):
+            return 0.5
+        if "nodule_prob" in d:
+            return float(d["nodule_prob"])
+        return float(d.get("malignant_prob", 0.5))
+
+    @classmethod
+    def _extract_dl_prob(cls, cls_out: Dict) -> float:
+        """Mean nodule/malignant probability from all DL heads."""
         probs = [
-            v.get("malignant_prob", 0.5)
+            cls._positive_class_prob(v)
             for k, v in cls_out.items()
-            if isinstance(v, dict) and "malignant_prob" in v
+            if isinstance(v, dict) and ("nodule_prob" in v or "malignant_prob" in v)
         ]
         return float(np.mean(probs)) if probs else 0.5
 
     @staticmethod
     def _extract_radiomics_prob(rad_out: Dict) -> Optional[float]:
-        """Retrieve radiomics-derived malignancy score if present."""
+        """Retrieve radiomics-derived nodule or malignancy score if present."""
         if not rad_out:
             return None
-        score = rad_out.get("malignancy_score") or rad_out.get("xgb_malignant_prob")
+        score = rad_out.get("nodule_score") or rad_out.get("malignancy_score") or rad_out.get("xgb_malignant_prob")
         return float(score) if score is not None else None
 
     @staticmethod
@@ -208,6 +217,8 @@ class EnsembleStage:
 
         result = {
             "strategy":         self.strategy,
+            "nodule_prob":      round(fused_prob, 4),
+            "non_nodule_prob":  round(1 - fused_prob, 4),
             "malignant_prob":   round(fused_prob, 4),
             "benign_prob":      round(1 - fused_prob, 4),
             "label":            label,

@@ -24,7 +24,7 @@ import logging
 import math
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 import hmac
 from fastapi import (
@@ -790,6 +790,16 @@ async def upload_dicom_study(file: Optional[UploadFile] = File(None)):
             "timestamp": deid_audit.timestamp
         }
 
+        # Persist uploaded DICOM files before temp directory cleanup
+        persisted_dir = Path("data/uploads") / study_id
+        persisted_dir.mkdir(parents=True, exist_ok=True)
+        for f in temp_dir.rglob("*"):
+            if f.is_file():
+                rel = f.relative_to(temp_dir)
+                dest = persisted_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dest)
+
         # Real study record stored
         STUDY_STORE[study_id] = {
             "study_id": study_id,
@@ -803,6 +813,7 @@ async def upload_dicom_study(file: Optional[UploadFile] = File(None)):
             "compatibility_report": comp_dict,
             "deidentification_audit": deid_dict,
             "is_synthetic": False,
+            "dicom_dir": persisted_dir,
             "nodules": []
         }
 
@@ -916,61 +927,113 @@ def export_fhir_diagnostic_report(study_id: str):
     )
     return report
 
+def _run_pipeline_background(
+    task_id: str,
+    study_id: str,
+    dicom_dir: Any,
+    extra_clinical: Dict[str, Any],
+    raw_volume: Optional[Any],
+):
+    import asyncio
+    from backend.pipeline import PipelineOrchestrator, PipelineStage
+
+    async def _execute():
+        orch = PipelineOrchestrator.from_config()
+        report = await orch.run(
+            dicom_dir=dicom_dir,
+            case_id=study_id,
+            extra_clinical=extra_clinical,
+            raw_volume=raw_volume,
+        )
+
+        stage_display_names = {
+            PipelineStage.DICOM_QA: "DICOM Quality Assessment",
+            PipelineStage.PREPROCESSING: "3D Resampling & HU Windowing",
+            PipelineStage.SEGMENTATION: "Lung & Parenchyma Segmentation (3D U-Net)",
+            PipelineStage.DETECTION: "Nodule Candidate Detection (3D RetinaNet)",
+            PipelineStage.CLASSIFICATION: "Volumetric Classification (3D ResNet-18 Half / 32³ ROI)",
+            PipelineStage.RADIOMICS: "Quantitative Radiomics Feature Extraction (IBSI)",
+            PipelineStage.ENSEMBLE: "Multimodal Fusion Ensemble",
+            PipelineStage.XAI: "Explainable AI (3D Grad-CAM)",
+            PipelineStage.UNCERTAINTY: "Uncertainty Estimation (MC Dropout)",
+            PipelineStage.CALIBRATION: "Temperature Scaling Probability Calibration",
+            PipelineStage.REPORT: "Clinical Diagnostic Structured Report Generation",
+        }
+
+        stages_data = []
+        for stage in orch.enabled_stages:
+            stages_data.append({
+                "name": stage_display_names.get(stage, stage.value),
+                "status": "COMPLETED",
+                "duration_s": 0.15,
+            })
+
+        TASK_STORE[task_id] = {
+            "task_id": task_id,
+            "task_type": "pipeline_run",
+            "study_id": study_id,
+            "status": "COMPLETED" if report.status != "failed" else "FAILED",
+            "progress": 100,
+            "stages": stages_data,
+            "report": report.to_dict(),
+        }
+
+    asyncio.run(_execute())
+
+
 @app.post("/api/v2/pipeline/run")
-async def trigger_pipeline(study_id: str = Form(...)):
+async def trigger_pipeline(
+    study_id: str = Form(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+):
     if study_id not in STUDY_STORE:
         raise HTTPException(status_code=404, detail="Study not found")
 
     study = STUDY_STORE[study_id]
     task_id = f"task_{uuid.uuid4().hex[:8]}"
 
-    from backend.pipeline import PipelineOrchestrator, PipelineStage
-    orch = PipelineOrchestrator.from_config()
-
     extra_clinical = {
         "patient_id": study.get("patient_id", "ANON"),
         "slice_count": study.get("slice_count", 184),
         "slice_thickness": study.get("slice_thickness", 1.25),
-        "is_synthetic": study.get("is_synthetic", False)
+        "is_synthetic": study.get("is_synthetic", False),
     }
 
-    report = await orch.run(
-        dicom_dir=study.get("dicom_dir", Path("data") / study_id),
-        case_id=study_id,
-        extra_clinical=extra_clinical
-    )
-
-    stage_display_names = {
-        PipelineStage.DICOM_QA: "DICOM Quality Assessment",
-        PipelineStage.PREPROCESSING: "3D Resampling & HU Windowing",
-        PipelineStage.SEGMENTATION: "Lung & Parenchyma Segmentation (3D U-Net)",
-        PipelineStage.DETECTION: "Nodule Candidate Detection (3D RetinaNet)",
-        PipelineStage.CLASSIFICATION: "Volumetric Classification (3D ResNet-18 Half / 32³ ROI)",
-        PipelineStage.RADIOMICS: "Quantitative Radiomics Feature Extraction (IBSI)",
-        PipelineStage.ENSEMBLE: "Multimodal Fusion Ensemble",
-        PipelineStage.XAI: "Explainable AI (3D Grad-CAM)",
-        PipelineStage.UNCERTAINTY: "Uncertainty Estimation (MC Dropout)",
-        PipelineStage.CALIBRATION: "Temperature Scaling Probability Calibration",
-        PipelineStage.REPORT: "Clinical Diagnostic Structured Report Generation",
-    }
-
-    stages_data = []
-    for stage in orch.enabled_stages:
-        stages_data.append({
-            "name": stage_display_names.get(stage, stage.value),
-            "status": "COMPLETED",
-            "duration_s": 0.15
-        })
+    dicom_dir = study.get("dicom_dir", Path("data") / study_id)
+    raw_volume = None
+    d_path = Path(dicom_dir)
+    if (not d_path.exists() or (d_path.is_dir() and not list(d_path.glob("*")))) and study.get("nodules"):
+        first_nodule = study["nodules"][0]
+        raw_volume = first_nodule.get("volume_data")
 
     TASK_STORE[task_id] = {
         "task_id": task_id,
+        "task_type": "pipeline_run",
         "study_id": study_id,
-        "status": "COMPLETED" if report.status != "failed" else "FAILED",
-        "progress": 100,
-        "stages": stages_data,
-        "report": report.to_dict()
+        "status": "PROCESSING",
+        "progress": 10,
+        "stages": [],
+        "report": None,
     }
-    return {"task_id": task_id, "status": "COMPLETED", "report": report.to_dict()}
+
+    if background_tasks is not None:
+        background_tasks.add_task(
+            _run_pipeline_background,
+            task_id,
+            study_id,
+            dicom_dir,
+            extra_clinical,
+            raw_volume,
+        )
+        return {
+            "task_id": task_id,
+            "task_type": "pipeline_run",
+            "status": "PROCESSING",
+            "message": "Pipeline run started in background.",
+        }
+    else:
+        _run_pipeline_background(task_id, study_id, dicom_dir, extra_clinical, raw_volume)
+        return TASK_STORE[task_id]
 
 @app.get("/api/v2/pipeline/{task_id}/status")
 def get_pipeline_status(task_id: str):
@@ -1121,6 +1184,7 @@ def classify_nodule(nodule_id: str, study_id: Optional[str] = None):
     return {
         "nodule_id": target_nodule["nodule_id"],
         "study_id": target_study["study_id"],
+        "task_type": "nodule_candidate_detection",
         "series_id": target_study.get("series_id", f"SERIES-{target_study['study_id']}"),
         "is_synthetic": is_synth,
         "data_tier": tier,

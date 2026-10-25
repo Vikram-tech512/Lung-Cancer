@@ -16,14 +16,19 @@ from typing import Dict, Any, List, Optional
 class ModelPrediction:
     model_name: str
     probability_malignant: float
+    probability_nodule: Optional[float] = None
     uncertainty_score: float = 0.0
     status: str = "ACTIVE"  # "ACTIVE", "NOT_TRAINED", "FALLBACK"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self):
+        if self.probability_nodule is None:
+            self.probability_nodule = self.probability_malignant
+
 @dataclass
 class EnsembleResult:
     ensemble_probability: float
-    ensemble_verdict: str  # "BENIGN", "MALIGNANT", "INDETERMINATE"
+    ensemble_verdict: str  # "NON_NODULE", "NODULE", "INDETERMINATE"
     confidence_interval: tuple[float, float]
     weights_used: Dict[str, float]
     individual_predictions: List[ModelPrediction]
@@ -71,13 +76,16 @@ class MultimodalEnsemble:
             norm_weights = {k: self.weights.get(k, 0.2) / total_weight for k in active_preds.keys()}
 
         weighted_p = sum(
-            norm_weights[k] * active_preds[k].probability_malignant
+            norm_weights[k] * (getattr(active_preds[k], "probability_nodule", None) if getattr(active_preds[k], "probability_nodule", None) is not None else active_preds[k].probability_malignant)
             for k in active_preds.keys()
         )
         weighted_p = float(np.clip(weighted_p, 0.0, 1.0))
 
         # Model disagreement entropy
-        probs = np.array([v.probability_malignant for v in active_preds.values()])
+        probs = np.array([
+            getattr(v, "probability_nodule", None) if getattr(v, "probability_nodule", None) is not None else v.probability_malignant
+            for v in active_preds.values()
+        ])
         p_clipped = np.clip(probs, 1e-6, 1.0 - 1e-6)
         binary_entropies = -(p_clipped * np.log2(p_clipped) + (1 - p_clipped) * np.log2(1 - p_clipped))
         disagreement_entropy = float(np.mean(binary_entropies))
@@ -88,9 +96,9 @@ class MultimodalEnsemble:
         ci_upper = min(1.0, weighted_p + 1.96 * std_p)
 
         if weighted_p >= 0.65:
-            verdict = "MALIGNANT"
+            verdict = "NODULE"
         elif weighted_p <= 0.35:
-            verdict = "BENIGN"
+            verdict = "NON_NODULE"
         else:
             verdict = "INDETERMINATE"
 

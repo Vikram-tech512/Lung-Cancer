@@ -34,6 +34,81 @@ log = get_logger(__name__)
 _DEFAULT_MODELS = ["ResNet3D", "DenseNet3D", "SwinTransformer3D"]
 
 
+def infer_nodule_crop(
+    crop_volume: np.ndarray,
+    model: Optional[Any] = None,
+    device: str = "cpu",
+    checkpoint_dir: Path = Path("checkpoints"),
+    input_size: tuple = (32, 32, 32),
+) -> Dict[str, float]:
+    """
+    Infers nodule presence / malignancy on a 3D crop volume of size 32x32x32.
+    Resizes if crop dimensions differ.
+    """
+    import torch
+    import torch.nn.functional as F
+    from skimage.transform import resize as sk_resize
+
+    if model is None:
+        from backend.models.classification.resnet3d.model import resnet3d_50, ResNet3D18Half
+        ckpt = checkpoint_dir / "resnet3d_luna16_best.pt"
+        if not ckpt.exists():
+            ckpt = Path("checkpoints_3d/resnet3d_luna16_best.pt")
+        if not ckpt.exists():
+            ckpt = checkpoint_dir / "resnet3d_best.pt"
+
+        if ckpt.exists():
+            state = torch.load(ckpt, map_location=device)
+            sd = state.get("model_state_dict", state) if isinstance(state, dict) else state
+            arch = state.get("architecture") if isinstance(state, dict) else None
+            if arch == "ResNet3D18Half" or (isinstance(sd, dict) and "fc.weight" in sd and sd["fc.weight"].shape == torch.Size([2, 256])):
+                model = ResNet3D18Half(in_channels=1, num_classes=2)
+            else:
+                model = resnet3d_50(num_classes=2)
+            model.load_state_dict(sd, strict=False)
+        else:
+            model = resnet3d_50(num_classes=2)
+        model = model.to(device).eval()
+
+    if crop_volume.shape != input_size:
+        vol = sk_resize(
+            crop_volume,
+            input_size,
+            order=1,
+            preserve_range=True,
+            anti_aliasing=False,
+        ).astype(np.float32)
+    else:
+        vol = crop_volume.astype(np.float32)
+
+    vol = np.clip(vol, -1000, 400)
+    vol = (vol + 1000) / 1400.0
+
+    tensor = (
+        torch.from_numpy(vol)
+        .float()
+        .unsqueeze(0)
+        .unsqueeze(0)
+        .to(device)
+    )
+
+    with torch.no_grad():
+        logits = model(tensor)
+        probs = F.softmax(logits, dim=1).squeeze(0).cpu().numpy()
+
+    p_pos = float(probs[1])
+    p_neg = float(probs[0])
+    logit_val = float(logits[0, 1].item())
+
+    return {
+        "malignant_prob": p_pos,
+        "benign_prob": p_neg,
+        "nodule_prob": p_pos,
+        "non_nodule_prob": p_neg,
+        "logit": logit_val,
+    }
+
+
 class ClassificationStage:
     """
     Runs all three 3D classification heads and fuses their probabilities
@@ -163,9 +238,13 @@ class ClassificationStage:
             with torch.no_grad():
                 logits = model(tensor)          # [1, 2]
                 probs  = F.softmax(logits, dim=1).squeeze(0).cpu().numpy()
+        p_pos = float(probs[1])
+        p_neg = float(probs[0])
         return {
-            "malignant_prob": float(probs[1]),
-            "benign_prob":    float(probs[0]),
+            "malignant_prob": p_pos,
+            "benign_prob":    p_neg,
+            "nodule_prob":    p_pos,
+            "non_nodule_prob": p_neg,
             "logit":          float(logits[0, 1].item()),
         }
 
@@ -174,6 +253,8 @@ class ClassificationStage:
         return {
             "malignant_prob": 0.50,
             "benign_prob":    0.50,
+            "nodule_prob":    0.50,
+            "non_nodule_prob": 0.50,
             "logit":          0.0,
             "source":         "mock_no_checkpoint",
         }

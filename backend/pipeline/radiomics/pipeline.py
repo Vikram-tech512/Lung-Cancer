@@ -117,8 +117,10 @@ class RadiomicsPipeline:
             elapsed_s=round(elapsed, 2),
         )
 
-        # Add malignancy score
-        features["malignancy_score"] = self._score(features)
+        # Add nodule score with malignancy score alias
+        score = self._score(features)
+        features["nodule_score"] = score
+        features["malignancy_score"] = score
 
         if self.use_cache:
             self._cache_set(cache_key, features)

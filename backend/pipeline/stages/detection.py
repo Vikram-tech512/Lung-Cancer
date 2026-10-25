@@ -61,7 +61,7 @@ class DetectionStage:
             return self._model
         try:
             import torch
-            from backend.models.detection.retinanet3d import RetinaNet3D
+            from backend.models.detection.detector3d.retinanet3d import RetinaNet3D
             ckpt_path = self.checkpoint_dir / "retinanet3d_best.pt"
             model = RetinaNet3D(num_classes=2, backbone_depth=50)
             if ckpt_path.exists():
