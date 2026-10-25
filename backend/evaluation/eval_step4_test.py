@@ -1144,7 +1144,9 @@ def run_step4_evaluation(
         json.dump(exp_metrics, f, indent=2)
 
     # Update models_registry.json by code only
-    registry_path = Path("models_registry.json")
+    registry_path = Path("backend/experiments/models_registry.json")
+    if not registry_path.exists():
+        registry_path = Path("models_registry.json")
     if registry_path.exists():
         with open(registry_path, "r", encoding="utf-8") as f:
             reg = json.load(f)

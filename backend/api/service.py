@@ -86,7 +86,7 @@ STUDY_STORE: Dict[str, Dict[str, Any]] = {}
 TASK_STORE: Dict[str, Dict[str, Any]] = {}
 
 tracker = ExperimentTracker(tracking_dir="experiments_log")
-registry = ModelRegistry(registry_file="models_registry.json")
+registry = ModelRegistry()
 ensemble = MultimodalEnsemble()
 inspector = MultiVendorDicomInspector()
 deidentifier = DicomDeidentifier()
@@ -492,7 +492,11 @@ def list_cases():
 
 def get_active_model_info() -> Dict[str, Any]:
     """Reads active model version, stage, architecture, and metrics dynamically from models_registry.json."""
-    reg_path = Path("models_registry.json")
+    reg_path = Path(__file__).parent.parent / "experiments" / "models_registry.json"
+    if not reg_path.exists():
+        reg_path = Path("backend/experiments/models_registry.json")
+    if not reg_path.exists():
+        reg_path = Path("models_registry.json")
     if reg_path.exists():
         try:
             with open(reg_path, "r", encoding="utf-8") as f:

@@ -47,13 +47,16 @@ out/
 # Database & Logs
 *.db
 *.sqlite3
+# Database & Logs
+*.db
+*.sqlite3
 *.log
-logs/
-EXECUTION_RESULTS/master_execution_log.txt
+logs/*
+!logs/.gitkeep
 
 # Datasets, Scans & Preprocessed Crops
-data/
-data/**
+data/*
+!data/.gitkeep
 segmentation/data/
 LUNA16_DATA/
 LUNA16_ROOT/
@@ -65,12 +68,17 @@ LUNA16_ROOT/
 *.dcm
 
 # Large Model Checkpoints (>100MB blocked by GitHub)
-checkpoints/
+checkpoints/*
+!checkpoints/.gitkeep
 checkpoints_3d/
 *.pt
 *.pth
 *.bin
 *.onnx
+
+# Results
+results/*
+!results/.gitkeep
 
 # Experiment Run Manifests
 experiments_log/

@@ -27,8 +27,17 @@ class ModelVersionInfo:
     updated_at: Optional[str] = None
 
 class ModelRegistry:
-    def __init__(self, registry_file: str = "models_registry.json"):
-        self.registry_file = Path(registry_file)
+    def __init__(self, registry_file: Optional[str] = None):
+        if registry_file:
+            self.registry_file = Path(registry_file)
+        else:
+            cand = Path(__file__).parent / "models_registry.json"
+            if cand.exists():
+                self.registry_file = cand
+            elif Path("backend/experiments/models_registry.json").exists():
+                self.registry_file = Path("backend/experiments/models_registry.json")
+            else:
+                self.registry_file = Path("models_registry.json")
         self.models: Dict[str, List[ModelVersionInfo]] = {}
         self._load()
 

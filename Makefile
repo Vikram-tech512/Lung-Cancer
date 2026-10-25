@@ -3,8 +3,8 @@
 #  Unified dev commands for the entire monorepo
 # ============================================================================
 
-.PHONY: help install dev-backend dev-frontend test lint format \
-        docker-up docker-down generate-dashboard clean
+.PHONY: help install dev-backend dev-frontend test test-cov lint format \
+        docker-up docker-down generate-dashboard run-all clean
 
 PYTHON   := python
 PIP      := pip
@@ -25,6 +25,7 @@ help:
 	@echo "  make format           Ruff auto-fix formatting"
 	@echo "  make docker-up        Start full stack (backend + frontend + Prometheus + Grafana)"
 	@echo "  make docker-down      Stop and remove all containers"
+	@echo "  make run-all          Execute master platform test and verification suite"
 	@echo "  make generate-dashboard  Generate Grafana dashboard JSON"
 	@echo "  make clean            Remove __pycache__, .pyc, build artifacts"
 	@echo ""
@@ -76,9 +77,9 @@ docker-down:
 docker-logs:
 	$(DOCKER) logs -f backend
 
-# ─── AWS CloudFront Deployment ──────────────────────────────────────────────
-deploy-cloudfront:
-	powershell -ExecutionPolicy Bypass -File deploy/deploy-cloudfront.ps1
+# ─── Master Runner ───────────────────────────────────────────────────────────
+run-all:
+	$(PYTHON) scripts/run_all.py
 
 # ─── Monitoring ──────────────────────────────────────────────────────────────
 generate-dashboard:
