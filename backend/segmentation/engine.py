@@ -275,9 +275,9 @@ class InferenceEngine:
         """Read actual, empirically evaluated validation metrics from repo test suites."""
         arch = arch.lower()
         candidates = [
-            Path(f"../lung-cancer-xai-phase3/results/metrics/{arch}_full_evaluation.json"),
-            Path(f"c:/Users/ashok/OneDrive/Desktop/Lung Cancer/lung-cancer-xai-phase3/results/metrics/{arch}_full_evaluation.json"),
-            Path(f"c:/Users/ashok/OneDrive/Desktop/Lung Cancer/lung_cancer_segmentation/results/hybrid_metrics.json"),
+            Path(f"results/{arch}_full_evaluation.json"),
+            Path("results/exp_01_metrics.json"),
+            Path(f"results/{arch}_metrics.json"),
         ]
 
         for p in candidates:

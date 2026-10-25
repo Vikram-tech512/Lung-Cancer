@@ -1236,17 +1236,31 @@ def get_xai_visualization(nodule_id: str, method: str, study_id: Optional[str] =
             inp = torch.from_numpy(norm_vol).unsqueeze(0).unsqueeze(0).float()
             inp.requires_grad_(True)
 
-            model = ResNet3D50(in_channels=1, num_classes=2)
+            from backend.models.classification.resnet3d.model import ResNet3D50, ResNet3D18Half
             ckpt = torch.load(str(ckpt_path), map_location="cpu")
-            if "model_state_dict" in ckpt:
+            sd = ckpt.get("model_state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+            arch = ckpt.get("architecture") if isinstance(ckpt, dict) else None
+
+            if arch == "ResNet3D18Half" or (isinstance(sd, dict) and "fc.weight" in sd and sd["fc.weight"].shape == torch.Size([2, 256])):
+                model = ResNet3D18Half(in_channels=1, num_classes=2)
+                conv_last = model.layer4[-1].conv2
+                conv_fine = model.layer3[-1].conv2
+            else:
+                model = ResNet3D50(in_channels=1, num_classes=2)
+                conv_last = model.layer4[-1].conv3
+                conv_fine = model.layer3[-1].conv3
+
+            if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
                 model.load_state_dict(ckpt["model_state_dict"])
+            elif isinstance(sd, dict):
+                model.load_state_dict(sd)
             model.eval()
 
             risk_str = str(target_nodule.get("preliminary_risk", "")).lower()
             target_class = 0 if ("benign" in risk_str or "rads 2" in risk_str or "rads 3" in risk_str) else 1
 
             if method == "gradcam3d":
-                cam = GradCAM3D(model, target_layer=model.layer4[-1].conv3)
+                cam = GradCAM3D(model, target_layer=conv_last)
                 heatmap_3d = cam.generate(inp, target_class=target_class)
                 axial_heatmap = cam.project_axial(heatmap_3d)
             elif method == "integrated_gradients":
@@ -1254,7 +1268,7 @@ def get_xai_visualization(nodule_id: str, method: str, study_id: Optional[str] =
                 res = ig.attribute(inp, target_class=target_class)
                 axial_heatmap = res["mip_axial"]
             else:  # attention_rollout3d / multiscale
-                cam = MultiScaleGradCAM3D(model, fine_layer=model.layer3[-1].conv3, coarse_layer=model.layer4[-1].conv3)
+                cam = MultiScaleGradCAM3D(model, fine_layer=conv_fine, coarse_layer=conv_last)
                 heatmap_3d = cam.generate(inp, target_class=target_class)
                 axial_heatmap = np.max(heatmap_3d, axis=0)
 

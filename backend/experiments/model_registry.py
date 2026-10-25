@@ -24,6 +24,7 @@ class ModelVersionInfo:
     checkpoint_path: Optional[str] = None
     patient_split_hash: Optional[str] = None
     notes: str = ""
+    updated_at: Optional[str] = None
 
 class ModelRegistry:
     def __init__(self, registry_file: str = "models_registry.json"):

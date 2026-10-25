@@ -87,4 +87,6 @@ Thumbs.db
 .appsail_stage/
 .wrangler/
 backend/storage/vault/
+backend/storage/clinical_gate_state.json
+EXECUTION_RESULTS/
 
