@@ -413,14 +413,14 @@ export const WorkstationPanel: React.FC = () => {
             variant={activeCase.id === PRIMARY_SAMPLE.id ? 'primary' : 'ghost'}
             onClick={() => setActiveCase(PRIMARY_SAMPLE)}
           >
-            Case 1 (Malignant)
+            Case 1 (Suspicious Nodule)
           </Button>
           <Button
             size="sm"
             variant={activeCase.id === SECONDARY_SAMPLE.id ? 'primary' : 'ghost'}
             onClick={() => setActiveCase(SECONDARY_SAMPLE)}
           >
-            Case 2 (Benign)
+            Case 2 (Benign Nodule)
           </Button>
         </div>
       </div>

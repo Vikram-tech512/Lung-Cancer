@@ -98,14 +98,14 @@ class GradCAM3D:
         weights = self.gradients.mean(dim=(2, 3, 4), keepdim=True)   # (1, C, 1, 1, 1)
         cam = (weights * self.activations).sum(dim=1, keepdim=True)  # (1, 1, d, h, w)
         cam = F.relu(cam)
-        cam = cam.squeeze().cpu().numpy()                             # (d, h, w)
+        cam = cam[0, 0].cpu().numpy()                                 # (d, h, w)
 
         # Resize to input spatial size
         D, H, W = input_tensor.shape[2], input_tensor.shape[3], input_tensor.shape[4]
         cam_tensor = torch.from_numpy(cam).unsqueeze(0).unsqueeze(0).float()
         cam_resized = F.interpolate(cam_tensor, size=(D, H, W),
                                     mode="trilinear",
-                                    align_corners=False).squeeze().numpy()
+                                    align_corners=False)[0, 0].numpy()
 
         if cam_resized.max() > 0:
             cam_resized = cam_resized / cam_resized.max()
@@ -178,13 +178,13 @@ class GradCAMPP3D(GradCAM3D):
         weights = (alpha * F.relu(grads)).sum(dim=(2, 3, 4), keepdim=True)
 
         cam = (weights * acts).sum(dim=1, keepdim=True)
-        cam = F.relu(cam).squeeze().cpu().numpy()
+        cam = F.relu(cam)[0, 0].cpu().numpy()
 
         D, H, W = input_tensor.shape[2:5]
         cam_t = torch.from_numpy(cam).unsqueeze(0).unsqueeze(0).float()
         cam_r = F.interpolate(cam_t, size=(D, H, W),
                               mode="trilinear",
-                              align_corners=False).squeeze().numpy()
+                              align_corners=False)[0, 0].numpy()
 
         if cam_r.max() > 0:
             cam_r = cam_r / cam_r.max()

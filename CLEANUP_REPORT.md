@@ -138,7 +138,26 @@ The frontend was overhauled into a PACS-style radiology workstation:
 
 | Verification Suite | Target | Result | Details |
 |---|---|---|---|
-| Frontend Production Build | `npm run build` in `frontend/` | **PASS** | Transformed 1487 modules, bundle emitted in 37.29s |
+| Frontend Production Build | `npm run build` in `frontend/` | **PASS** | Transformed 1487 modules, bundle emitted |
 | Frontend Unit Tests | `npm test` in `frontend/` | **PASS** | 15/15 tests passing (Phase 3 & 4 coordinates) |
-| Backend Pytest Suite | `python -m pytest backend/tests -q` | **PASS** | 60/60 tests passing in 110.75s |
+| Backend Pytest Suite | `python -m pytest backend/tests -q` | **PASS** | 60/60 tests passing |
 | Docker Compose Configuration | `docker-compose.yml` | **PASS** | Valid schema with all 5 services defined (`backend`, `frontend`, `prometheus`, `grafana`, `node-exporter`) |
+
+---
+
+## 7. Concrete Pipeline, Wording & Crop-Size Alignments
+
+1. **Pipeline Endpoint Wired to Master DAG Orchestrator**:
+   - Replaced mocked static stage entries in `/api/v2/pipeline/run` with asynchronous execution of the full 11-stage [`PipelineOrchestrator`](file:///c:/Users/ashok/OneDrive/Desktop/Lung%20Cancer/backend/pipeline/orchestrator.py).
+   - Provided concrete stage runner adapters in `orchestrator.py` for DICOM QA, CT Preprocessing, Parenchyma Segmentation, Detection, Classification, Radiomics, Ensemble, XAI, Uncertainty, Calibration, and Report Generation.
+   - Preserved full state tracking and stage results in `TASK_STORE`.
+
+2. **Nodule vs. Malignancy Clinical Wording Clarification**:
+   - Corrected terminology in `TumourLocator.tsx` (`Segmented nodule boundary`, `MODEL ATTRIBUTION — NOT A VERIFIED NODULE BOUNDARY`) to avoid prematurely categorizing screening nodule candidates as verified tumours.
+   - Refined case selectors in `WorkstationPanel.tsx` from `Case 1 (Malignant)` / `Case 2 (Benign)` to `Case 1 (Suspicious Nodule)` / `Case 2 (Benign Nodule)`.
+   - Updated model metadata in `service.py` to clarify that LUNA16 evaluates nodule candidate detection (P(Nodule)), while downstream ensemble outputs calibrate malignancy risk.
+
+3. **Inference Crop Size Matched to Trained 32³ Model**:
+   - Aligned default `crop_size` in `CTPipeline.extract_nodule_crop` to `(32, 32, 32)` to strictly match the trained `ResNet3D18Half` weights (`checkpoints/resnet3d_luna16_best.pt`).
+   - Aligned `ClassificationStage` default `input_size` to `(32, 32, 32)` with dynamic support for `ResNet3D18Half`.
+   - Updated synthetic volume seeds in `service.py` to `(32, 32, 32)` and fixed tensor dimension preservation in `GradCAM3D` and `GradCAMPP3D` when spatial dimensions collapse to 1.

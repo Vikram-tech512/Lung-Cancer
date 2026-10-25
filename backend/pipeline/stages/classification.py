@@ -46,7 +46,7 @@ class ClassificationStage:
         checkpoint_dir: Path = Path("checkpoints"),
         device: str = "cpu",
         enabled_models: Optional[list] = None,
-        input_size: tuple = (96, 96, 96),
+        input_size: tuple = (32, 32, 32),
     ) -> None:
         self.checkpoint_dir = checkpoint_dir
         self.device = device
@@ -60,13 +60,25 @@ class ClassificationStage:
     def _load_resnet3d(self) -> Optional[Any]:
         try:
             import torch
-            from backend.models.classification.resnet3d.model import resnet3d_50
-            model = resnet3d_50(num_classes=2)
+            from backend.models.classification.resnet3d.model import resnet3d_50, ResNet3D18Half
             ckpt = self.checkpoint_dir / "resnet3d_best.pt"
+            if not ckpt.exists():
+                ckpt = self.checkpoint_dir / "resnet3d_luna16_best.pt"
+            if not ckpt.exists():
+                ckpt = Path("checkpoints_3d/resnet3d_luna16_best.pt")
+
             if ckpt.exists():
                 state = torch.load(ckpt, map_location=self.device)
-                model.load_state_dict(state.get("model_state_dict", state), strict=False)
-                log.info("loaded_resnet3d", checkpoint=str(ckpt))
+                sd = state.get("model_state_dict", state) if isinstance(state, dict) else state
+                arch = state.get("architecture") if isinstance(state, dict) else None
+                if arch == "ResNet3D18Half" or (isinstance(sd, dict) and "fc.weight" in sd and sd["fc.weight"].shape == torch.Size([2, 256])):
+                    model = ResNet3D18Half(in_channels=1, num_classes=2)
+                else:
+                    model = resnet3d_50(num_classes=2)
+                model.load_state_dict(sd, strict=False)
+                log.info("loaded_resnet3d", checkpoint=str(ckpt), arch=model.__class__.__name__)
+            else:
+                model = resnet3d_50(num_classes=2)
             return model.to(self.device).eval()
         except Exception as exc:
             log.warning("resnet3d_load_failed", error=str(exc))

@@ -25,7 +25,7 @@ interface Props {
 }
 
 const SOURCE_LABEL: Record<TumourRegion['source'], string> = {
-  segmentation: 'Segmented tumour boundary (Validated)',
+  segmentation: 'Segmented nodule boundary (Validated)',
   detector: 'Detector bounding box (CADe)',
   attention: 'Model attention region (Grad-CAM attribution — not a measured boundary)',
 };
@@ -405,7 +405,7 @@ export function generateTriptychAssets(
       ctxHm.fillStyle = '#f59e0b';
       ctxHm.font = 'bold 9px JetBrains Mono, monospace';
       ctxHm.textAlign = 'center';
-      ctxHm.fillText('MODEL ATTRIBUTION — NOT A VERIFIED TUMOUR BOUNDARY', w / 2, h - 13);
+      ctxHm.fillText('MODEL ATTRIBUTION — NOT A VERIFIED NODULE BOUNDARY', w / 2, h - 13);
       ctxHm.restore();
     }
   } else {
@@ -1034,7 +1034,7 @@ export const TumourLocator: React.FC<Props> = ({
           }}>
             <Sparkles size={16} color="#38bdf8" style={{ flexShrink: 0 }} />
             <span>
-              <strong>Educational &amp; Verification Showcase:</strong> Reference benchmark cases display verified multi-radiologist consensus annotations and illustrative spatial attribution. Dynamic uploads depict heuristic parenchymal contrast focus for exploratory review, not certified standalone diagnostic predictions. Grad-CAM highlights attribution regions influencing predictions, not verified tumour boundaries.
+              <strong>Educational &amp; Verification Showcase:</strong> Reference benchmark cases display verified multi-radiologist consensus annotations and illustrative spatial attribution. Dynamic uploads depict heuristic parenchymal contrast focus for exploratory review, not certified standalone diagnostic predictions. Grad-CAM highlights attribution regions influencing predictions, not verified nodule boundaries.
             </span>
           </div>
         </div>

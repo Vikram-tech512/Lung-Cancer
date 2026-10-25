@@ -58,7 +58,7 @@ class CTPipeline:
         self,
         volume: np.ndarray,
         center_zyx: Tuple[int, int, int],
-        crop_size: Tuple[int, int, int] = (64, 64, 64),
+        crop_size: Tuple[int, int, int] = (32, 32, 32),
         pad_value: float = 0.0
     ) -> np.ndarray:
         """

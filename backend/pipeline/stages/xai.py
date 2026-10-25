@@ -52,19 +52,25 @@ class XAIStage:
         try:
             import torch
             from backend.explainability.gradcam3d import GradCAM3D
-            from backend.models.classification.resnet3d.model import ResNet3D50
+            from backend.models.classification.resnet3d.model import ResNet3D50, ResNet3D18Half
 
             cls_out = ctx.get(PipelineStage.CLASSIFICATION) or {}
             model = cls_out.get("model")
             
-            # If no active model was stored in context, attempt to instantiate ResNet3D50
+            # If no active model was stored in context, attempt to instantiate from checkpoint
             if model is None:
-                ckpt_path = Path("checkpoints_3d/resnet3d_luna16_best.pt")
+                ckpt_path = Path("checkpoints/resnet3d_luna16_best.pt")
+                if not ckpt_path.exists():
+                    ckpt_path = Path("checkpoints_3d/resnet3d_luna16_best.pt")
                 if ckpt_path.exists():
-                    model = ResNet3D50(in_channels=1, num_classes=2)
                     ckpt = torch.load(str(ckpt_path), map_location=self.device)
-                    if "model_state_dict" in ckpt:
-                        model.load_state_dict(ckpt["model_state_dict"])
+                    sd = ckpt.get("model_state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+                    arch = ckpt.get("architecture") if isinstance(ckpt, dict) else None
+                    if arch == "ResNet3D18Half" or (isinstance(sd, dict) and "fc.weight" in sd and sd["fc.weight"].shape == torch.Size([2, 256])):
+                        model = ResNet3D18Half(in_channels=1, num_classes=2)
+                    else:
+                        model = ResNet3D50(in_channels=1, num_classes=2)
+                    model.load_state_dict(sd, strict=False)
                     model.to(self.device).eval()
             
             if model is None or not hasattr(model, "layer4"):
@@ -73,7 +79,12 @@ class XAIStage:
                     "detail": "GradCAM3D requires a loaded 3D CNN model with convolutional layers. Checkpoint not loaded."
                 }
 
-            target_layer = model.layer4[-1].conv3 if hasattr(model.layer4[-1], "conv3") else model.layer4[-1]
+            if hasattr(model.layer4[-1], "conv2"):
+                target_layer = model.layer4[-1].conv2
+            elif hasattr(model.layer4[-1], "conv3"):
+                target_layer = model.layer4[-1].conv3
+            else:
+                target_layer = model.layer4[-1]
             gcam = GradCAM3D(model, target_layer=target_layer)
 
             # Ensure 5D tensor shape (1, 1, D, H, W)
