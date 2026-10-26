@@ -32,6 +32,10 @@ from src.inference.morphology import analyze_nodule_morphology
 
 CLASS_NAMES = ["Benign", "Malignant", "Normal"]
 
+
+def _optional_round(value: Any) -> Optional[float]:
+    return round(float(value), 4) if value is not None else None
+
 _preprocess = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -285,42 +289,36 @@ class InferenceEngine:
                 try:
                     with open(p, "r", encoding="utf-8") as f:
                         data = json.load(f)
+                    if data.get("synthetic") is not False or not data.get("split_hash_sha256"):
+                        continue
                     m = data.get("metrics", data)
                     acc = m.get("accuracy")
                     if acc is not None:
+                        calibration = data.get("calibration", {})
+                        per_class = m.get("per_class", {}).get("malignant", {})
                         return {
                             "source": f"Evaluation Suite ({p.name})",
                             "accuracy": round(float(acc), 4),
-                            "roc_auc": round(float(m.get("roc_auc", 1.0)), 4),
-                            "sensitivity": round(float(m.get("recall_weighted", m.get("recall_sensitivity", 1.0))), 4),
-                            "specificity": round(float(m.get("per_class", {}).get("malignant", {}).get("specificity", 1.0)), 4),
-                            "precision": round(float(m.get("precision_weighted", m.get("precision", 1.0))), 4),
-                            "f1_score": round(float(m.get("f1_weighted", m.get("f1_score", 1.0))), 4),
-                            "calibration_ece": round(float(data.get("calibration", {}).get("ece", 0.0129)), 4) if "calibration" in data else None,
+                            "roc_auc": _optional_round(m.get("roc_auc", m.get("auc"))),
+                            "sensitivity": _optional_round(m.get("recall_weighted", m.get("recall_sensitivity"))),
+                            "specificity": _optional_round(per_class.get("specificity")),
+                            "precision": _optional_round(m.get("precision_weighted", m.get("precision"))),
+                            "f1_score": _optional_round(m.get("f1_weighted", m.get("f1_score"))),
+                            "calibration_ece": _optional_round(calibration.get("ece")),
                         }
                 except Exception:
                     pass
 
-        # Fallback to master summary if available
-        ms_path = Path("c:/Users/ashok/OneDrive/Desktop/Lung Cancer/EXECUTION_RESULTS/master_summary.json")
-        if ms_path.exists():
-            try:
-                with open(ms_path, "r", encoding="utf-8") as f:
-                    ms = json.load(f)
-                rob = ms.get("phase4_robustness", {}).get(arch, {})
-                if rob:
-                    return {
-                        "source": f"Master Robustness Test Suite ({arch.upper()})",
-                        "accuracy": round(float(rob.get("clean_accuracy", 1.0)), 4),
-                        "mean_perturbed_accuracy": round(float(rob.get("mean_perturbed_accuracy", 0.90)), 4),
-                        "conditions_evaluated": int(rob.get("conditions_evaluated", 31)),
-                    }
-            except Exception:
-                pass
-
         return {
-            "source": "Validation metrics not available for current checkpoint",
-            "accuracy": None
+            "source": "Not available",
+            "status": "not_available",
+            "accuracy": None,
+            "roc_auc": None,
+            "sensitivity": None,
+            "specificity": None,
+            "precision": None,
+            "f1_score": None,
+            "calibration_ece": None,
         }
 
     def analyze_ct_comprehensive(

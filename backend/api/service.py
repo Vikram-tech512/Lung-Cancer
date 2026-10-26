@@ -586,6 +586,7 @@ def get_model_metrics():
         try:
             with open(metrics_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            if data.get("synthetic") is False and data.get("split_hash_sha256"):
                 return {
                     "status": "success",
                     "model_info": info,
@@ -594,32 +595,11 @@ def get_model_metrics():
         except Exception as exc:
             logger.warning(f"Could not load exp_01_metrics.json: {exc}")
     
-    # Fallback to verified constant metrics if file missing
     return {
-        "status": "fallback",
+        "status": "not_available",
         "model_info": info,
-        "metrics": {
-            "dataset": "LUNA16 (Grand Challenge)",
-            "cohort_patients": 10,
-            "cohort_candidates": 234,
-            "test_candidates": 20,
-            "discrimination": {
-                "auc": 0.6471,
-                "auc_95_ci": [0.2632, 0.9412],
-                "accuracy_raw": 0.15,
-                "sensitivity_raw": 1.0,
-                "specificity_raw": 0.0
-            },
-            "calibration": {
-                "optimal_temperature": 3.3978,
-                "ece_uncalibrated": 0.7771,
-                "ece_calibrated": 0.5320
-            },
-            "uncertainty_mc_dropout": {
-                "passes": 30,
-                "tier_counts": {"Low": 6, "Moderate": 14, "High": 0}
-            }
-        }
+        "metrics": None,
+        "message": "Evaluation results are not available. Run the evaluation workflow to create a result file.",
     }
 
 def get_anatomical_lobe_from_zyx(z: float, y: float, x: float, max_z: int = 196, dim_xy: int = 512) -> str:
@@ -1506,77 +1486,27 @@ def run_robustness_sweep(nodule_id: str, study_id: Optional[str] = None):
 
 @app.get("/api/v2/benchmark")
 def get_benchmark_table():
-    """Returns comparative model performance table."""
+    """Return benchmark results only when a completed result file exists."""
+    metrics_path = Path("results/exp_01_metrics.json")
+    if metrics_path.is_file():
+        try:
+            result = json.loads(metrics_path.read_text(encoding="utf-8"))
+            if result.get("synthetic") is False and result.get("split_hash_sha256"):
+                return {
+                    "status": "available",
+                    "benchmark_dataset": result.get("dataset", "Not available"),
+                    "split_hash_sha256": result["split_hash_sha256"],
+                    "metrics": result,
+                    "models": [],
+                }
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Benchmark result file could not be read")
     return {
-        "benchmark_dataset": "LIDC-IDRI (Test Split: 15% Patient-Stratified, n=153 patients)",
-        "models": [
-            {
-                "model_name": "3D ResNet-50",
-                "architecture": "3D ResNet Bottleneck",
-                "status": "NOT_TRAINED",
-                "auc_roc": 0.0,
-                "sensitivity": 0.0,
-                "specificity": 0.0,
-                "ece": 0.0,
-                "brier_score": 0.0,
-                "notes": "Code fully implemented; awaiting GPU training run"
-            },
-            {
-                "model_name": "3D DenseNet-121",
-                "architecture": "3D DenseNet (k=32)",
-                "status": "NOT_TRAINED",
-                "auc_roc": 0.0,
-                "sensitivity": 0.0,
-                "specificity": 0.0,
-                "ece": 0.0,
-                "brier_score": 0.0,
-                "notes": "Code fully implemented; awaiting GPU training run"
-            },
-            {
-                "model_name": "3D Swin Transformer",
-                "architecture": "Swin3D-Tiny",
-                "status": "NOT_TRAINED",
-                "auc_roc": 0.0,
-                "sensitivity": 0.0,
-                "specificity": 0.0,
-                "ece": 0.0,
-                "brier_score": 0.0,
-                "notes": "Code fully implemented; awaiting GPU training run"
-            },
-            {
-                "model_name": "Hybrid CNN-ViT (Phase 4)",
-                "architecture": "ResNet-50 stem + ViT-B/16 gated fusion",
-                "status": "TRAINED",
-                "auc_roc": 0.942,
-                "sensitivity": 0.913,
-                "specificity": 0.889,
-                "ece": 0.038,
-                "brier_score": 0.082,
-                "notes": "Pretrained from phase 4 local repository execution"
-            },
-            {
-                "model_name": "Radiomics XGBoost",
-                "architecture": "XGBoost (107 IBSI features)",
-                "status": "NOT_TRAINED",
-                "auc_roc": 0.0,
-                "sensitivity": 0.0,
-                "specificity": 0.0,
-                "ece": 0.0,
-                "brier_score": 0.0,
-                "notes": "Feature extractor ready; awaiting feature cache"
-            },
-            {
-                "model_name": "Multimodal Ensemble",
-                "architecture": "Soft-Voting Reliability Calibrated",
-                "status": "TRAINED",
-                "auc_roc": 0.956,
-                "sensitivity": 0.935,
-                "specificity": 0.912,
-                "ece": 0.024,
-                "brier_score": 0.065,
-                "notes": "Ensemble weighting calibrated on internal validation"
-            }
-        ]
+        "status": "not_available",
+        "benchmark_dataset": "Not available",
+        "split_hash_sha256": None,
+        "metrics": None,
+        "models": [],
     }
 
 @app.get("/api/v2/registry")
@@ -1598,100 +1528,26 @@ def start_training(
         run_name=f"Train_{model_name}_{epochs}ep",
         model_name=model_name,
         params={"epochs": epochs, "batch_size": batch_size, "lr": learning_rate},
-        metrics={"initial_loss": 0.693, "status": "QUEUED"},
-        tags={"dataset": "LIDC-IDRI", "split": "patient_stratified"}
+        metrics={},
+        tags={"execution": "not_configured"}
     )
     return {
         "run_id": run_id,
-        "message": f"Training session for {model_name} successfully initiated.",
-        "status": "QUEUED"
+        "message": "Run metadata recorded. Training execution is not configured in this service.",
+        "status": "NOT_AVAILABLE"
     }
 
 @app.websocket("/api/v2/ws/training/{run_id}")
 async def websocket_training_stream(websocket: WebSocket, run_id: str):
-    """
-    WebSocket endpoint that streams real-time training logs and metrics to the frontend.
-    Simulates epoch-by-epoch updates for demonstration; in production would proxy from
-    the actual training process via asyncio queues or Redis Pub/Sub.
-    """
-    import asyncio
-    import random
-    import math
-
     await websocket.accept()
-    logger.info(f"WebSocket training stream opened for run: {run_id}")
-
-    try:
-        # Pull run metadata if available
-        epochs = 50
-        model_name = "3D ResNet-50"
-        for f in Path("experiments_log").glob(f"{run_id}.json"):
-            try:
-                import json as _json
-                meta = _json.loads(f.read_text())
-                epochs = int(meta.get("params", {}).get("epochs", 50))
-                model_name = meta.get("model_name", model_name)
-            except Exception:
-                pass
-
-        await websocket.send_json({
-            "log": f"[WS] Stream connected for {run_id} — {model_name}",
-            "epoch": 0, "progress": 0
-        })
-
-        best_auc = 0.0
-        for epoch in range(1, epochs + 1):
-            if epoch > epochs:
-                break
-
-            pct = round(epoch / epochs * 100)
-            loss = round(0.72 - (epoch / epochs) * 0.44 + random.gauss(0, 0.008), 4)
-            val_loss = round(loss + 0.022 + random.gauss(0, 0.005), 4)
-            auc = round(min(0.97, 0.82 + (epoch / epochs) * 0.13 + random.gauss(0, 0.004)), 3)
-            sens = round(min(0.96, 0.80 + (epoch / epochs) * 0.11 + random.gauss(0, 0.004)), 3)
-            batch_ms = round(120 + random.gauss(0, 15))
-
-            if auc > best_auc:
-                best_auc = auc
-
-            log_msg = (
-                f"[EPOCH {str(epoch).zfill(3)}/{epochs}] "
-                f"Loss: {loss}  ValLoss: {val_loss}  Val AUC: {auc}  "
-                f"Sens: {sens*100:.1f}%  {batch_ms}ms/batch"
-            )
-
-            await websocket.send_json({
-                "log": log_msg,
-                "epoch": epoch,
-                "progress": pct,
-                "best_auc": best_auc,
-                "metrics": {"loss": loss, "val_loss": val_loss, "auc": auc, "sensitivity": sens}
-            })
-
-            await asyncio.sleep(1.0)  # 1s per epoch update
-
-        # Finalize
-        await websocket.send_json({
-            "log": f"[SUCCESS] Training complete! Best Val AUC: {best_auc}",
-            "epoch": epochs, "progress": 100, "best_auc": best_auc, "done": True
-        })
-        await websocket.send_json({
-            "log": f"[CHECKPOINT] Saved → checkpoints/{model_name.replace(' ', '_').lower()}_best.pth",
-            "done": False
-        })
-        await websocket.send_json({
-            "log": "[REGISTRY] Model version registered (stage: STAGING). MLflow run finalized.",
-            "done": True
-        })
-
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket client disconnected from training stream: {run_id}")
-    except Exception as e:
-        logger.error(f"WebSocket training stream error: {e}")
-        try:
-            await websocket.send_json({"log": f"[ERROR] Stream error: {str(e)}", "done": True})
-        except Exception:
-            pass
+    await websocket.send_json({
+        "status": "not_available",
+        "run_id": run_id,
+        "metrics": None,
+        "done": True,
+        "log": "Training execution is not configured in this service.",
+    })
+    await websocket.close()
 # -------------------------------------------------------------------------
 # Hardened Server-Side AI Provider Proxy Endpoints
 # -------------------------------------------------------------------------

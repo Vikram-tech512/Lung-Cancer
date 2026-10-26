@@ -18,5 +18,5 @@ from backend.training.train_luna16_3d import run_cpu_training_pipeline
 
 if __name__ == "__main__":
     seed = int(sys.argv[1]) if len(sys.argv) > 1 else 42
-    luna_root = Path(os.environ.get("LUNA16_ROOT", r"C:\LUNA16_DATA"))
+    luna_root = Path(os.environ.get("LUNA16_ROOT", "data/LUNA16"))
     run_cpu_training_pipeline(luna_root=luna_root, seed=seed)

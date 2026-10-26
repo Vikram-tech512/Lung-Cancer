@@ -5,14 +5,14 @@ ROC, Precision-Recall, and DET curve generation with bootstrap CIs.
 
 Usage
 -----
->>> gen = CurveGenerator(n_bootstrap=1000, ci=0.95)
->>> roc  = gen.roc_curve(y_true, y_prob)
+>>> gen = CurveGenerator(n_bootstrap=1000, ci=0.95, seed=42)
+>>> roc  = gen.roc_curve(y_true, y_prob, patient_ids=patient_ids)
 >>> pr   = gen.pr_curve(y_true, y_prob)
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
 
@@ -27,14 +27,18 @@ class CurveGenerator:
 
     Parameters
     ----------
-    n_bootstrap : number of bootstrap iterations for CI
+    n_bootstrap : number of patient-cluster bootstrap iterations for CI
     ci          : confidence level (e.g. 0.95 for 95% CI)
+    seed        : reproducible random seed for cluster resampling
     """
 
-    def __init__(self, n_bootstrap: int = 1000, ci: float = 0.95) -> None:
+    def __init__(
+        self, n_bootstrap: int = 1000, ci: float = 0.95, seed: int = 42
+    ) -> None:
         self.n_bootstrap = n_bootstrap
         self.ci = ci
         self._alpha = 1.0 - ci
+        self.seed = seed
 
     # ------------------------------------------------------------------
     # ROC Curve
@@ -44,6 +48,8 @@ class CurveGenerator:
         y_true: "list | np.ndarray",
         y_prob: "list | np.ndarray",
         model_name: str = "Model",
+        patient_ids: "list | np.ndarray | None" = None,
+        seed: int | None = None,
     ) -> Dict[str, Any]:
         from sklearn.metrics import roc_curve as sk_roc, roc_auc_score
 
@@ -57,15 +63,21 @@ class CurveGenerator:
         youden = tpr - fpr
         opt_idx = int(np.argmax(youden))
 
-        # Bootstrap AUC CI
-        auc_ci_lower, auc_ci_upper = self._bootstrap_auc(y_true, y_prob)
+        # Candidate-level resampling understates uncertainty when patients
+        # contribute multiple candidates. Require cluster identifiers.
+        if self.n_bootstrap:
+            if patient_ids is None:
+                raise ValueError("patient_ids are required for patient-cluster bootstrap CIs")
+            auc_ci = self._bootstrap_auc(y_true, y_prob, patient_ids, seed=seed)
+        else:
+            auc_ci = None
 
         result = {
             "model_name":    model_name,
             "auc":           round(auc, 4),
-            "auc_ci_lower":  round(auc_ci_lower, 4),
-            "auc_ci_upper":  round(auc_ci_upper, 4),
-            "ci_level":      self.ci,
+            "auc_ci_lower":  round(auc_ci[0], 4) if auc_ci else None,
+            "auc_ci_upper":  round(auc_ci[1], 4) if auc_ci else None,
+            "ci_level":      self.ci if auc_ci else None,
             "optimal_threshold": round(float(thresholds[opt_idx]), 4),
             "optimal_fpr":   round(float(fpr[opt_idx]), 4),
             "optimal_tpr":   round(float(tpr[opt_idx]), 4),
@@ -130,7 +142,8 @@ class CurveGenerator:
         curves = {}
         for name, data in model_results.items():
             curves[name] = self.roc_curve(
-                data["y_true"], data["y_prob"], model_name=name
+                data["y_true"], data["y_prob"], model_name=name,
+                patient_ids=data.get("patient_ids"),
             )
         # Sort by AUC descending
         ranked = sorted(curves.items(), key=lambda x: -x[1]["auc"])
@@ -143,16 +156,27 @@ class CurveGenerator:
     # Bootstrap CI
     # ------------------------------------------------------------------
     def _bootstrap_auc(
-        self, y_true: np.ndarray, y_prob: np.ndarray
-    ) -> tuple[float, float]:
+        self,
+        y_true: np.ndarray,
+        y_prob: np.ndarray,
+        patient_ids: "list | np.ndarray",
+        seed: int | None = None,
+    ) -> tuple[float, float] | None:
         from sklearn.metrics import roc_auc_score
 
-        rng    = np.random.default_rng(42)
-        n      = len(y_true)
-        aucs   = []
+        patient_ids = np.asarray(patient_ids)
+        if len(y_true) != len(y_prob) or len(y_true) != len(patient_ids):
+            raise ValueError("y_true, y_prob, and patient_ids must have equal lengths")
+        patients, inverse = np.unique(patient_ids, return_inverse=True)
+        if not len(patients):
+            return None
+        patient_rows = [np.flatnonzero(inverse == i) for i in range(len(patients))]
+        rng = np.random.default_rng(self.seed if seed is None else seed)
+        aucs = []
 
         for _ in range(self.n_bootstrap):
-            idx = rng.integers(0, n, size=n)
+            sampled_patients = rng.integers(0, len(patients), size=len(patients))
+            idx = np.concatenate([patient_rows[i] for i in sampled_patients])
             y_t = y_true[idx]
             y_p = y_prob[idx]
             if len(np.unique(y_t)) < 2:
@@ -160,7 +184,7 @@ class CurveGenerator:
             aucs.append(float(roc_auc_score(y_t, y_p)))
 
         if not aucs:
-            return 0.0, 1.0
+            return None
         lower = float(np.percentile(aucs, 100 * self._alpha / 2))
         upper = float(np.percentile(aucs, 100 * (1 - self._alpha / 2)))
         return lower, upper

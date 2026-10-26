@@ -19,8 +19,7 @@ All 5 classes (lung + colon):
 Usage::
     from backend.datasets.histopathology import HistopathologyDataset, get_dataloaders
     train_loader, val_loader, test_loader, class_names = get_dataloaders(
-        dataset_root=r"C:/Users/ashok/.cache/kagglehub/datasets/andrewmvd/
-                       lung-and-colon-cancer-histopathological-images/versions/1",
+        dataset_root="data/LC25000/lung_colon_image_set",
         mode="lung"   # or "all"
     )
 """
@@ -45,9 +44,7 @@ import torchvision.transforms.functional as TF
 # ─────────────────────────────────────────────────────────────────────────────
 
 KAGGLE_DATASET_ROOT = Path(
-    r"C:\Users\ashok\.cache\kagglehub\datasets"
-    r"\andrewmvd\lung-and-colon-cancer-histopathological-images\versions\1"
-    r"\lung_colon_image_set"
+    os.environ.get("LC25000_DATA_ROOT", "data/LC25000/lung_colon_image_set")
 )
 
 # Sub-folder structure inside the dataset root

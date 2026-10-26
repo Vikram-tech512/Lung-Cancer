@@ -165,7 +165,7 @@ def get_current_ram_mb() -> float:
 
 
 def run_cpu_profile(
-    luna_root: Path = Path(r"C:\LUNA16_DATA"),
+    luna_root: Path = Path(os.environ.get("LUNA16_ROOT", "data/LUNA16")),
     manifest_path: Path = Path("results/split_manifest.json"),
     n_scans: int = 20,
     neg_to_pos_ratio: int = 10,

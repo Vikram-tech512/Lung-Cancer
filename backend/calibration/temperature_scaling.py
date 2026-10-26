@@ -69,7 +69,8 @@ class TemperatureScaler(nn.Module):
     def fit(self, val_logits: torch.Tensor,
             val_labels: torch.Tensor,
             max_iter: int = 200,
-            lr: float = 0.01) -> float:
+            lr: float = 0.01,
+            split_name: str = "validation") -> float:
         """Optimise temperature T on validation NLL.
 
         Args:
@@ -77,10 +78,14 @@ class TemperatureScaler(nn.Module):
             val_labels: (N,) integer class labels.
             max_iter:   Optimiser iterations.
             lr:         Learning rate.
+            split_name: Must identify the held-out validation split. Fitting
+                        against test data is rejected to prevent leakage.
 
         Returns:
             Optimal temperature T.
         """
+        if split_name != "validation":
+            raise ValueError("temperature scaling may only be fit on validation data")
         self.train()
         optimiser = torch.optim.LBFGS(
             [self.temperature], lr=lr, max_iter=max_iter)

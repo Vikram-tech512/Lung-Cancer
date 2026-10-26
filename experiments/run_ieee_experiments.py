@@ -136,7 +136,7 @@ def main():
     val_logits_t = torch.stack(val_logits)
     val_labels_t = torch.tensor(val_labels, dtype=torch.long)
     scaler = TemperatureScaler()
-    optimal_t = scaler.fit(val_logits_t, val_labels_t)
+    optimal_t = scaler.fit(val_logits_t, val_labels_t, split_name="validation")
     print(f"  Optimal Temperature parameter T: {optimal_t:.4f}")
 
     # 4. Evaluate on Held-Out Test Set

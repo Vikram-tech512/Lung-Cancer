@@ -48,10 +48,10 @@ class DicomQAStage:
 
         if npy_in_ctx or npy_file_exists:
             return {
-                "passed": True,
-                "score": 1.0,
-                "status": "PASS",
-                "findings": ["Synthetic .npy volume verified; QA criteria satisfied with perfect score."],
+                "passed": None,
+                "score": None,
+                "status": "SYNTHETIC",
+                "findings": ["Synthetic volume detected; DICOM quality validation was not performed."],
                 "slice_count": 32,
                 "is_synthetic": True,
             }
@@ -66,8 +66,8 @@ class DicomQAStage:
 
         if not has_dcm:
             return {
-                "passed": True,
-                "score": 1.0,
+                "passed": None,
+                "score": None,
                 "status": "SKIPPED",
                 "findings": ["No DICOM directory or files found; skipped QA validation."],
                 "slice_count": 0,
@@ -78,7 +78,7 @@ class DicomQAStage:
             res = DICOMValidator.validate_series(p)
             return {
                 "passed": res.status != "REJECT",
-                "score": 1.0 if res.status == "PASS" else (0.8 if res.status == "WARNING" else 0.0),
+                "score": None,
                 "status": res.status,
                 "findings": res.findings,
                 "slice_count": res.slice_count,
@@ -135,8 +135,14 @@ class CTPreprocessingPipeline:
                         log.warning("dicom_load_failed", error=str(e))
 
         if vol is None:
-            # Fallback to realistic 32³ nodule volume
-            vol = np.random.normal(-750, 100, (32, 32, 32)).astype(np.float32)
+            return {
+                "volume": None,
+                "raw_volume": None,
+                "spacing": None,
+                "shape": None,
+                "status": "not_available",
+                "is_synthetic": False,
+            }
 
         norm_vol = pipeline.apply_window(vol.astype(np.float32))
         return {
@@ -167,7 +173,12 @@ class SegmentationInference:
         raw_vol = prep.get("raw_volume")
 
         if vol is None:
-            vol = np.zeros((32, 32, 32), dtype=np.float32)
+            return {
+                "lung_mask": None,
+                "nodule_mask": None,
+                "status": "not_available",
+                "is_synthetic": False,
+            }
 
         lung_mask = None
         nodule_mask = None
@@ -235,17 +246,20 @@ class RadiomicsExtractor:
         seg = ctx.get(PipelineStage.SEGMENTATION) or {}
 
         vol = prep.get("volume")
-        if vol is None:
-            vol = np.zeros((32, 32, 32), dtype=np.float32)
-
         mask = seg.get("nodule_mask")
-        if mask is None or not np.any(mask):
-            mask = np.ones_like(vol, dtype=np.uint8)
+        if vol is None or mask is None or not np.any(mask):
+            return {
+                "features": {},
+                "feature_count": 0,
+                "nodule_score": None,
+                "malignancy_score": None,
+                "status": "not_available",
+            }
 
         spacing = prep.get("spacing", (1.0, 1.0, 1.0))
         features = pipe.extract_features(vol, mask, spacing=spacing)
 
-        nodule_score = features.get("nodule_score", features.get("malignancy_score", 0.5))
+        nodule_score = features.get("nodule_score", features.get("malignancy_score"))
         return {
             "features": features,
             "feature_count": len(features),
@@ -262,10 +276,7 @@ class MCDropoutAdapter:
     """
     Adapter for Monte Carlo Dropout uncertainty estimation.
     Reads classification results from the context.
-    Computes predictive entropy from the consensus probability and returns
-    a fixed standard deviation of 0.08.
-    Notes that full Monte Carlo dropout requires a loaded model, so the
-    entropy is only approximate.
+    Does not report a standard deviation unless an MC-dropout model is run.
     """
 
     def __init__(self, device: str = "cpu"):
@@ -273,20 +284,25 @@ class MCDropoutAdapter:
 
     def run(self, ctx: PipelineContext) -> Dict[str, Any]:
         cls_out = ctx.get(PipelineStage.CLASSIFICATION) or {}
-        p = float(cls_out.get("consensus_prob", 0.5))
-        p = min(max(p, 1e-6), 1.0 - 1e-6)
+        p_value = cls_out.get("consensus_prob")
+        if p_value is None:
+            return {
+                "predictive_std": None,
+                "entropy": None,
+                "predictive_entropy": None,
+                "tier": None,
+                "status": "not_available",
+            }
+        p = min(max(float(p_value), 1e-6), 1.0 - 1e-6)
 
         # Binary predictive entropy: H(p) = -p log2(p) - (1-p) log2(1-p)
         entropy = float(-(p * math.log2(p) + (1.0 - p) * math.log2(1.0 - p)))
-        std_dev = 0.08
-
         return {
-            "predictive_std": std_dev,
+            "predictive_std": None,
             "entropy": round(entropy, 4),
             "predictive_entropy": round(entropy, 4),
-            "tier": "LOW" if std_dev < 0.10 else "MODERATE",
-            "status": "computed",
-            "note": "Full Monte Carlo dropout requires a loaded model; entropy is approximate from consensus probability.",
+            "tier": None,
+            "status": "mc_dropout_not_available",
         }
 
 
@@ -304,13 +320,14 @@ class TemperatureScalerAdapter:
         ens_out = ctx.get(PipelineStage.ENSEMBLE) or {}
         cls_out = ctx.get(PipelineStage.CLASSIFICATION) or {}
 
-        raw_prob = ens_out.get("nodule_prob", ens_out.get("malignant_prob", cls_out.get("consensus_prob", 0.5)))
+        raw_prob = ens_out.get("nodule_prob", ens_out.get("malignant_prob", cls_out.get("consensus_prob")))
         return {
-            "temperature": 1.0,
-            "optimal_temperature": 1.0,
+            "temperature": None,
+            "optimal_temperature": None,
             "raw_probability": raw_prob,
-            "calibrated_probability": raw_prob,
-            "status": "calibrated",
+            "calibrated_probability": None,
+            "status": "not_available",
+            "message": "A validation-fitted temperature scaler is not available.",
         }
 
 

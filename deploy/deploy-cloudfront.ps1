@@ -27,12 +27,11 @@ function Fail($m) { Write-Host "  [ERROR] $m" -ForegroundColor Red; exit 1 }
 
 # 1. Locate AWS CLI
 $AwsExe = "aws"
-$DefaultCliPath = "C:\Users\ashok\AppData\Local\Programs\Amazon\AWSCLIV2\aws.exe"
-if (Test-Path $DefaultCliPath) {
-    $AwsExe = $DefaultCliPath
-} elseif (-not (Get-Command "aws" -ErrorAction SilentlyContinue)) {
+$AwsCommand = Get-Command "aws" -ErrorAction SilentlyContinue
+if (-not $AwsCommand) {
     Fail "AWS CLI not found. Please install AWS CLI v2 or ensure it is in PATH."
 }
+$AwsExe = $AwsCommand.Source
 
 # 2. Inject credentials if passed as parameters
 if ($AwsAccessKey) { $env:AWS_ACCESS_KEY_ID = $AwsAccessKey }

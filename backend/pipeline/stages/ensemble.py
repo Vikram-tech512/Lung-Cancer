@@ -86,23 +86,24 @@ class EnsembleStage:
     # Feature extraction helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _positive_class_prob(d: Dict) -> float:
+    def _positive_class_prob(d: Dict) -> Optional[float]:
         """Helper to read either nodule_prob or malignant_prob."""
         if not isinstance(d, dict):
-            return 0.5
+            return None
         if "nodule_prob" in d:
             return float(d["nodule_prob"])
-        return float(d.get("malignant_prob", 0.5))
+        value = d.get("malignant_prob")
+        return float(value) if value is not None else None
 
     @classmethod
-    def _extract_dl_prob(cls, cls_out: Dict) -> float:
+    def _extract_dl_prob(cls, cls_out: Dict) -> Optional[float]:
         """Mean nodule/malignant probability from all DL heads."""
         probs = [
             cls._positive_class_prob(v)
             for k, v in cls_out.items()
             if isinstance(v, dict) and ("nodule_prob" in v or "malignant_prob" in v)
         ]
-        return float(np.mean(probs)) if probs else 0.5
+        return float(np.mean(probs)) if probs else None
 
     @staticmethod
     def _extract_radiomics_prob(rad_out: Dict) -> Optional[float]:
@@ -120,27 +121,25 @@ class EnsembleStage:
         """
         if not clinical:
             return None
-        age  = float(clinical.get("age", 0) or 0)
-        sex  = clinical.get("sex", "").lower()
-        pkyr = float(clinical.get("smoking_pack_years", 0) or 0)
-        # Very rough heuristic (not a validated clinical model)
-        risk = 0.1 + 0.003 * pkyr + 0.002 * max(age - 40, 0)
-        if sex == "female":
-            risk += 0.05
-        return float(np.clip(risk, 0.0, 1.0))
+        # This repository has no validation-fitted clinical risk model.
+        return None
 
     # ------------------------------------------------------------------
     # Fusion strategies
     # ------------------------------------------------------------------
     def _weighted_average(
         self,
-        dl_prob: float,
+        dl_prob: Optional[float],
         rad_prob: Optional[float],
         clin_prob: Optional[float],
-    ) -> tuple[float, Dict[str, float]]:
+    ) -> tuple[Optional[float], Dict[str, float]]:
+        if dl_prob is None and rad_prob is None:
+            return None, {}
         total_weight = DL_WEIGHT
-        fused = DL_WEIGHT * dl_prob
-        weights_used: Dict[str, float] = {"dl": DL_WEIGHT}
+        fused = DL_WEIGHT * dl_prob if dl_prob is not None else 0.0
+        weights_used: Dict[str, float] = {"dl": DL_WEIGHT} if dl_prob is not None else {}
+        if dl_prob is None:
+            total_weight = 0.0
 
         if rad_prob is not None:
             fused += RADIOMICS_WEIGHT * rad_prob
@@ -197,6 +196,17 @@ class EnsembleStage:
         rad_prob  = self._extract_radiomics_prob(rad_out)
         clin_prob = self._extract_clinical_prob(clinical)
 
+        if dl_prob is None and rad_prob is None:
+            return {
+                "strategy": self.strategy,
+                "status": "not_available",
+                "malignant_prob": None,
+                "benign_prob": None,
+                "confidence_band": None,
+                "calibration_status": "not_available",
+                "message": "No fitted classification or risk model output is available.",
+            }
+
         with MetricsRegistry.time_inference("MultimodalEnsemble"):
             if self.strategy == "StackedXGBoost":
                 fused_prob = self._xgb_fusion(dl_prob, rad_out, clinical)
@@ -204,15 +214,7 @@ class EnsembleStage:
             else:
                 fused_prob, weights_used = self._weighted_average(dl_prob, rad_prob, clin_prob)
 
-        # Calibrated confidence band (simple ± 1.96 SE approximation)
-        n = 300   # effective sample size placeholder
-        se = float(np.sqrt(fused_prob * (1 - fused_prob) / n))
-        band = [
-            round(float(np.clip(fused_prob - 1.96 * se, 0, 1)), 4),
-            round(float(np.clip(fused_prob + 1.96 * se, 0, 1)), 4),
-        ]
-
-        label = "malignant" if fused_prob > 0.5 else "benign"
+        label = "candidate_flagged" if fused_prob > 0.5 else "not_flagged"
         MetricsRegistry.record_inference("MultimodalEnsemble", label, 0)
 
         result = {
@@ -222,7 +224,8 @@ class EnsembleStage:
             "malignant_prob":   round(fused_prob, 4),
             "benign_prob":      round(1 - fused_prob, 4),
             "label":            label,
-            "confidence_band":  band,
+            "confidence_band":  None,
+            "calibration_status": "not_available",
             "modality_weights": weights_used,
             "dl_prob":          round(dl_prob, 4),
             "radiomics_prob":   round(rad_prob, 4) if rad_prob is not None else None,

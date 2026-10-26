@@ -97,6 +97,37 @@ class TestCTSplitter:
             assert len(train_f) > 0
             assert len(val_f) > 0
 
+    def test_subset_split_and_split_hash(self):
+        from backend.pipeline.data.splitter import CTSplitter
+        records = [
+            {"patient_id": f"P{i:03d}", "series_uid": f"S{i:03d}", "subset_id": i % 4, "label": i % 2}
+            for i in range(40)
+        ]
+        splitter = CTSplitter(split_mode="subset")
+        train, val, test = splitter.split(records)
+        assert all(r["subset_id"] in {0, 1} for r in train)
+        assert all(r["subset_id"] == 2 for r in val)
+        assert all(r["subset_id"] == 3 for r in test)
+        assert splitter.last_split_hash is not None
+        assert len(splitter.last_split_hash) == 64  # SHA-256 hex string
+
+    def test_patient_leakage_assertion_raises(self):
+        import pytest
+        from backend.pipeline.data.splitter import CTSplitter
+        # Leakage: patient P001 in both train and val
+        train = [{"patient_id": "P001", "series_uid": "S001"}]
+        val = [{"patient_id": "P001", "series_uid": "S002"}]
+        test = [{"patient_id": "P003", "series_uid": "S003"}]
+        with pytest.raises(AssertionError, match="leaked across splits"):
+            CTSplitter.assert_splits_disjoint(train, val, test)
+
+        # Series UID leakage: series S009 in train and test
+        train_s = [{"patient_id": "P010", "series_uid": "S009"}]
+        val_s = [{"patient_id": "P011", "series_uid": "S011"}]
+        test_s = [{"patient_id": "P012", "series_uid": "S009"}]
+        with pytest.raises(AssertionError, match="leaked across splits"):
+            CTSplitter.assert_splits_disjoint(train_s, val_s, test_s)
+
 
 # ===========================================================================
 # 3. Evaluator
@@ -131,6 +162,15 @@ class TestModelEvaluator:
 # 4. Calibration
 # ===========================================================================
 class TestCalibrationEvaluator:
+    def test_temperature_scaling_rejects_non_validation_split(self):
+        import pytest
+        import torch
+        from backend.calibration.temperature_scaling import TemperatureScaler
+
+        scaler = TemperatureScaler()
+        with pytest.raises(ValueError, match="only be fit on validation"):
+            scaler.fit(torch.zeros((4, 2)), torch.tensor([0, 1, 0, 1]), split_name="test")
+
     def test_perfect_calibration_low_ece(self):
         from backend.pipeline.evaluate.calibration_eval import CalibrationEvaluator
         # Perfect model: prob = actual frequency
@@ -162,10 +202,35 @@ class TestCurveGenerator:
         rng = np.random.default_rng(5)
         y_true = rng.integers(0, 2, 300)
         y_prob = np.clip(y_true * 0.7 + rng.normal(0, 0.2, 300), 0.01, 0.99)
-        gen = CurveGenerator(n_bootstrap=100)
-        roc = gen.roc_curve(y_true.tolist(), y_prob.tolist())
+        patient_ids = np.repeat(np.arange(60), 5)
+        gen = CurveGenerator(n_bootstrap=100, seed=11)
+        roc = gen.roc_curve(
+            y_true.tolist(), y_prob.tolist(), patient_ids=patient_ids.tolist()
+        )
         assert 0.5 <= roc["auc"] <= 1.0
         assert roc["auc_ci_lower"] <= roc["auc"] <= roc["auc_ci_upper"]
+
+    def test_roc_requires_patient_ids_for_bootstrap_ci(self):
+        import pytest
+        from backend.pipeline.evaluate.curves import CurveGenerator
+
+        gen = CurveGenerator(n_bootstrap=20)
+        with pytest.raises(ValueError, match="patient_ids are required"):
+            gen.roc_curve([0, 1], [0.2, 0.8])
+
+    def test_patient_cluster_bootstrap_is_seeded(self):
+        from backend.pipeline.evaluate.curves import CurveGenerator
+
+        y_true = np.repeat([0, 1, 0, 1], 3)
+        y_prob = np.array([0.1, 0.3, 0.4, 0.6, 0.8, 0.7, 0.2, 0.4, 0.3, 0.6, 0.9, 0.8])
+        patient_ids = np.repeat(["P1", "P2", "P3", "P4"], 3)
+        first = CurveGenerator(n_bootstrap=100, seed=19)._bootstrap_auc(
+            y_true, y_prob, patient_ids
+        )
+        second = CurveGenerator(n_bootstrap=100, seed=19)._bootstrap_auc(
+            y_true, y_prob, patient_ids
+        )
+        assert first == second
 
     def test_pr_curve_fields(self):
         from backend.pipeline.evaluate.curves import CurveGenerator
@@ -176,6 +241,14 @@ class TestCurveGenerator:
         pr = gen.pr_curve(y_true.tolist(), y_prob.tolist())
         assert "average_precision" in pr
         assert "curve" in pr
+
+    def test_single_class_evaluation_marks_auc_unavailable(self):
+        from backend.pipeline.evaluate.evaluator import ModelEvaluator
+
+        report = ModelEvaluator()._classification_report([0.1, 0.3], [0, 0], [0, 0])
+        assert report["auc"] is None
+        assert report["sensitivity"] is None
+        assert report["specificity"] == 1.0
 
 
 # ===========================================================================

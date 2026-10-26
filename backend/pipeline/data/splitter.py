@@ -55,13 +55,60 @@ class CTSplitter:
         test_frac: float = 0.15,
         seed: int = 42,
         stratify_by: Optional[List[str]] = None,
+        split_mode: str = "random",
     ) -> None:
-        if val_frac + test_frac >= 1.0:
+        if split_mode not in {"random", "subset"}:
+            raise ValueError("split_mode must be 'random' or 'subset'")
+        if split_mode == "random" and val_frac + test_frac >= 1.0:
             raise ValueError("val_frac + test_frac must be < 1.0")
-        self.val_frac   = val_frac
-        self.test_frac  = test_frac
-        self.seed       = seed
+        self.val_frac    = val_frac
+        self.test_frac   = test_frac
+        self.seed        = seed
         self.stratify_by = stratify_by or ["label"]
+        self.split_mode  = split_mode
+        self.last_split_hash: Optional[str] = None
+
+    @staticmethod
+    def compute_split_hash(
+        train_records: List[Record],
+        val_records: List[Record],
+        test_records: List[Record],
+    ) -> str:
+        """Compute deterministic SHA-256 hash of patient and series IDs in each split."""
+        import json
+
+        membership = {
+            name: sorted({
+                str(r.get("patient_id", r.get("case_id", r.get("series_uid", ""))))
+                for r in recs
+            })
+            for name, recs in (("train", train_records), ("validation", val_records), ("test", test_records))
+        }
+        payload = json.dumps(membership, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def assert_splits_disjoint(
+        train_records: List[Record],
+        val_records: List[Record],
+        test_records: List[Record],
+    ) -> None:
+        """Assert zero leakage of patient IDs or series UIDs across splits."""
+        splits = {"train": train_records, "validation": val_records, "test": test_records}
+        for id_field in ("patient_id", "case_id", "patient_uid", "series_uid"):
+            seen: Dict[str, str] = {}
+            for sname, recs in splits.items():
+                for r in recs:
+                    val = r.get(id_field)
+                    if val is None or val == "":
+                        continue
+                    val_str = str(val)
+                    prev = seen.get(val_str)
+                    if prev is not None and prev != sname:
+                        raise AssertionError(
+                            f"{id_field} {val_str!r} leaked across splits: found in '{prev}' and '{sname}'"
+                        )
+                    seen[val_str] = sname
 
     # ------------------------------------------------------------------
     # Public API
@@ -76,26 +123,45 @@ class CTSplitter:
         -------
         (train_records, val_records, test_records)
         """
-        # Group records by patient_id
-        patient_records: Dict[str, List[Record]] = defaultdict(list)
-        for rec in records:
-            pid = rec.get("patient_id", rec.get("case_id", self._auto_pid(rec)))
-            patient_records[pid].append(rec)
+        if self.split_mode == "subset":
+            train_records = [
+                r for r in records
+                if r.get("subset_id", r.get("subset")) in {0, 1}
+            ]
+            val_records = [
+                r for r in records
+                if r.get("subset_id", r.get("subset")) == 2
+            ]
+            test_records = [
+                r for r in records
+                if r.get("subset_id", r.get("subset")) == 3
+            ]
+        else:
+            # Group records by patient_id
+            patient_records: Dict[str, List[Record]] = defaultdict(list)
+            for rec in records:
+                pid = rec.get("patient_id", rec.get("case_id", self._auto_pid(rec)))
+                patient_records[pid].append(rec)
 
-        # Collect unique patients with their strata
-        patients = list(patient_records.keys())
-        strata_keys = [self._strata_key(patient_records[p][0]) for p in patients]
+            # Collect unique patients with their strata
+            patients = list(patient_records.keys())
+            strata_keys = [self._strata_key(patient_records[p][0]) for p in patients]
 
-        train_pids, val_pids, test_pids = self._stratified_split(patients, strata_keys)
+            train_pids, val_pids, test_pids = self._stratified_split(patients, strata_keys)
 
-        train_records = [r for p in train_pids for r in patient_records[p]]
-        val_records   = [r for p in val_pids   for r in patient_records[p]]
-        test_records  = [r for p in test_pids  for r in patient_records[p]]
+            train_records = [r for p in train_pids for r in patient_records[p]]
+            val_records   = [r for p in val_pids   for r in patient_records[p]]
+            test_records  = [r for p in test_pids  for r in patient_records[p]]
+
+        # Enforce zero patient/series leakage across splits
+        self.assert_splits_disjoint(train_records, val_records, test_records)
+        self.last_split_hash = self.compute_split_hash(train_records, val_records, test_records)
 
         log.info(
             "data_split_complete",
+            split_mode=self.split_mode,
+            split_hash_sha256=self.last_split_hash,
             total_records=len(records),
-            total_patients=len(patients),
             train=len(train_records),
             val=len(val_records),
             test=len(test_records),

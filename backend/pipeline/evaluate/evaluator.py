@@ -145,36 +145,45 @@ class ModelEvaluator:
         y_pred = np.array(preds)
         y_prob = np.array(probs)
 
-        auc = ap = 0.5
-        if len(set(labels)) > 1:
-            auc = float(roc_auc_score(y_true, y_prob))
-            ap  = float(average_precision_score(y_true, y_prob))
+        if not len(y_true):
+            return {
+                "auc": None, "ap": None, "accuracy": None,
+                "balanced_accuracy": None, "sensitivity": None,
+                "specificity": None, "precision": None, "npv": None,
+                "f1": None, "youden_j": None, "kappa": None,
+                "mcc": None, "confusion_matrix": [[0, 0], [0, 0]],
+                "n_samples": 0, "prevalence": None,
+                "threshold": self.threshold,
+            }
 
-        cm = confusion_matrix(y_true, y_pred)
-        if cm.shape == (2, 2):
-            tn, fp, fn, tp = cm.ravel()
-            sensitivity  = tp / max(tp + fn, 1)
-            specificity  = tn / max(tn + fp, 1)
-            precision    = tp / max(tp + fp, 1)
+        has_both_classes = len(np.unique(y_true)) > 1
+        auc = float(roc_auc_score(y_true, y_prob)) if has_both_classes else None
+        ap = float(average_precision_score(y_true, y_prob)) if has_both_classes else None
+
+        cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+        tn, fp, fn, tp = cm.ravel()
+        sensitivity = tp / (tp + fn) if tp + fn else None
+        specificity = tn / (tn + fp) if tn + fp else None
+        precision = tp / (tp + fp) if tp + fp else None
+        npv = tn / (tn + fn) if tn + fn else None
+        if sensitivity is not None and specificity is not None:
             youden_j     = sensitivity + specificity - 1.0
-            ppv = precision
-            npv = tn / max(tn + fn, 1)
         else:
-            sensitivity = specificity = precision = youden_j = ppv = npv = 0.5
+            youden_j = None
 
         return {
-            "auc":                float(auc),
-            "ap":                 float(ap),
+            "auc":                auc,
+            "ap":                 ap,
             "accuracy":           float(accuracy_score(y_true, y_pred)),
-            "balanced_accuracy":  float(balanced_accuracy_score(y_true, y_pred)),
-            "sensitivity":        float(sensitivity),
-            "specificity":        float(specificity),
-            "precision":          float(precision),
-            "npv":                float(npv),
+            "balanced_accuracy":  float(balanced_accuracy_score(y_true, y_pred)) if has_both_classes else None,
+            "sensitivity":        sensitivity,
+            "specificity":        specificity,
+            "precision":          precision,
+            "npv":                npv,
             "f1":                 float(f1_score(y_true, y_pred, zero_division=0)),
-            "youden_j":           float(youden_j),
-            "kappa":              float(cohen_kappa_score(y_true, y_pred)),
-            "mcc":                float(matthews_corrcoef(y_true, y_pred)),
+            "youden_j":           youden_j,
+            "kappa":              float(cohen_kappa_score(y_true, y_pred)) if has_both_classes else None,
+            "mcc":                float(matthews_corrcoef(y_true, y_pred)) if has_both_classes else None,
             "confusion_matrix":   cm.tolist(),
             "n_samples":          len(labels),
             "prevalence":         float(y_true.mean()),
@@ -197,5 +206,5 @@ class ModelEvaluator:
     @staticmethod
     def _update_gauges(model_name: str, report: Dict[str, Any]) -> None:
         for metric in ("auc", "accuracy", "sensitivity", "specificity", "f1", "dice_mean"):
-            if metric in report:
+            if metric in report and report[metric] is not None:
                 MetricsRegistry.set_model_metric(model_name, metric, report[metric])

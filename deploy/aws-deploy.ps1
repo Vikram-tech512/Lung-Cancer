@@ -11,7 +11,9 @@ param(
   [string]$AppName      = "lung-cancer-ai"
 )
 
-$AWS = "C:\Users\ashok\AppData\Local\Programs\Amazon\AWSCLIV2\aws.exe"
+$AwsCommand = Get-Command "aws" -ErrorAction SilentlyContinue
+if (-not $AwsCommand) { throw "AWS CLI not found. Install AWS CLI v2 or add aws to PATH." }
+$AWS = $AwsCommand.Source
 $ErrorActionPreference = "Stop"
 function Log($m) { Write-Host "[$(Get-Date -f 'HH:mm:ss')] $m" -ForegroundColor Cyan }
 function Ok($m)  { Write-Host "  [OK] $m" -ForegroundColor Green }

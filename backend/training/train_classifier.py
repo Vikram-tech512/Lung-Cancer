@@ -222,7 +222,7 @@ def train_one_model(args) -> None:
     # ── Calibration on the validation set ───────────────────────────
     val_logits, val_labels = collect_logits(model, val_loader, device)
     scaler = TemperatureScaler()
-    temperature = scaler.fit(val_logits, val_labels)
+    temperature = scaler.fit(val_logits, val_labels, split_name="validation")
 
     # ── Held-out test evaluation (never used for model selection) ──
     test_logits, test_labels = collect_logits(model, test_loader, device)

@@ -379,7 +379,8 @@ def generate_split_manifest(
 
 
 def main():
-    luna_root = Path(os.environ.get("LUNA16_ROOT", r"C:\LUNA16_DATA"))
+    default_luna = Path.home() / "LUNA16_DATA" if os.name == "nt" else Path("data/luna16")
+    luna_root = Path(os.environ.get("LUNA16_ROOT", str(default_luna)))
     print(f"===========================================================")
     print(f" LUNA16 Resumable Pipeline Downloader & Split Generator")
     print(f" Target Root: {luna_root}")

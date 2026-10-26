@@ -179,7 +179,7 @@ class DetectionStage:
                 candidates.append({
                     "bbox_zyx": [float(z1), float(y1), float(x1),
                                   float(z2), float(y2), float(x2)],
-                    "score": 0.50,
+                    "score": None,
                     "diameter_mm": round(diameter_mm, 2),
                     "source": "heuristic_fallback",
                 })

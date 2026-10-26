@@ -30,7 +30,7 @@ from backend.pipeline.orchestrator import PipelineContext, PipelineStage
 
 log = get_logger(__name__)
 
-# Models enabled by default (all if checkpoint exists, else fallback)
+# Models are enabled only when a trained checkpoint is available.
 _DEFAULT_MODELS = ["ResNet3D", "DenseNet3D", "SwinTransformer3D"]
 
 
@@ -67,7 +67,7 @@ def infer_nodule_crop(
                 model = resnet3d_50(num_classes=2)
             model.load_state_dict(sd, strict=False)
         else:
-            model = resnet3d_50(num_classes=2)
+            raise RuntimeError("A trained ResNet3D checkpoint is required for inference")
         model = model.to(device).eval()
 
     if crop_volume.shape != input_size:
@@ -142,6 +142,9 @@ class ClassificationStage:
             if not ckpt.exists():
                 ckpt = Path("checkpoints_3d/resnet3d_luna16_best.pt")
 
+            if not ckpt.exists():
+                return None
+
             if ckpt.exists():
                 state = torch.load(ckpt, map_location=self.device)
                 sd = state.get("model_state_dict", state) if isinstance(state, dict) else state
@@ -152,8 +155,6 @@ class ClassificationStage:
                     model = resnet3d_50(num_classes=2)
                 model.load_state_dict(sd, strict=False)
                 log.info("loaded_resnet3d", checkpoint=str(ckpt), arch=model.__class__.__name__)
-            else:
-                model = resnet3d_50(num_classes=2)
             return model.to(self.device).eval()
         except Exception as exc:
             log.warning("resnet3d_load_failed", error=str(exc))
@@ -163,12 +164,13 @@ class ClassificationStage:
         try:
             import torch
             from backend.models.classification.densenet3d.model import densenet3d_121
-            model = densenet3d_121(num_classes=2)
             ckpt = self.checkpoint_dir / "densenet3d_best.pt"
-            if ckpt.exists():
-                state = torch.load(ckpt, map_location=self.device)
-                model.load_state_dict(state.get("model_state_dict", state), strict=False)
-                log.info("loaded_densenet3d", checkpoint=str(ckpt))
+            if not ckpt.exists():
+                return None
+            model = densenet3d_121(num_classes=2)
+            state = torch.load(ckpt, map_location=self.device)
+            model.load_state_dict(state.get("model_state_dict", state), strict=False)
+            log.info("loaded_densenet3d", checkpoint=str(ckpt))
             return model.to(self.device).eval()
         except Exception as exc:
             log.warning("densenet3d_load_failed", error=str(exc))
@@ -178,11 +180,12 @@ class ClassificationStage:
         try:
             import torch
             from backend.models.classification.swin3d.model import SwinTransformer3D
-            model = SwinTransformer3D(num_classes=2)
             ckpt = self.checkpoint_dir / "swin3d_best.pt"
-            if ckpt.exists():
-                state = torch.load(ckpt, map_location=self.device)
-                model.load_state_dict(state.get("model_state_dict", state), strict=False)
+            if not ckpt.exists():
+                return None
+            model = SwinTransformer3D(num_classes=2)
+            state = torch.load(ckpt, map_location=self.device)
+            model.load_state_dict(state.get("model_state_dict", state), strict=False)
                 log.info("loaded_swin3d", checkpoint=str(ckpt))
             return model.to(self.device).eval()
         except Exception as exc:
@@ -248,39 +251,39 @@ class ClassificationStage:
             "logit":          float(logits[0, 1].item()),
         }
 
-    def _mock_prediction(self) -> Dict[str, float]:
-        """Returned when no model weights are available (dev/CI mode)."""
-        return {
-            "malignant_prob": 0.50,
-            "benign_prob":    0.50,
-            "nodule_prob":    0.50,
-            "non_nodule_prob": 0.50,
-            "logit":          0.0,
-            "source":         "mock_no_checkpoint",
-        }
-
     # ------------------------------------------------------------------
     # Stage entrypoint
     # ------------------------------------------------------------------
     def run(self, ctx: PipelineContext) -> Dict[str, Any]:
         prep = ctx.get(PipelineStage.PREPROCESSING)
-        if prep is None:
-            ctx.warnings.append("ClassificationStage: preprocessing missing, using zeros")
-            volume = np.zeros((128, 128, 128), dtype=np.float32)
-        else:
-            volume = prep.get("volume", np.zeros((128, 128, 128), dtype=np.float32))
+        volume = prep.get("volume") if prep else None
+        if volume is None:
+            ctx.warnings.append("ClassificationStage: input volume is not available")
+            return {
+                "status": "not_available",
+                "models": {},
+                "consensus_prob": None,
+                "consensus_label": None,
+            }
 
         self._ensure_models()
+        if not self._models:
+            return {
+                "status": "not_available",
+                "models": {},
+                "consensus_prob": None,
+                "consensus_label": None,
+                "message": "No trained classification checkpoint is available.",
+            }
         tensor = self._prepare_tensor(volume)
 
         results: Dict[str, Any] = {}
         probs_list = []
 
         for model_name in self.enabled_models:
-            if model_name in self._models:
-                pred = self._infer_one(model_name, tensor)
-            else:
-                pred = self._mock_prediction()
+            if model_name not in self._models:
+                continue
+            pred = self._infer_one(model_name, tensor)
             results[model_name] = pred
             probs_list.append(pred["malignant_prob"])
 
@@ -291,9 +294,10 @@ class ClassificationStage:
             )
 
         # Consensus
-        consensus_prob = float(np.mean(probs_list)) if probs_list else 0.5
+        consensus_prob = float(np.mean(probs_list))
         results["consensus_prob"]  = round(consensus_prob, 4)
         results["consensus_label"] = "malignant" if consensus_prob > 0.5 else "benign"
+        results["status"] = "available"
 
         log.info(
             "classification_done",

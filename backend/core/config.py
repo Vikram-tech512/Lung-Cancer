@@ -51,7 +51,7 @@ try:
         REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         STORAGE_ROOT: str = os.getenv("STORAGE_ROOT", "storage_bucket")
         MAX_UPLOAD_SIZE_MB: int = 500
-        LUNA16_ROOT: str = os.getenv("LUNA16_ROOT", r"C:\LUNA16_DATA")
+        LUNA16_ROOT: str = os.getenv("LUNA16_ROOT", "data/LUNA16")
         UNCERTAINTY_METRIC: str = "predictive_std"
         UNCERTAINTY_THRESHOLD_LOW: float = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.05"))
         UNCERTAINTY_THRESHOLD_HIGH: float = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.15"))
@@ -78,7 +78,7 @@ except ImportError:
         REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         STORAGE_ROOT: str = os.getenv("STORAGE_ROOT", "storage_bucket")
         MAX_UPLOAD_SIZE_MB: int = 500
-        LUNA16_ROOT: str = os.getenv("LUNA16_ROOT", r"C:\LUNA16_DATA")
+        LUNA16_ROOT: str = os.getenv("LUNA16_ROOT", "data/LUNA16")
         UNCERTAINTY_METRIC: str = "predictive_std"
         UNCERTAINTY_THRESHOLD_LOW: float = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.05"))
         UNCERTAINTY_THRESHOLD_HIGH: float = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.15"))

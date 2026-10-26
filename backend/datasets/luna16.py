@@ -87,6 +87,11 @@ class LUNA16Candidate:
     diameter_mm:   float   # 0 if not an annotated nodule
     subset_id:     int     # 0-9 (used for cross-validation folds)
 
+    @property
+    def patient_id(self) -> str:
+        """LUNA16 provides one CT series per patient in the candidate table."""
+        return self.series_uid
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  CSV parsing helpers
@@ -146,6 +151,37 @@ def _series_uid_to_subset(luna_root: Path, series_uid: str) -> int:
     return -1
 
 
+def assert_luna16_splits_disjoint(train, val, test) -> None:
+    """Reject patient or series identifiers that occur in more than one split."""
+    split_records = {"train": train, "validation": val, "test": test}
+    for identifier in ("patient_id", "patient_uid", "series_uid"):
+        seen: Dict[str, str] = {}
+        for split_name, records in split_records.items():
+            for candidate in records:
+                value = getattr(candidate, identifier, None)
+                if value is None:
+                    continue
+                value = str(value)
+                previous = seen.get(value)
+                if previous is not None and previous != split_name:
+                    raise AssertionError(
+                        f"{identifier} {value!r} appears in {previous} and {split_name} splits"
+                    )
+                seen[value] = split_name
+
+
+def luna16_split_hash(train, val, test) -> str:
+    """Hash exact split membership, independent of candidate ordering."""
+    import json
+
+    membership = {
+        name: sorted({str(c.series_uid) for c in candidates})
+        for name, candidates in (("train", train), ("validation", val), ("test", test))
+    }
+    payload = json.dumps(membership, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Loader class  (reads .mhd/.raw via SimpleITK)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -195,17 +231,17 @@ class LUNA16Loader:
 
     def load_candidates(
         self,
-        max_neg_per_pos: int = 10,
+        max_neg_per_pos: Optional[int] = None,
         min_diameter_mm: float = 0.0,
         seed: int = 42,
     ) -> List[LUNA16Candidate]:
         """
-        Load & balance candidates.
+        Load candidates. Negative subsampling is opt-in and should normally be
+        applied to the training partition only by ``get_luna16_loaders``.
 
         Args:
-            max_neg_per_pos:  Maximum ratio of negative to positive samples.
-                              LUNA16 has ~1,351 positives vs ~550K negatives;
-                              without balancing the negatives dominate.
+            max_neg_per_pos:  Optional negative/positive cap. Omit to preserve
+                              the natural candidate distribution for evaluation.
             min_diameter_mm:  Skip confirmed nodules smaller than this.
             seed:             For reproducible negative sub-sampling.
         """
@@ -261,11 +297,13 @@ class LUNA16Loader:
             )
             (positives if r["label"] == 1 else negatives).append(cand)
 
-        # Under-sample negatives
+        # Optional compatibility path. Study loaders split first and subsample
+        # only training negatives so validation/test retain natural prevalence.
         rng = random.Random(seed)
-        max_neg = len(positives) * max_neg_per_pos
-        if len(negatives) > max_neg:
-            negatives = rng.sample(negatives, max_neg)
+        if max_neg_per_pos is not None:
+            max_neg = len(positives) * max_neg_per_pos
+            if len(negatives) > max_neg:
+                negatives = rng.sample(negatives, max_neg)
 
         all_candidates = positives + negatives
         rng.shuffle(all_candidates)
@@ -282,26 +320,37 @@ class LUNA16Loader:
         val_frac:  float = 0.15,
         test_frac: float = 0.15,
         seed: int = 42,
+        split_mode: str = "random",
     ) -> Tuple[List[LUNA16Candidate], List[LUNA16Candidate], List[LUNA16Candidate]]:
         """
-        Split at the SCAN level (not candidate level) to prevent leakage.
-        Uses LUNA16's pre-defined subset IDs to avoid same-patient leakage.
+        Keep all candidates from a series together. ``subset`` implements the
+        reduced-study split: subsets 0-1 train, 2 validation, 3 test.
         """
-        series_ids = sorted({c.series_uid for c in candidates})
-        rng = random.Random(seed)
-        rng.shuffle(series_ids)
+        if split_mode not in {"random", "subset"}:
+            raise ValueError("split_mode must be 'random' or 'subset'")
 
-        n = len(series_ids)
-        n_val  = max(1, int(n * val_frac))
-        n_test = max(1, int(n * test_frac))
+        if split_mode == "subset":
+            train = [c for c in candidates if c.subset_id in {0, 1}]
+            val = [c for c in candidates if c.subset_id == 2]
+            test = [c for c in candidates if c.subset_id == 3]
+        else:
+            series_ids = sorted({c.series_uid for c in candidates})
+            rng = random.Random(seed)
+            rng.shuffle(series_ids)
 
-        test_ids  = set(series_ids[:n_test])
-        val_ids   = set(series_ids[n_test:n_test + n_val])
-        train_ids = set(series_ids[n_test + n_val:])
+            n = len(series_ids)
+            n_val = max(1, int(n * val_frac))
+            n_test = max(1, int(n * test_frac))
 
-        train = [c for c in candidates if c.series_uid in train_ids]
-        val   = [c for c in candidates if c.series_uid in val_ids]
-        test  = [c for c in candidates if c.series_uid in test_ids]
+            test_ids = set(series_ids[:n_test])
+            val_ids = set(series_ids[n_test:n_test + n_val])
+            train_ids = set(series_ids[n_test + n_val:])
+
+            train = [c for c in candidates if c.series_uid in train_ids]
+            val = [c for c in candidates if c.series_uid in val_ids]
+            test = [c for c in candidates if c.series_uid in test_ids]
+
+        assert_luna16_splits_disjoint(train, val, test)
 
         print(
             f"[LUNA16 Split] train: {len(train)} | val: {len(val)} | test: {len(test)} candidates"
@@ -540,6 +589,7 @@ def get_luna16_loaders(
     seed:             int   = 42,
     cache_dir:        Optional[str] = None,
     balanced_sampling: bool = True,
+    split_mode: str = "random",
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Returns (train_loader, val_loader, test_loader).
@@ -549,7 +599,7 @@ def get_luna16_loaders(
         crop_size:        Side length of cubic 3D crop in voxels (default 64).
         batch_size:       Mini-batch size.
         num_workers:      DataLoader workers.
-        max_neg_per_pos:  Negative/positive ratio cap.
+        max_neg_per_pos:  Training-only negative/positive ratio cap.
         min_diameter_mm:  Skip positives smaller than this diameter.
         val_frac:         Validation fraction.
         test_frac:        Test fraction.
@@ -557,6 +607,7 @@ def get_luna16_loaders(
         cache_dir:        Directory to cache extracted crops as .npy files.
                           Strongly recommended — avoids re-reading 12GB .mhd files.
         balanced_sampling: Use WeightedRandomSampler for balanced training batches.
+        split_mode:       ``random`` or fixed LUNA16 ``subset`` split.
     """
     root = Path(luna_root)
     loader = LUNA16Loader(root)
@@ -571,13 +622,23 @@ def get_luna16_loaders(
         )
 
     candidates = loader.load_candidates(
-        max_neg_per_pos=max_neg_per_pos,
+        max_neg_per_pos=None,
         min_diameter_mm=min_diameter_mm,
         seed=seed,
     )
     train_cands, val_cands, test_cands = loader.patient_level_split(
-        candidates, val_frac=val_frac, test_frac=test_frac, seed=seed
+        candidates, val_frac=val_frac, test_frac=test_frac, seed=seed,
+        split_mode=split_mode,
     )
+    split_hash = luna16_split_hash(train_cands, val_cands, test_cands)
+    if max_neg_per_pos is not None:
+        positives = [c for c in train_cands if c.label == 1]
+        negatives = [c for c in train_cands if c.label == 0]
+        max_negatives = len(positives) * max_neg_per_pos
+        if len(negatives) > max_negatives:
+            negatives = random.Random(seed).sample(negatives, max_negatives)
+        train_cands = positives + negatives
+        random.Random(seed).shuffle(train_cands)
 
     cs = (crop_size, crop_size, crop_size)
     cache = Path(cache_dir) if cache_dir else None
@@ -585,6 +646,9 @@ def get_luna16_loaders(
     train_ds = LUNA16Dataset(root, train_cands, crop_size=cs, augment=True,  cache_dir=cache, seed=seed)
     val_ds   = LUNA16Dataset(root, val_cands,   crop_size=cs, augment=False, cache_dir=cache, seed=seed)
     test_ds  = LUNA16Dataset(root, test_cands,  crop_size=cs, augment=False, cache_dir=cache, seed=seed)
+    for dataset in (train_ds, val_ds, test_ds):
+        dataset.split_mode = split_mode
+        dataset.split_hash_sha256 = split_hash
 
     if balanced_sampling:
         sw = train_ds.sampler_weights()

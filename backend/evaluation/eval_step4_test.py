@@ -245,7 +245,11 @@ def apply_prior_shift(
 def fit_temperature(val_logits: np.ndarray, val_labels: np.ndarray) -> float:
     """Fits scalar temperature T via NLL on validation set."""
     scaler = TemperatureScaler()
-    scaler.fit(torch.from_numpy(val_logits).float(), torch.from_numpy(val_labels).long())
+    scaler.fit(
+        torch.from_numpy(val_logits).float(),
+        torch.from_numpy(val_labels).long(),
+        split_name="validation",
+    )
     return float(scaler.temperature.item())
 
 
@@ -858,7 +862,7 @@ def evaluate_gradcam(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_step4_evaluation(
-    luna_root: Path = Path(r"C:\LUNA16_DATA"),
+    luna_root: Path = Path(os.environ.get("LUNA16_ROOT", "data/LUNA16")),
     manifest_path: Path = Path("results/split_manifest.json"),
     results_dir: Path = Path("results"),
     checkpoints_dir: Path = Path("checkpoints_3d"),
@@ -1179,7 +1183,7 @@ def run_step4_evaluation(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LUNA16 Step 4 Test Evaluation")
-    parser.add_argument("--luna-root", type=str, default=r"C:\LUNA16_DATA")
+    parser.add_argument("--luna-root", type=str, default=os.environ.get("LUNA16_ROOT", "data/LUNA16"))
     parser.add_argument("--manifest", type=str, default="results/split_manifest.json")
     args = parser.parse_args()
 

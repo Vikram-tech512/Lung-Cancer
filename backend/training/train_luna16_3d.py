@@ -114,6 +114,21 @@ MODEL_BUILDERS = {
 }
 
 
+def _split_hash_for_loaders(train_loader, val_loader, test_loader) -> str:
+    """Hash actual patient/series membership for real and synthetic runs."""
+    membership = {}
+    for name, loader in (("train", train_loader), ("validation", val_loader), ("test", test_loader)):
+        dataset = loader.dataset
+        records = getattr(dataset, "candidates", None)
+        if records is not None:
+            ids = {str(record.series_uid) for record in records}
+        else:
+            ids = {str(record.patient_id) for record in getattr(dataset, "nodules", [])}
+        membership[name] = sorted(ids)
+    payload = json.dumps(membership, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 CLASS_NAMES = ["non-nodule", "nodule"]
 
 
@@ -319,8 +334,10 @@ def train(args: argparse.Namespace) -> None:
             seed             = args.seed,
             cache_dir        = args.cache_dir,
             balanced_sampling= True,
+            split_mode       = args.split_mode,
         )
         dataset_tag = "LUNA16"
+    split_hash = _split_hash_for_loaders(train_loader, val_loader, test_loader)
 
     print(
         f"  Batches — train: {len(train_loader)} | "
@@ -410,6 +427,9 @@ def train(args: argparse.Namespace) -> None:
             "epoch":            epoch,
             "args":             vars(args),
             "dataset":          dataset_tag,
+            "split_hash_sha256": split_hash,
+            "split_mode":       args.split_mode,
+            "synthetic":        bool(args.dry_run),
             "trained_at":       time.strftime("%Y-%m-%d %H:%M:%S"),
         }
         torch.save(ckpt_payload, last_ckpt)
@@ -436,7 +456,9 @@ def train(args: argparse.Namespace) -> None:
 
     val_m_final = _evaluate(model, val_loader, criterion, device)
     ts_scaler   = TemperatureScaler()
-    temperature = ts_scaler.fit(val_m_final["_logits"], val_m_final["_labels"])
+    temperature = ts_scaler.fit(
+        val_m_final["_logits"], val_m_final["_labels"], split_name="validation"
+    )
     print(f"  Calibration temperature: {temperature:.3f}")
 
     # ── Test Evaluation ────────────────────────────────────────────────────
@@ -492,14 +514,15 @@ def train(args: argparse.Namespace) -> None:
             robustness_results.append({"series_uid": meta["series_uid"], "results": results})
 
         rob_path = output_dir / f"{args.model}_luna16_robustness.json"
-        rob_path.write_text(json.dumps(robustness_results, indent=2))
+        rob_path.write_text(json.dumps({
+            "synthetic": bool(args.dry_run),
+            "split_mode": args.split_mode,
+            "split_hash_sha256": split_hash,
+            "records": robustness_results,
+        }, indent=2))
         print(f"  Robustness report → {rob_path}")
 
     # ── Save final checkpoint with all metrics ────────────────────────────
-    split_hash = hashlib.sha256(
-        f"{args.seed}_{dataset_tag}_{args.model}".encode()
-    ).hexdigest()[:16]
-
     name_prefix = "dryrun_" if args.dry_run else ""
     final_ckpt  = output_dir / f"{name_prefix}{args.model}_luna16_final.pt"
     torch.save({
@@ -511,6 +534,8 @@ def train(args: argparse.Namespace) -> None:
         "test_specificity": test_m["specificity"],
         "test_ece":         cal_result.ece,
         "patient_split_hash": split_hash,
+        "split_mode": args.split_mode,
+        "synthetic": bool(args.dry_run),
         "dataset":          ("SYNTHETIC_DRY_RUN — NOT REAL DATA" if args.dry_run else dataset_tag),
     }, final_ckpt)
     print(f"\n[Checkpoint] Final -> {final_ckpt}")
@@ -525,6 +550,9 @@ def train(args: argparse.Namespace) -> None:
         "test_ece":         cal_result.ece,
         "temperature":      temperature,
         "dataset":          dataset_tag,
+        "synthetic":        bool(args.dry_run),
+        "split_mode":       args.split_mode,
+        "split_hash_sha256": split_hash,
         "model":            args.model,
         "history":          history,
         "args":             vars(args),
@@ -548,7 +576,11 @@ def train(args: argparse.Namespace) -> None:
                 "test_specificity": test_m["specificity"],
                 "test_ece": cal_result.ece,
             },
-            tags       = {"dataset": "LUNA16"},
+            tags       = {
+                "dataset": "LUNA16",
+                "split_mode": args.split_mode,
+                "split_hash_sha256": split_hash,
+            },
             artifacts  = [str(final_ckpt)],
         )
 
@@ -635,7 +667,7 @@ class _CPUPreloadedDataset(torch.utils.data.Dataset):
 
 
 def run_cpu_training_pipeline(
-    luna_root: Path = Path(r"C:\LUNA16_DATA"),
+    luna_root: Path = Path(os.environ.get("LUNA16_ROOT", "data/LUNA16")),
     manifest_path: Path = Path("results/split_manifest.json"),
     max_epochs: int = 15,
     batch_size: int = 16,
@@ -866,6 +898,8 @@ def _parse_args() -> argparse.Namespace:
                    help="Exclude nodules smaller than this diameter")
     p.add_argument("--val-frac",          type=float, default=0.15)
     p.add_argument("--test-frac",         type=float, default=0.15)
+    p.add_argument("--split-mode",        choices=["random", "subset"], default="random",
+                   help="LUNA16 split strategy; subset uses 0-1 train, 2 validation, 3 test")
     p.add_argument("--seed",              type=int, default=42)
     p.add_argument("--num-workers",       type=int, default=2)
     p.add_argument("--device",            type=str, default="cuda")
@@ -883,7 +917,7 @@ def _parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     args = _parse_args()
     if args.profile == "cpu":
-        luna_root = Path(os.environ.get("LUNA16_ROOT", r"C:\LUNA16_DATA"))
+        luna_root = Path(os.environ.get("LUNA16_ROOT", "data/LUNA16"))
         run_cpu_training_pipeline(
             luna_root=luna_root,
             max_epochs=args.epochs if args.epochs != 50 else 15,
