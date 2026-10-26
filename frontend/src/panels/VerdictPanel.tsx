@@ -301,49 +301,92 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
           </Table>
         </div>
 
-        {/* Section 3: Impression & Lung-RADS */}
+        {/* Section 3: Impression & Lung-RADS (Editable) */}
         <div>
           <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
-            3. Impression &amp; Categorization
+            3. Impression &amp; Categorization (Editable Draft — Never Auto-Signed)
           </div>
-          <div style={{ border: '1px solid var(--border)', background: 'var(--bg-main)', padding: '16px', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ border: '1px solid var(--border)', background: 'var(--bg-main)', padding: '16px', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Assigned Category:</span>
-              <Badge variant={diameter >= 8 ? 'danger' : 'warning'}>Lung-RADS {lungRads}</Badge>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Assigned Category (Research Only):</span>
+              <Badge variant={diameter >= 8 ? 'danger' : 'warning'}>Lung-RADS {lungRads} (Research Guidance)</Badge>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                 ({diameter >= 15 ? 'Very high suspicion / large solid nodule' : diameter >= 8 ? 'Suspicious solid nodule >= 8mm' : 'Probably benign / small nodule'})
               </span>
             </div>
-            <div style={{ fontSize: '13px', color: 'var(--text-main)', lineHeight: '1.5' }}>
-              Solitary pulmonary nodule in the right thoracic field with calibrated consensus probability of {(verdict.ensemble_probability * 100).toFixed(1)}%.
-              Morphometric features demonstrate moderate spiculation with attenuation consistent with non-calcified soft tissue.
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                Radiologist Impression Text (Edit as needed):
+              </label>
+              <textarea
+                defaultValue={`Solitary pulmonary nodule in the right upper thoracic field with calibrated consensus probability of ${(verdict.ensemble_probability * 100).toFixed(1)}% (95% CI: [${(verdict.confidence_interval[0] * 100).toFixed(1)}% – ${(verdict.confidence_interval[1] * 100).toFixed(1)}%]). Morphometric features demonstrate moderate spiculation with attenuation consistent with non-calcified soft tissue.`}
+                rows={3}
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-panel)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-main)',
+                  padding: '8px',
+                  borderRadius: '2px',
+                  fontSize: '12px',
+                  lineHeight: '1.5',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                }}
+              />
             </div>
           </div>
         </div>
 
-        {/* Section 4: Recommendation */}
+        {/* Section 4: Recommendation (Editable) */}
         <div>
           <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
-            4. Recommendation (Fleischner Society &amp; Lung-RADS v2022)
+            4. Recommendation (Research Decision Support — Clinician Discretion)
           </div>
-          <div style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-main)' }}>
-            {diameter >= 8 ? (
-              <>
-                Recommend chest CT with contrast in 3 months, PET/CT evaluation, and/or tissue sampling (biopsy) depending on clinical risk factors and multidisciplinary tumor board review.
-              </>
-            ) : (
-              <>
-                Recommend follow-up low-dose chest CT in 6 to 12 months to confirm stability.
-              </>
-            )}
+          <textarea
+            defaultValue={diameter >= 8
+              ? 'Recommend chest CT with contrast in 3 months, PET/CT evaluation, and/or tissue sampling (biopsy) depending on clinical risk factors and multidisciplinary tumor board review.'
+              : 'Recommend follow-up low-dose chest CT in 6 to 12 months to confirm stability.'
+            }
+            rows={2}
+            style={{
+              width: '100%',
+              background: 'var(--bg-main)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-main)',
+              padding: '8px',
+              borderRadius: '2px',
+              fontSize: '12px',
+              lineHeight: '1.5',
+              fontFamily: 'inherit',
+              resize: 'vertical',
+            }}
+          />
+        </div>
+
+        {/* Section 5: Optional Plain-Language Summary for Clinician Adaptation */}
+        <div style={{ border: '1px solid var(--border)', background: 'var(--bg-main)', padding: '14px', borderRadius: 'var(--radius)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Optional Plain-Language Summary (For Clinician Adaptation)
+            </span>
+            <span style={{ fontSize: '10px', color: '#fbbf24' }}>Requires Physician Verification Prior to Communication</span>
+          </div>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', lineHeight: '1.4' }}>
+            The scan showed a small spot (nodule) measuring approximately {verdict.morphometry.effective_diameter_mm.toFixed(1)} mm in the upper right lung.
+            A lung nodule is a common finding that can be caused by scar tissue, previous infection, or in some cases, early tumor cells.
+            Because of its size and appearance, further follow-up or testing is recommended to determine the best next step. No definitive diagnosis has been made.
+          </p>
+          <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontStyle: 'italic' }}>
+            Guidance: Do not provide false reassurance. A human doctor must discuss all findings and context directly with the patient.
           </div>
         </div>
 
-        {/* Attribution Map Section */}
+        {/* Section 6: Attribution Map Section with Mandatory Caveat */}
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              5. Model Saliency &amp; Attribution Map
+              6. Model Saliency &amp; Attribution Map
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ display: 'flex', gap: '4px' }}>
@@ -372,6 +415,28 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
               </div>
             </div>
           </div>
+
+          {/* Saliency Map Caveat Notice (Task 3 Requirement 5) */}
+          <div
+            style={{
+              background: '#1a1d20',
+              border: '1px solid var(--border)',
+              padding: '6px 10px',
+              borderRadius: '2px',
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+              marginBottom: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <AlertTriangle size={13} color="#f59e0b" style={{ flexShrink: 0 }} />
+            <span>
+              <strong>Exploration Caveat:</strong> Research attribution map visualizes model gradient backpropagation. It reflects feature importance within the network and must <strong>never</strong> be interpreted as a verified anatomical tumor margin or histological boundary.
+            </span>
+          </div>
+
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <canvas
               ref={canvasRef}
@@ -388,6 +453,48 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId }) => {
               Peak activation coincides with the irregular lateral margin of {verdict.nodule_id}.
               Not approved as stand-alone diagnostic evidence.
             </div>
+          </div>
+        </div>
+
+        {/* Section 7: Export & Interop Actions (Task 8) */}
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            Report exports scrub direct PHI and use de-identified research accessions.
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const fhirReport = {
+                  resourceType: 'DiagnosticReport',
+                  id: `report-${verdict.nodule_id}`,
+                  status: 'preliminary',
+                  category: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/v2-0074', code: 'RAD', display: 'Radiology' }] }],
+                  code: { coding: [{ system: 'http://loinc.org', code: '24627-2', display: 'Chest CT' }] },
+                  subject: { reference: 'Patient/DEIDENTIFIED-RESEARCH-SUBJECT' },
+                  conclusion: `Solitary pulmonary nodule (${verdict.morphometry.effective_diameter_mm.toFixed(1)} mm, volume ${verdict.morphometry.volume_mm3.toFixed(1)} mm3). Research consensus probability: ${(verdict.ensemble_probability * 100).toFixed(1)}%.`,
+                  conclusionCode: [{ coding: [{ system: 'urn:iso:std:iso:11073:10101', code: 'LUNG-RADS', display: `Lung-RADS ${lungRads}` }] }],
+                  note: [{ text: 'RESEARCH USE ONLY — Investigational prototype decision support. Not cleared for primary clinical diagnosis.' }],
+                };
+                const blob = new Blob([JSON.stringify(fhirReport, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `DiagnosticReport_${verdict.nodule_id}_deidentified.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <FileText size={12} style={{ marginRight: '4px' }} />
+              Export FHIR JSON
+            </Button>
+            <Button variant="primary" size="sm" onClick={handlePrint}>
+              <Printer size={12} style={{ marginRight: '4px' }} />
+              Print / Export PDF
+            </Button>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Layers, Eye, Sliders, Maximize2, ShieldAlert, Sparkles, CheckCircle2, Upload, Plus } from 'lucide-react';
+import { Layers, Eye, Sliders, Maximize2, ShieldAlert, Activity, CheckCircle2, Upload, Plus } from 'lucide-react';
 
 export interface TumourRegion {
   found: boolean;
@@ -1032,7 +1032,7 @@ export const TumourLocator: React.FC<Props> = ({
             alignItems: 'center',
             gap: '10px'
           }}>
-            <Sparkles size={16} color="#38bdf8" style={{ flexShrink: 0 }} />
+            <Activity size={16} color="#38bdf8" style={{ flexShrink: 0 }} />
             <span>
               <strong>Educational &amp; Verification Showcase:</strong> Reference benchmark cases display verified multi-radiologist consensus annotations and illustrative spatial attribution. Dynamic uploads depict heuristic parenchymal contrast focus for exploratory review, not certified standalone diagnostic predictions. Grad-CAM highlights attribution regions influencing predictions, not verified nodule boundaries.
             </span>

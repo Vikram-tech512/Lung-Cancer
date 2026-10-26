@@ -113,6 +113,43 @@ export const App: React.FC = () => {
         fontSize: '13px',
       }}
     >
+      {/* Persistent Regulatory Research Notice Strip */}
+      <div
+        style={{
+          background: '#241a08',
+          borderBottom: '1px solid #573e0e',
+          color: '#fbbf24',
+          fontSize: '11px',
+          fontWeight: 600,
+          letterSpacing: '0.04em',
+          textAlign: 'center',
+          padding: '3px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+          zIndex: 100,
+          flexShrink: 0,
+        }}
+      >
+        <span>RESEARCH USE ONLY — Investigational Prototype — Not Cleared for Standalone Diagnostic Decisions</span>
+        {currentStudyId.includes('DEMO') && (
+          <span
+            style={{
+              background: '#3f2d08',
+              border: '1px solid #d97706',
+              color: '#fef3c7',
+              padding: '1px 6px',
+              borderRadius: '2px',
+              fontSize: '10px',
+              fontWeight: 700,
+            }}
+          >
+            SYNTHETIC DEMO DATA
+          </span>
+        )}
+      </div>
+
       {/* Top Bar: Case ID, Patient ID, Study Date, Modality */}
       <header
         style={{
@@ -151,7 +188,7 @@ export const App: React.FC = () => {
             </div>
             <div>
               <span style={{ color: 'var(--text-muted)' }}>Modality: </span>
-              <span>CT CHEST LOW-DOSE</span>
+              <span>CT CHEST (1.0 mm reconstructed)</span>
             </div>
           </div>
         </div>
@@ -167,7 +204,7 @@ export const App: React.FC = () => {
               }}
             />
             <span style={{ color: 'var(--text-muted)' }}>
-              Backend: {backendReady === true ? 'Ready' : backendReady === false ? 'Offline' : 'Checking'}
+              Backend: {backendReady === true ? 'Connected' : backendReady === false ? 'Offline' : 'Connecting'}
             </span>
           </div>
         </div>

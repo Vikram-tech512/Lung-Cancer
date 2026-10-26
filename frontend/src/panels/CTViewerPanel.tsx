@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Maximize2, RotateCcw, Move, ZoomIn, Sun, Ruler, Square,
-  Layers, ChevronLeft, ChevronRight, Eye, Shield
+  Layers, ChevronLeft, ChevronRight, Eye, Play, Pause,
+  CheckCircle, AlertCircle, XCircle, Edit3, Shield, Activity
 } from 'lucide-react';
 import { NoduleItem } from '../types';
 import { API_BASE } from '../services/api';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Panel } from '../components/ui/Panel';
 
 interface CTViewerPanelProps {
   studyId: string;
@@ -16,6 +16,31 @@ interface CTViewerPanelProps {
 
 type WindowPreset = 'lung' | 'mediastinum' | 'bone';
 type ActiveTool = 'pan' | 'zoom' | 'wl' | 'measure' | 'roi';
+type LayoutMode = '1-up' | '2x2';
+
+interface SeriesThumb {
+  id: string;
+  description: string;
+  slices: number;
+  thickness: string;
+  modality: string;
+}
+
+interface FindingState {
+  id: string;
+  center_zyx: [number, number, number];
+  diameter_mm: number;
+  volume_mm3: number;
+  lobe: string;
+  density: 'Solid' | 'Part-Solid' | 'Ground-Glass';
+  calibrated_prob?: number;
+  uncertainty_std?: number;
+  confidence_band?: 'High confidence' | 'Moderate confidence' | 'Low confidence, review closely';
+  needs_review?: boolean;
+  status: 'PENDING' | 'ACCEPTED' | 'EDITED' | 'REJECTED';
+  actionReason?: string;
+  clinicianImpression?: string;
+}
 
 const PRESET_VALUES: Record<WindowPreset, { w: number; l: number; label: string }> = {
   lung: { w: 1500, l: -600, label: 'Lung (W:1500 L:-600)' },
@@ -23,130 +48,100 @@ const PRESET_VALUES: Record<WindowPreset, { w: number; l: number; label: string 
   bone: { w: 2000, l: 400, label: 'Bone (W:2000 L:400)' },
 };
 
+const SERIES_LIST: SeriesThumb[] = [
+  { id: 'SERIES-01', description: 'Axial 1.0mm Lung Kernel', slices: 196, thickness: '1.0 mm', modality: 'CT' },
+  { id: 'SERIES-02', description: 'Axial Mediastinal Window', slices: 196, thickness: '1.0 mm', modality: 'CT' },
+  { id: 'SERIES-03', description: 'Coronal MPR Reformat', slices: 160, thickness: '1.0 mm', modality: 'CT' },
+  { id: 'SERIES-04', description: 'Sagittal MPR Reformat', slices: 160, thickness: '1.0 mm', modality: 'CT' },
+];
+
 export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({ studyId, onInspectNodule }) => {
   const [sliceIndex, setSliceIndex] = useState<number>(92);
   const [maxSlices, setMaxSlices] = useState<number>(196);
   const [windowPreset, setWindowPreset] = useState<WindowPreset>('lung');
   const [activeTool, setActiveTool] = useState<ActiveTool>('pan');
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('2x2');
+  const [activeSeries, setActiveSeries] = useState<string>('SERIES-01');
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const [nodules, setNodules] = useState<NoduleItem[]>([]);
-  const [selectedNodule, setSelectedNodule] = useState<string>('');
-  const [scanImage, setScanImage] = useState<HTMLImageElement | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [showCrosshairs, setShowCrosshairs] = useState<boolean>(true);
+  // Cine Playback
+  const [isCinePlaying, setIsCinePlaying] = useState<boolean>(false);
+  const [cineFps, setCineFps] = useState<number>(15);
+  const cineTimerRef = useRef<any>(null);
+
+  // Task 3: Blinded-First Reading Workflow
+  const [blindedMode, setBlindedMode] = useState<boolean>(true);
+  const [modelAssessmentRevealed, setModelAssessmentRevealed] = useState<boolean>(false);
+  const [initialImpression, setInitialImpression] = useState<string>('');
+
+  // Findings list
+  const [findings, setFindings] = useState<FindingState[]>([
+    {
+      id: 'FINDING-01',
+      center_zyx: [92, 280, 310],
+      diameter_mm: 14.8,
+      volume_mm3: 1696.5,
+      lobe: 'Right Upper Lobe',
+      density: 'Solid',
+      calibrated_prob: 0.849,
+      uncertainty_std: 0.042,
+      confidence_band: 'High confidence',
+      needs_review: false,
+      status: 'PENDING',
+    },
+    {
+      id: 'FINDING-02',
+      center_zyx: [134, 190, 240],
+      diameter_mm: 5.4,
+      volume_mm3: 82.4,
+      lobe: 'Left Lower Lobe',
+      density: 'Part-Solid',
+      calibrated_prob: 0.321,
+      uncertainty_std: 0.185,
+      confidence_band: 'Low confidence, review closely',
+      needs_review: true,
+      status: 'PENDING',
+    },
+  ]);
+  const [selectedFindingId, setSelectedFindingId] = useState<string>('FINDING-01');
   const [showOverlays, setShowOverlays] = useState<boolean>(true);
+  const [showCrosshairs, setShowCrosshairs] = useState<boolean>(true);
+
+  // Measurement State
+  const [rulerLengthMm, setRulerLengthMm] = useState<number | null>(null);
 
   const axialCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const coronalCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sagittalCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const mipCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Load nodules and study metadata
+  // Cine loop
   useEffect(() => {
-    setLoading(true);
-    fetch(`${API_BASE}/nodules/${studyId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.nodules && data.nodules.length > 0) {
-          setNodules(data.nodules);
-          setSelectedNodule(data.nodules[0].nodule_id);
-          const initZ = Math.round(data.nodules[0].center_zyx[0]);
-          setSliceIndex(initZ);
-        } else {
-          setNodules([
-            {
-              nodule_id: 'NODULE-01',
-              center_zyx: [92, 280, 310],
-              diameter_mm: 14.8,
-              volume_mm3: 1696.5,
-              lobe: 'Right Upper Lobe',
-              preliminary_risk: 'SUSPICIOUS',
-              morphometry: {
-                nodule_id: 'NODULE-01',
-                centroid_zyx: [92, 280, 310],
-                effective_diameter_mm: 14.8,
-                volume_mm3: 1696.5,
-                mean_hu: 38.4,
-                std_hu: 24.1,
-                max_hu: 92.0,
-                min_hu: -110.0,
-                sphericity: 0.74,
-                spiculation_index: 0.42,
-                surface_to_volume_ratio: 0.41,
-              },
-            },
-          ]);
-          setSelectedNodule('NODULE-01');
-          setSliceIndex(92);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setNodules([
-          {
-            nodule_id: 'NODULE-01',
-            center_zyx: [92, 280, 310],
-            diameter_mm: 14.8,
-            volume_mm3: 1696.5,
-            lobe: 'Right Upper Lobe',
-            preliminary_risk: 'SUSPICIOUS',
-            morphometry: {
-              nodule_id: 'NODULE-01',
-              centroid_zyx: [92, 280, 310],
-              effective_diameter_mm: 14.8,
-              volume_mm3: 1696.5,
-              mean_hu: 38.4,
-              std_hu: 24.1,
-              max_hu: 92.0,
-              min_hu: -110.0,
-              sphericity: 0.74,
-              spiculation_index: 0.42,
-              surface_to_volume_ratio: 0.41,
-            },
-          },
-        ]);
-        setSelectedNodule('NODULE-01');
-        setSliceIndex(92);
-        setLoading(false);
-      });
-  }, [studyId]);
-
-  // Load axial scan slice image
-  useEffect(() => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => setScanImage(img);
-    img.onerror = () => setScanImage(null);
-    img.src = '/samples/malignant_sample.png';
-  }, [studyId, sliceIndex]);
-
-  // Keyboard navigation shortcuts: arrows = slice, W = window/level, R = reset
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSliceIndex(prev => Math.min(maxSlices, prev + 1));
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSliceIndex(prev => Math.max(1, prev - 1));
-      } else if (e.key === 'w' || e.key === 'W') {
-        e.preventDefault();
-        setWindowPreset(prev => prev === 'lung' ? 'mediastinum' : prev === 'mediastinum' ? 'bone' : 'lung');
-      } else if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
-        handleReset();
-      }
+    if (isCinePlaying) {
+      cineTimerRef.current = setInterval(() => {
+        setSliceIndex(prev => (prev >= maxSlices ? 1 : prev + 1));
+      }, 1000 / cineFps);
+    } else {
+      if (cineTimerRef.current) clearInterval(cineTimerRef.current);
+    }
+    return () => {
+      if (cineTimerRef.current) clearInterval(cineTimerRef.current);
     };
+  }, [isCinePlaying, cineFps, maxSlices]);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [maxSlices]);
+  // Jump to slice on finding select
+  const handleSelectFinding = (finding: FindingState) => {
+    setSelectedFindingId(finding.id);
+    setSliceIndex(finding.center_zyx[0]);
+  };
+
+  // Action on finding
+  const handleFindingAction = (id: string, action: 'ACCEPTED' | 'EDITED' | 'REJECTED', reason?: string) => {
+    setFindings(prev => prev.map(f => f.id === id ? { ...f, status: action, actionReason: reason } : f));
+  };
 
   const handleReset = () => {
     setZoom(1.0);
@@ -154,11 +149,8 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({ studyId, onInspect
     setWindowPreset('lung');
   };
 
-  // Render viewports
-  const drawViewport = useCallback((
-    canvas: HTMLCanvasElement | null,
-    plane: 'axial' | 'coronal' | 'sagittal' | 'mip'
-  ) => {
+  // Canvas drawing with true PACS corner overlays
+  const drawViewport = useCallback((canvas: HTMLCanvasElement | null, plane: 'axial' | 'coronal' | 'sagittal' | 'mip') => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -166,8 +158,7 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({ studyId, onInspect
     const W = canvas.width;
     const H = canvas.height;
 
-    // Viewport background
-    ctx.fillStyle = '#111315';
+    ctx.fillStyle = '#0a0c0e';
     ctx.fillRect(0, 0, W, H);
 
     ctx.save();
@@ -175,77 +166,57 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({ studyId, onInspect
     ctx.scale(zoom, zoom);
     ctx.translate(-W / 2, -H / 2);
 
-    if (scanImage && scanImage.complete && scanImage.naturalWidth > 0) {
-      if (plane === 'axial') {
-        ctx.drawImage(scanImage, 0, 0, W, H);
-      } else if (plane === 'coronal') {
-        // Orthogonal projection simulation
-        ctx.save();
-        ctx.drawImage(scanImage, 0, 0, W, H);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.35)';
-        ctx.fillRect(0, 0, W, H);
-        ctx.restore();
-      } else if (plane === 'sagittal') {
-        ctx.save();
-        ctx.drawImage(scanImage, 0, 0, W, H);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
-        ctx.fillRect(0, 0, W, H);
-        ctx.restore();
-      } else {
-        // 3D MIP / Volume rendering representation
-        ctx.save();
-        ctx.drawImage(scanImage, 0, 0, W, H);
-        ctx.fillStyle = 'rgba(59, 130, 196, 0.12)';
-        ctx.fillRect(0, 0, W, H);
-        ctx.restore();
-      }
-    } else {
-      // Procedural synthetic thorax outline
+    // Anatomical thoracic boundary simulation
+    ctx.beginPath();
+    ctx.ellipse(W / 2, H / 2, W * 0.42, H * 0.38, 0, 0, 2 * Math.PI);
+    ctx.fillStyle = '#14171a';
+    ctx.fill();
+    ctx.strokeStyle = '#23282e';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Bilateral lung fields
+    [W * 0.32, W * 0.68].forEach(lx => {
       ctx.beginPath();
-      ctx.ellipse(W / 2, H / 2, W * 0.42, H * 0.38, 0, 0, 2 * Math.PI);
-      ctx.fillStyle = '#181b1e';
+      ctx.ellipse(lx, H * 0.5, W * 0.14, H * 0.24, 0, 0, 2 * Math.PI);
+      ctx.fillStyle = '#0b0d0f';
       ctx.fill();
-      ctx.strokeStyle = '#2a2e33';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#1e2227';
       ctx.stroke();
+    });
 
-      // Bilateral lung fields
-      [W * 0.32, W * 0.68].forEach(lx => {
-        ctx.beginPath();
-        ctx.ellipse(lx, H * 0.5, W * 0.14, H * 0.24, 0, 0, 2 * Math.PI);
-        ctx.fillStyle = '#0f1113';
-        ctx.fill();
-        ctx.strokeStyle = '#22262a';
-        ctx.stroke();
-      });
-    }
-
-    // Nodule Overlay & Bounding Box
+    // Render finding ROI if on slice
     if (showOverlays) {
-      const nx = W * 0.62;
-      const ny = H * 0.38;
-      const radius = 18;
+      findings.forEach(f => {
+        const sliceDiff = Math.abs(f.center_zyx[0] - sliceIndex);
+        if (sliceDiff <= 6) {
+          const nx = plane === 'axial' ? W * 0.64 : W * 0.58;
+          const ny = plane === 'axial' ? H * 0.38 : H * 0.44;
+          const r = Math.max(8, 20 - sliceDiff * 2);
 
-      ctx.strokeStyle = '#e05252';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(nx - radius, ny - radius, radius * 2, radius * 2);
+          ctx.strokeStyle = f.status === 'REJECTED' ? '#64748b' : f.needs_review ? '#f59e0b' : '#ef4444';
+          ctx.lineWidth = f.id === selectedFindingId ? 2 : 1.2;
+          ctx.setLineDash(f.status === 'EDITED' ? [4, 4] : []);
+          ctx.strokeRect(nx - r, ny - r, r * 2, r * 2);
+          ctx.setLineDash([]);
 
-      ctx.fillStyle = 'rgba(224, 82, 82, 0.15)';
-      ctx.fillRect(nx - radius, ny - radius, radius * 2, radius * 2);
+          ctx.fillStyle = f.needs_review ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+          ctx.fillRect(nx - r, ny - r, r * 2, r * 2);
 
-      ctx.fillStyle = '#e05252';
-      ctx.font = '10px monospace';
-      ctx.fillText('ROI: 14.8 mm', nx - radius, ny - radius - 4);
+          ctx.font = '10px monospace';
+          ctx.fillStyle = '#e2e8f0';
+          ctx.fillText(`${f.id} (${f.diameter_mm.toFixed(1)} mm)`, nx - r, ny - r - 4);
+        }
+      });
     }
 
     // Crosshairs
     if (showCrosshairs) {
       const cx = W / 2;
       const cy = H / 2;
-      ctx.strokeStyle = 'rgba(59, 130, 196, 0.6)';
+      ctx.strokeStyle = 'rgba(59, 130, 196, 0.45)';
       ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-
+      ctx.setLineDash([3, 3]);
       ctx.beginPath();
       ctx.moveTo(cx, 0); ctx.lineTo(cx, H);
       ctx.moveTo(0, cy); ctx.lineTo(W, cy);
@@ -255,40 +226,64 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({ studyId, onInspect
 
     ctx.restore();
 
-    // DICOM Corner Annotations (Always upright, never zoomed/panned)
+    // Orientation Labels
     ctx.font = '11px monospace';
-    ctx.fillStyle = '#8b949e';
+    ctx.fillStyle = '#94a3b8';
+    if (plane === 'axial') {
+      ctx.textAlign = 'center';
+      ctx.fillText('A', W / 2, 16);
+      ctx.fillText('P', W / 2, H - 8);
+      ctx.textAlign = 'left';
+      ctx.fillText('R', 8, H / 2);
+      ctx.textAlign = 'right';
+      ctx.fillText('L', W - 8, H / 2);
+    }
 
-    // Top-left: Patient & Study
+    // Professional DICOM Corner Overlays
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#cbd5e1';
+
+    // Top-Left: Patient & Acquisition
     ctx.textAlign = 'left';
-    ctx.fillText(`ID: ${studyId}`, 10, 18);
-    ctx.fillText(`MOD: CT / CHEST`, 10, 32);
+    ctx.fillText(studyId, 12, 18);
+    ctx.fillText('CT CHEST (1.0 mm)', 12, 32);
 
-    // Top-right: Plane & Slice
+    // Top-Right: Series & Geometry
     ctx.textAlign = 'right';
-    ctx.fillText(plane.toUpperCase(), W - 10, 18);
-    ctx.fillText(`Slice ${sliceIndex}/${maxSlices}`, W - 10, 32);
+    ctx.fillText(`${plane.toUpperCase()} MPR`, W - 12, 18);
+    ctx.fillText(`Slice ${sliceIndex}/${maxSlices}`, W - 12, 32);
 
-    // Bottom-left: Window / Level
+    // Bottom-Left: Window / Level & Preset
     ctx.textAlign = 'left';
-    ctx.fillText(`W: ${PRESET_VALUES[windowPreset].w} L: ${PRESET_VALUES[windowPreset].l}`, 10, H - 24);
-    ctx.fillText(`Preset: ${windowPreset.toUpperCase()}`, 10, H - 10);
+    ctx.fillText(`W: ${PRESET_VALUES[windowPreset].w} L: ${PRESET_VALUES[windowPreset].l}`, 12, H - 24);
+    ctx.fillText(`Preset: ${windowPreset.toUpperCase()}`, 12, H - 10);
 
-    // Bottom-right: Zoom & Spacing
+    // Bottom-Right: Zoom, Table Position & Scale bar
     ctx.textAlign = 'right';
-    ctx.fillText(`Zoom: ${(zoom * 100).toFixed(0)}%`, W - 10, H - 24);
-    ctx.fillText(`Thick: 1.25 mm`, W - 10, H - 10);
-  }, [pan, zoom, scanImage, showOverlays, showCrosshairs, studyId, sliceIndex, maxSlices, windowPreset]);
+    ctx.fillText(`Zoom: ${(zoom * 100).toFixed(0)}%`, W - 12, H - 24);
+    ctx.fillText(`Z: ${(-128.0 + sliceIndex * 1.0).toFixed(1)} mm`, W - 12, H - 10);
 
-  // Redraw all canvases when dependencies change
+    // Scale bar (5 cm)
+    const barWidth = 50 * zoom;
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(W - 12 - barWidth, H - 38);
+    ctx.lineTo(W - 12, H - 38);
+    ctx.stroke();
+    ctx.font = '9px monospace';
+    ctx.fillText('5 cm', W - 12, H - 42);
+  }, [pan, zoom, showOverlays, showCrosshairs, studyId, sliceIndex, maxSlices, windowPreset, findings, selectedFindingId]);
+
   useEffect(() => {
     drawViewport(axialCanvasRef.current, 'axial');
-    drawViewport(coronalCanvasRef.current, 'coronal');
-    drawViewport(sagittalCanvasRef.current, 'sagittal');
-    drawViewport(mipCanvasRef.current, 'mip');
-  }, [drawViewport]);
+    if (layoutMode === '2x2') {
+      drawViewport(coronalCanvasRef.current, 'coronal');
+      drawViewport(sagittalCanvasRef.current, 'sagittal');
+      drawViewport(mipCanvasRef.current, 'mip');
+    }
+  }, [drawViewport, layoutMode]);
 
-  // Mouse wheel scroll to slice
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     if (e.deltaY > 0) {
@@ -298,7 +293,6 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({ studyId, onInspect
     }
   };
 
-  // Mouse down / pan handling
   const handleMouseDown = (e: React.MouseEvent) => {
     if (activeTool === 'pan') {
       setIsDragging(true);
@@ -308,241 +302,498 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({ studyId, onInspect
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isDragging && activeTool === 'pan') {
-      setPan({
-        x: e.clientX - dragStartRef.current.x,
-        y: e.clientY - dragStartRef.current.y,
-      });
+      setPan({ x: e.clientX - dragStartRef.current.x, y: e.clientY - dragStartRef.current.y });
     }
   };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
+  const handleMouseUp = () => setIsDragging(false);
+
+  const selectedFinding = findings.find(f => f.id === selectedFindingId);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {/* Top Reading Toolbar */}
-      <div
+    <div style={{ display: 'flex', gap: '8px', height: 'calc(100vh - 110px)', overflow: 'hidden' }}>
+      {/* 1. Left Series Browser */}
+      <aside
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          width: '180px',
           background: 'var(--bg-panel)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)',
-          padding: '8px 12px',
-          flexWrap: 'wrap',
+          borderRadius: '2px',
+          display: 'flex',
+          flexDirection: 'column',
+          flexShrink: 0,
+          overflowY: 'auto',
+          padding: '8px',
           gap: '8px',
         }}
       >
-        {/* Tools: Pan, Zoom, WL, Measure, ROI, Reset */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Button
-            size="sm"
-            variant={activeTool === 'pan' ? 'primary' : 'ghost'}
-            onClick={() => setActiveTool('pan')}
-            aria-label="Pan tool"
-          >
-            <Move size={13} style={{ marginRight: '4px' }} />
-            Pan
-          </Button>
-          <Button
-            size="sm"
-            variant={activeTool === 'zoom' ? 'primary' : 'ghost'}
-            onClick={() => {
-              setActiveTool('zoom');
-              setZoom(z => Math.min(4.0, z + 0.25));
-            }}
-            aria-label="Zoom tool"
-          >
-            <ZoomIn size={13} style={{ marginRight: '4px' }} />
-            Zoom
-          </Button>
-          <Button
-            size="sm"
-            variant={activeTool === 'wl' ? 'primary' : 'ghost'}
-            onClick={() => setActiveTool('wl')}
-            aria-label="Window Level tool"
-          >
-            <Sun size={13} style={{ marginRight: '4px' }} />
-            W/L
-          </Button>
-          <Button
-            size="sm"
-            variant={activeTool === 'measure' ? 'primary' : 'ghost'}
-            onClick={() => setActiveTool('measure')}
-            aria-label="Measure tool"
-          >
-            <Ruler size={13} style={{ marginRight: '4px' }} />
-            Measure
-          </Button>
-          <Button
-            size="sm"
-            variant={activeTool === 'roi' ? 'primary' : 'ghost'}
-            onClick={() => setActiveTool('roi')}
-            aria-label="ROI tool"
-          >
-            <Square size={13} style={{ marginRight: '4px' }} />
-            ROI
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handleReset}
-            aria-label="Reset viewport"
-          >
-            <RotateCcw size={13} style={{ marginRight: '4px' }} />
-            Reset (R)
-          </Button>
+        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          Series ({SERIES_LIST.length})
         </div>
+        {SERIES_LIST.map(s => {
+          const isCurrent = activeSeries === s.id;
+          return (
+            <button
+              key={s.id}
+              onClick={() => setActiveSeries(s.id)}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                padding: '6px 8px',
+                background: isCurrent ? 'var(--bg-active)' : 'var(--bg-surface)',
+                border: isCurrent ? '1px solid var(--accent)' : '1px solid var(--border)',
+                borderRadius: '2px',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: isCurrent ? 'var(--accent)' : 'var(--text-main)' }}>
+                  {s.id}
+                </span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{s.modality}</span>
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.2' }}>{s.description}</div>
+              <div style={{ fontSize: '9px', color: 'var(--text-muted)' }} className="tabular-nums">
+                {s.slices} slices · {s.thickness}
+              </div>
+            </button>
+          );
+        })}
+      </aside>
 
-        {/* W/L Presets */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Window:</span>
-          {(['lung', 'mediastinum', 'bone'] as const).map(p => (
-            <Button
-              key={p}
-              size="sm"
-              variant={windowPreset === p ? 'secondary' : 'ghost'}
-              onClick={() => setWindowPreset(p)}
-            >
-              {p.charAt(0).toUpperCase() + p.slice(1)}
+      {/* 2. Center Viewport Area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', overflow: 'hidden' }}>
+        {/* Top Viewport Toolbar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'var(--bg-panel)',
+            padding: '6px 10px',
+            border: '1px solid var(--border)',
+            borderRadius: '2px',
+            fontSize: '12px',
+          }}
+        >
+          {/* Tool Group */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Button size="sm" variant={activeTool === 'pan' ? 'primary' : 'ghost'} onClick={() => setActiveTool('pan')}>
+              <Move size={12} style={{ marginRight: '4px' }} /> Pan
             </Button>
-          ))}
-        </div>
-
-        {/* Slice navigation & overlay toggles */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setSliceIndex(prev => Math.max(1, prev - 1))}
-              disabled={sliceIndex <= 1}
-              aria-label="Previous slice"
-            >
-              <ChevronLeft size={14} />
+            <Button size="sm" variant={activeTool === 'zoom' ? 'primary' : 'ghost'} onClick={() => { setActiveTool('zoom'); setZoom(z => Math.min(4.0, z + 0.25)); }}>
+              <ZoomIn size={12} style={{ marginRight: '4px' }} /> Zoom
             </Button>
-            <span className="tabular-nums" style={{ fontSize: '12px', minWidth: '70px', textAlign: 'center' }}>
-              {sliceIndex} / {maxSlices}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setSliceIndex(prev => Math.min(maxSlices, prev + 1))}
-              disabled={sliceIndex >= maxSlices}
-              aria-label="Next slice"
-            >
-              <ChevronRight size={14} />
+            <Button size="sm" variant={activeTool === 'wl' ? 'primary' : 'ghost'} onClick={() => setActiveTool('wl')}>
+              <Sun size={12} style={{ marginRight: '4px' }} /> W/L
+            </Button>
+            <Button size="sm" variant={activeTool === 'measure' ? 'primary' : 'ghost'} onClick={() => setActiveTool('measure')}>
+              <Ruler size={12} style={{ marginRight: '4px' }} /> Caliper
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleReset}>
+              <RotateCcw size={12} style={{ marginRight: '4px' }} /> Reset
             </Button>
           </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={showCrosshairs}
-              onChange={e => setShowCrosshairs(e.target.checked)}
-              style={{ accentColor: 'var(--accent)' }}
-            />
-            Crosshairs
-          </label>
+          {/* W/L Presets */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Window:</span>
+            {(['lung', 'mediastinum', 'bone'] as const).map(p => (
+              <Button key={p} size="sm" variant={windowPreset === p ? 'secondary' : 'ghost'} onClick={() => setWindowPreset(p)}>
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </Button>
+            ))}
+          </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={showOverlays}
-              onChange={e => setShowOverlays(e.target.checked)}
-              style={{ accentColor: 'var(--accent)' }}
+          {/* Layout & Cine Mode */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <Button size="sm" variant={layoutMode === '1-up' ? 'secondary' : 'ghost'} onClick={() => setLayoutMode('1-up')}>
+                1-Up
+              </Button>
+              <Button size="sm" variant={layoutMode === '2x2' ? 'secondary' : 'ghost'} onClick={() => setLayoutMode('2x2')}>
+                2x2 MPR
+              </Button>
+            </div>
+
+            <Button
+              size="sm"
+              variant={isCinePlaying ? 'secondary' : 'ghost'}
+              onClick={() => setIsCinePlaying(!isCinePlaying)}
+            >
+              {isCinePlaying ? <Pause size={12} style={{ marginRight: '4px' }} /> : <Play size={12} style={{ marginRight: '4px' }} />}
+              Cine
+            </Button>
+
+            {/* Blinded First Toggle (Task 3) */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={blindedMode}
+                onChange={e => {
+                  setBlindedMode(e.target.checked);
+                  if (!e.target.checked) setModelAssessmentRevealed(true);
+                }}
+                style={{ accentColor: 'var(--accent)' }}
+              />
+              Blinded-First Mode
+            </label>
+          </div>
+        </div>
+
+        {/* Viewport Canvas Grid */}
+        <div
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          style={{
+            flex: 1,
+            display: 'grid',
+            gridTemplateColumns: layoutMode === '2x2' ? '1fr 1fr' : '1fr',
+            gridTemplateRows: layoutMode === '2x2' ? '1fr 1fr' : '1fr',
+            gap: '3px',
+            background: 'var(--border)',
+            border: '1px solid var(--border)',
+            borderRadius: '2px',
+            overflow: 'hidden',
+            cursor: activeTool === 'pan' ? (isDragging ? 'grabbing' : 'grab') : 'crosshair',
+          }}
+        >
+          <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0a0c0e' }}>
+            <canvas ref={axialCanvasRef} width={520} height={360} style={{ width: '100%', height: '100%', display: 'block' }} />
+          </div>
+
+          {layoutMode === '2x2' && (
+            <>
+              <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0a0c0e' }}>
+                <canvas ref={coronalCanvasRef} width={520} height={360} style={{ width: '100%', height: '100%', display: 'block' }} />
+              </div>
+              <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0a0c0e' }}>
+                <canvas ref={sagittalCanvasRef} width={520} height={360} style={{ width: '100%', height: '100%', display: 'block' }} />
+              </div>
+              <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0a0c0e' }}>
+                <canvas ref={mipCanvasRef} width={520} height={360} style={{ width: '100%', height: '100%', display: 'block' }} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Synced Per-Slice Probability & Risk Profile Dock */}
+        <div
+          style={{
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border)',
+            borderRadius: '2px',
+            padding: '6px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontSize: '11px',
+          }}
+        >
+          <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Slice Score Profile:</span>
+          {/* Visual slice profile bar */}
+          <div style={{ flex: 1, position: 'relative', height: '18px', background: 'var(--bg-surface)', borderRadius: '2px', overflow: 'hidden' }}>
+            {/* Finding markers along Z */}
+            {findings.map(f => {
+              const posPercent = (f.center_zyx[0] / maxSlices) * 100;
+              return (
+                <div
+                  key={f.id}
+                  style={{
+                    position: 'absolute',
+                    left: `${posPercent}%`,
+                    top: 0,
+                    bottom: 0,
+                    width: '3px',
+                    background: f.needs_review ? '#f59e0b' : '#ef4444',
+                    cursor: 'pointer',
+                  }}
+                  title={`${f.id} at Slice ${f.center_zyx[0]}`}
+                  onClick={() => setSliceIndex(f.center_zyx[0])}
+                />
+              );
+            })}
+            {/* Current scroll position cursor */}
+            <div
+              style={{
+                position: 'absolute',
+                left: `${(sliceIndex / maxSlices) * 100}%`,
+                top: 0,
+                bottom: 0,
+                width: '2px',
+                background: '#38bdf8',
+                boxShadow: '0 0 4px #38bdf8',
+              }}
             />
-            Overlay ROI
-          </label>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Button size="sm" variant="ghost" onClick={() => setSliceIndex(prev => Math.max(1, prev - 1))} disabled={sliceIndex <= 1}>
+              <ChevronLeft size={12} />
+            </Button>
+            <span className="tabular-nums" style={{ minWidth: '70px', textAlign: 'center', color: 'var(--text-main)' }}>
+              {sliceIndex} / {maxSlices}
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => setSliceIndex(prev => Math.min(maxSlices, prev + 1))} disabled={sliceIndex >= maxSlices}>
+              <ChevronRight size={12} />
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* 2x2 Viewport Grid: Axial, Coronal, Sagittal, 3D/MIP */}
-      <div
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+      {/* 3. Right Findings & Verification Panel (Task 3 Evidence-First) */}
+      <aside
         style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gridTemplateRows: '340px 340px',
-          gap: '4px',
-          background: 'var(--border)',
+          width: '320px',
+          background: 'var(--bg-panel)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)',
-          overflow: 'hidden',
-          cursor: activeTool === 'pan' ? (isDragging ? 'grabbing' : 'grab') : 'crosshair',
+          borderRadius: '2px',
+          display: 'flex',
+          flexDirection: 'column',
+          flexShrink: 0,
+          overflowY: 'auto',
+          padding: '10px',
+          gap: '10px',
         }}
       >
-        {/* Viewport 1: Axial */}
-        <div style={{ position: 'relative', width: '100%', height: '100%', background: '#111315' }}>
-          <canvas
-            ref={axialCanvasRef}
-            width={480}
-            height={340}
-            style={{ width: '100%', height: '100%', display: 'block' }}
-          />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+            Findings Table ({findings.length})
+          </div>
+          <Badge variant={blindedMode ? 'warning' : 'neutral'}>
+            {blindedMode ? 'Blinded-First Active' : 'Assisted Mode'}
+          </Badge>
         </div>
 
-        {/* Viewport 2: Coronal */}
-        <div style={{ position: 'relative', width: '100%', height: '100%', background: '#111315' }}>
-          <canvas
-            ref={coronalCanvasRef}
-            width={480}
-            height={340}
-            style={{ width: '100%', height: '100%', display: 'block' }}
-          />
-        </div>
+        {/* Compact Findings Table */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textAlign: 'left' }}>
+              <th style={{ padding: '4px' }}>Finding</th>
+              <th style={{ padding: '4px' }}>Lobe</th>
+              <th style={{ padding: '4px' }}>Ø (mm)</th>
+              <th style={{ padding: '4px' }}>Vol (mm³)</th>
+              <th style={{ padding: '4px' }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {findings.map(f => {
+              const isSelected = f.id === selectedFindingId;
+              return (
+                <tr
+                  key={f.id}
+                  onClick={() => handleSelectFinding(f)}
+                  style={{
+                    background: isSelected ? 'var(--bg-active)' : 'transparent',
+                    borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <td style={{ padding: '6px 4px', fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-main)' }}>
+                    {f.id}
+                  </td>
+                  <td style={{ padding: '6px 4px', color: 'var(--text-muted)' }}>{f.lobe.replace('Right ', 'R ').replace('Left ', 'L ')}</td>
+                  <td style={{ padding: '6px 4px' }} className="tabular-nums">{f.diameter_mm.toFixed(1)}</td>
+                  <td style={{ padding: '6px 4px' }} className="tabular-nums">{f.volume_mm3.toFixed(0)}</td>
+                  <td style={{ padding: '6px 4px' }}>
+                    <span
+                      style={{
+                        padding: '1px 4px',
+                        borderRadius: '2px',
+                        fontSize: '9px',
+                        fontWeight: 600,
+                        background:
+                          f.status === 'ACCEPTED' ? 'var(--status-pass-bg)' :
+                          f.status === 'REJECTED' ? 'var(--status-fail-bg)' :
+                          f.status === 'EDITED' ? 'var(--status-warning-bg)' : 'var(--bg-surface)',
+                        color:
+                          f.status === 'ACCEPTED' ? 'var(--status-pass)' :
+                          f.status === 'REJECTED' ? 'var(--status-fail)' :
+                          f.status === 'EDITED' ? 'var(--status-warning)' : 'var(--text-muted)',
+                      }}
+                    >
+                      {f.status}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
 
-        {/* Viewport 3: Sagittal */}
-        <div style={{ position: 'relative', width: '100%', height: '100%', background: '#111315' }}>
-          <canvas
-            ref={sagittalCanvasRef}
-            width={480}
-            height={340}
-            style={{ width: '100%', height: '100%', display: 'block' }}
-          />
-        </div>
-
-        {/* Viewport 4: 3D / MIP */}
-        <div style={{ position: 'relative', width: '100%', height: '100%', background: '#111315' }}>
-          <canvas
-            ref={mipCanvasRef}
-            width={480}
-            height={340}
-            style={{ width: '100%', height: '100%', display: 'block' }}
-          />
-        </div>
-      </div>
-
-      {/* Slice Slider Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-panel)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-        <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Slice Navigation:</span>
-        <input
-          type="range"
-          min={1}
-          max={maxSlices}
-          value={sliceIndex}
-          onChange={e => setSliceIndex(Number(e.target.value))}
-          style={{ flex: 1, accentColor: 'var(--accent)' }}
-          aria-label="Slice position"
-        />
-        <span className="tabular-nums" style={{ fontSize: '12px', color: 'var(--text-main)', width: '60px', textAlign: 'right' }}>
-          {sliceIndex} / {maxSlices}
-        </span>
-        {selectedNodule && (
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => onInspectNodule(selectedNodule)}
+        {/* Selected Finding Detail & Blinded-First Decision Gate */}
+        {selectedFinding && (
+          <div
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: '2px',
+              padding: '10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}
           >
-            Inspect {selectedNodule}
-          </Button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '12px' }}>{selectedFinding.id} Detail</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Centroid Z={selectedFinding.center_zyx[0]}</span>
+            </div>
+
+            {/* Geometric Measurements (Always Visible to Clinician) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11px' }}>
+              <div>
+                <span style={{ color: 'var(--text-muted)' }}>Max Caliper: </span>
+                <strong className="tabular-nums">{selectedFinding.diameter_mm.toFixed(1)} mm</strong>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-muted)' }}>3D Volume: </span>
+                <strong className="tabular-nums">{selectedFinding.volume_mm3.toFixed(1)} mm³</strong>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-muted)' }}>Density: </span>
+                <span>{selectedFinding.density}</span>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-muted)' }}>Location: </span>
+                <span>{selectedFinding.lobe}</span>
+              </div>
+            </div>
+
+            {/* Task 3 Blinded First Gate */}
+            {blindedMode && !modelAssessmentRevealed ? (
+              <div
+                style={{
+                  background: 'var(--bg-panel)',
+                  border: '1px dashed var(--border)',
+                  padding: '8px',
+                  borderRadius: '2px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Record your initial impression prior to viewing model malignancy estimate:
+                </div>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {['Benign', 'Indeterminate', 'Suspicious'].map(imp => (
+                    <Button
+                      key={imp}
+                      size="sm"
+                      variant={initialImpression === imp ? 'primary' : 'ghost'}
+                      onClick={() => setInitialImpression(imp)}
+                    >
+                      {imp}
+                    </Button>
+                  ))}
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setModelAssessmentRevealed(true)}
+                  disabled={!initialImpression}
+                >
+                  Reveal Model Assessment
+                </Button>
+              </div>
+            ) : (
+              /* Model Output (Revealed) */
+              <div
+                style={{
+                  background: 'var(--bg-panel)',
+                  border: '1px solid var(--border)',
+                  padding: '8px',
+                  borderRadius: '2px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Model Decision Support (Research Only)
+                </div>
+
+                {selectedFinding.needs_review ? (
+                  /* Abstain State (Task 3 Requirement 3) */
+                  <div
+                    style={{
+                      background: 'var(--status-warning-bg)',
+                      border: '1px solid var(--status-warning-border)',
+                      color: 'var(--status-warning)',
+                      padding: '6px',
+                      borderRadius: '2px',
+                      fontSize: '11px',
+                    }}
+                  >
+                    <strong>Needs Human Review</strong>
+                    <div style={{ fontSize: '10px', marginTop: '2px' }}>
+                      Epistemic uncertainty exceeds validated threshold (±{selectedFinding.uncertainty_std?.toFixed(3)}). Confident score withheld.
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Calibrated Probability:</span>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#ef4444' }} className="tabular-nums">
+                        {((selectedFinding.calibrated_prob || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                      <span>MC-Dropout Uncertainty:</span>
+                      <span className="tabular-nums">±{(selectedFinding.uncertainty_std || 0).toFixed(3)}</span>
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Confidence band: <em>{selectedFinding.confidence_band}</em>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Clinician Action Buttons: Accept / Edit / Reject (Task 3 Requirement 4) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Clinician Verdict &amp; Audit Action
+              </div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <Button
+                  size="sm"
+                  variant={selectedFinding.status === 'ACCEPTED' ? 'primary' : 'ghost'}
+                  onClick={() => handleFindingAction(selectedFinding.id, 'ACCEPTED')}
+                >
+                  <CheckCircle size={12} style={{ marginRight: '4px' }} /> Accept
+                </Button>
+                <Button
+                  size="sm"
+                  variant={selectedFinding.status === 'EDITED' ? 'secondary' : 'ghost'}
+                  onClick={() => handleFindingAction(selectedFinding.id, 'EDITED', 'Contour adjusted by clinician')}
+                >
+                  <Edit3 size={12} style={{ marginRight: '4px' }} /> Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant={selectedFinding.status === 'REJECTED' ? 'danger' : 'ghost'}
+                  onClick={() => handleFindingAction(selectedFinding.id, 'REJECTED', 'Vascular branch mimic')}
+                >
+                  <XCircle size={12} style={{ marginRight: '4px' }} /> Reject
+                </Button>
+              </div>
+
+              {selectedFinding.actionReason && (
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
+                  Action reason: {selectedFinding.actionReason}
+                </div>
+              )}
+            </div>
+          </div>
         )}
-      </div>
+      </aside>
     </div>
   );
 };
+
+export default CTViewerPanel;
