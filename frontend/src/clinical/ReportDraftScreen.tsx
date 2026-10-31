@@ -22,7 +22,7 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
       const top = findings[0];
       return `Identified ${findings.length} candidate nodule(s). Dominant finding in ${top.lobe || 'lung field'} measuring ${top.diameter_mm} mm. Recommendation: Correlation with prior studies and clinical history.`;
     }
-    return 'No suspicious pulmonary nodules detected. Clinician review required before final sign-off.';
+    return 'No candidates above threshold; sensitivity is limited. Clinician review required before final sign-off.';
   });
 
   // Dropdown "Lung-RADS category (assigned by radiologist)" is EMPTY by default!

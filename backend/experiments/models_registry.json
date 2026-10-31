@@ -47,7 +47,7 @@
       "checkpoint_path": "checkpoints_3d/resnet3d_luna16_best.pt",
       "patient_split_hash": "335343f6f1139c7cf6c808416131f630e6542dda3f344902b6d6f7840afcd109",
       "notes": "Trained on official LUNA16 subsets 0, 1 (178 scans, 1,848 crops at 32^3 1mm isotropic). Val AUC 0.9227 on subset 2 (89 scans). Research Use Only.",
-      "updated_at": "2026-10-24 16:16:11 UTC"
+      "updated_at": "2026-10-31 12:08:53 UTC"
     }
   ],
   "3D ResNet-50": [

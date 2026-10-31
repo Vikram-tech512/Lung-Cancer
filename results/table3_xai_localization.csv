@@ -1,2 +1,7 @@
-xai_method,pointing_game_accuracy,lesion_mask_dice,mean_centroid_error_mm,disclaimer
-3D Grad-CAM (Target: Conv3 Layer4),0.0,0.0,25.59,MODEL ATTRIBUTION — NOT CLINICAL EVIDENCE
+evaluation_type,metric_name,metric_value,unit,interpretation
+Stage 3 Detector Localization,Evaluated Positive Nodules (N),0,count,Detections matched against annotations.csv
+Stage 3 Detector Localization,Detection Sensitivity,0.0%,%,Matched 0/34 nodules in test scans
+Stage 3 Detector Localization,Median Centroid Error,N/A,mm,Physical 3D Euclidean distance to annotated nodule center
+Stage 3 Detector Localization,P90 Centroid Error,N/A,mm,90th-percentile localization error bound
+Stage 3 Detector Localization,Fraction within Annotated Radius,N/A,%,Detections strictly within physical lesion boundary
+Model Attribution Only,Grad-CAM Attribution Hit Rate,8.9%,%,Attribution peak alignment (MODEL ATTRIBUTION â€” NOT PHYSICAL BOUNDARY)

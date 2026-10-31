@@ -348,12 +348,12 @@ class JobQueueManager:
             usage_dict = meter.finalize().to_dict()
             job.triage_report = {
                 "study_id": job.study_id,
-                "status": "COMPLETED_CLEARED",
+                "status": "No candidates above threshold; sensitivity is limited",
                 "nodule_count": 0,
                 "findings": [],
                 "primary_verdict": "BENIGN",
                 "lung_rads": "Lung-RADS 1 (Negative)",
-                "clinical_impression": "No suspicious pulmonary nodules or masses detected.",
+                "clinical_impression": "No candidates above threshold; sensitivity is limited.",
                 "action_recommendation": "Continue standard routine screening interval.",
                 "disclaimer": "AI-generated suggestion, requires clinician review.",
                 "usage": usage_dict,

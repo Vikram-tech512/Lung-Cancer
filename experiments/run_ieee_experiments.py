@@ -592,7 +592,7 @@ def main():
         "dataset": "LUNA16 (Grand Challenge)",
         "split_hash": "a4f89d32e9104c8f",
         "synthetic": False,
-        "cohort_patients": 10,
+        "cohort_patients": cohort_patients,
         "cohort_candidates": len(candidates),
         "test_candidates": len(test_loader.dataset),
         "discrimination": {

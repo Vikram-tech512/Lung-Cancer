@@ -1640,9 +1640,10 @@ def get_benchmark_table():
                     "benchmark_dataset": result.get("dataset") or (f"LUNA16 Zenodo {result.get('dataset_zenodo_record')}" if result.get('dataset_zenodo_record') else "LUNA16 Benchmark"),
                     "split_hash_sha256": split_hash,
                     "metrics": result,
-                    "localization": result.get("localization_metrics"),
-                    "risk_coverage": rc_data,
+                    "localization": result.get("localization") or result.get("localization_metrics"),
+                    "risk_coverage": result.get("risk_coverage") or rc_data,
                     "continuous_reporting": cr_data,
+                    "robustness": result.get("robustness"),
                     "models": [
                         {
                             "name": result.get("model_architecture", "ResNet3D18Half"),

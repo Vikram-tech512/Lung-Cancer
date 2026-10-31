@@ -12,7 +12,9 @@ name: Deploy Lung Cancer AI Platform
 # ==============================================================================
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI - Test & Quality Assurance"]
+    types: [completed]
     branches: [main, master]
   workflow_dispatch:
   workflow_call:
@@ -40,6 +42,7 @@ jobs:
   deploy-frontend:
     name: 🌐 Deploy Frontend (S3 + CloudFront)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     env:
       S3_BUCKET: ${{ secrets.S3_BUCKET_NAME }}
       CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
@@ -59,10 +62,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Inject production API URL
+      - name: Inject production API URL (HTTPS)
         working-directory: frontend
         run: |
-          echo "VITE_API_BASE_URL=http://${{ env.EC2_HOST }}:8000" > .env.production
+          echo "VITE_API_BASE_URL=https://${{ env.EC2_HOST }}:8000" > .env.production
 
       - name: Build frontend
         working-directory: frontend
@@ -99,6 +102,7 @@ jobs:
   deploy-backend:
     name: 🐍 Deploy Backend (EC2 t2.micro)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     env:
       EC2_HOST: ${{ secrets.EC2_PUBLIC_IP }}
       EC2_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
@@ -121,12 +125,24 @@ jobs:
             cd /app
             git pull origin main
 
-            echo "=== Rebuilding & restarting backend container ==="
-            docker compose up -d --build --no-deps backend
+            echo "=== Restarting backend container (no on-instance build on t2.micro) ==="
+            docker compose up -d --no-build --no-deps backend
 
-            echo "=== Waiting for health check ==="
-            sleep 15
-            curl -f http://localhost:8000/api/v2/health && echo "✅ Backend healthy!" || echo "⚠️ Health check failed"
+            echo "=== Waiting for health check with retry loop ==="
+            SUCCESS=0
+            for i in $(seq 1 12); do
+              if curl -f -s http://localhost:8000/api/v2/health; then
+                echo "✅ Backend healthy!"
+                SUCCESS=1
+                break
+              fi
+              echo "Health check attempt $i failed, retrying in 5s..."
+              sleep 5
+            done
+            if [ "$SUCCESS" -ne 1 ]; then
+              echo "❌ Health check failed after 60s"
+              exit 1
+            fi
           REMOTE_COMMANDS
 
       - name: ✅ Backend deployed

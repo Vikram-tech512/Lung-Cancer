@@ -1,10 +1,10 @@
-coverage_fraction,retained_candidates,retained_positives,missed_nodules_retained,nodules_routed_to_clinician,sensitivity_on_retained,effective_sensitivity,max_sigma_threshold
-1.00,75950,158,56,0,64.6%,64.6%,0.1842
-0.95,72152,154,44,4,67.5%,72.2%,0.0650
-0.90,68355,147,35,11,71.4%,77.8%,0.0461
-0.85,64557,138,28,20,75.4%,82.3%,0.0385
-0.80,60760,127,21,31,79.5%,86.7%,0.0310
-0.75,56962,115,16,43,83.5%,89.9%,0.0245
-0.70,53165,102,12,56,88.2%,92.4%,0.0143
-0.60,45570,81,6,77,93.8%,96.2%,0.0058
-0.50,37975,59,2,99,97.2%,98.7%,0.0002
+coverage,retained_candidates,nodules_routed_to_human,share_nodules_routed_pct,candidates_routed_to_human,share_candidates_routed_pct,candidates_routed_per_scan,missed_nodules_auto_handled,sensitivity_on_retained,effective_sensitivity,max_sigma_threshold,interpretation_note
+1.0,75950,0,0.0,0,0.0,0.0,56,64.6,64.6,0.1842,Effective sensitivity assumes the reviewer catches every routed nodule.
+0.95,72152,4,2.5,3798,5.0,42.7,44,71.4,72.2,0.065,Effective sensitivity assumes the reviewer catches every routed nodule.
+0.9,68355,11,7.0,7595,10.0,85.3,35,76.2,77.8,0.0461,Effective sensitivity assumes the reviewer catches every routed nodule.
+0.85,64557,20,12.7,11393,15.0,128.0,28,79.7,82.3,0.0385,Effective sensitivity assumes the reviewer catches every routed nodule.
+0.8,60760,31,19.6,15190,20.0,170.7,21,83.5,86.7,0.031,Effective sensitivity assumes the reviewer catches every routed nodule.
+0.75,56962,43,27.2,18988,25.0,213.3,16,86.1,89.9,0.0245,Effective sensitivity assumes the reviewer catches every routed nodule.
+0.7,53165,56,35.4,22785,30.0,256.0,12,88.2,92.4,0.0143,Effective sensitivity assumes the reviewer catches every routed nodule.
+0.6,45570,77,48.7,30380,40.0,341.3,6,92.6,96.2,0.0058,Effective sensitivity assumes the reviewer catches every routed nodule.
+0.5,37975,99,62.7,37975,50.0,426.7,2,96.6,98.7,0.0002,Effective sensitivity assumes the reviewer catches every routed nodule.

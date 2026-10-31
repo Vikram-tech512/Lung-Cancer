@@ -1,3 +1,0 @@
-model_configuration,auc,auc_95_ci,accuracy,sensitivity,specificity,ece,mce,brier_score,optimal_temperature
-3D ResNet-50 (Uncalibrated),0.6471,"[0.2632, 0.9412]",0.15,1.0,0.0,0.7771,0.8872,0.7294,1.0
-3D ResNet-50 + Temperature Scaling (Calibrated),0.6471,"[0.2632, 0.9412]",0.15,1.0,0.0,0.532,0.5482,0.4088,3.3978
