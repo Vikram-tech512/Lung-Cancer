@@ -1,3 +1,4 @@
+
 # RESEARCH USE ONLY (RUO) — NOT A MEDICAL DEVICE
 
 > [!CAUTION]
@@ -5,6 +6,7 @@
 > This repository and research platform are strictly intended for academic research, algorithm benchmarking, and clinical decision-support methodology exploration. This platform is **NOT a certified medical device** (FDA 510(k), CE-MDR), has not undergone clinical diagnostic validation, and must **NEVER** be used as a primary diagnostic tool, autonomous triage system, or substitute for licensed radiological evaluation. Pipeline verified end-to-end; model validation in progress.
 
 # Lung Cancer AI Research Platform — v2.0
+
 
 A modular research platform for 3D volumetric thoracic CT candidate analysis.
 Built with 3D Deep Learning (UNet3D, nnUNet, RetinaNet3D, ResNet3D, DenseNet3D, Swin Transformer 3D),
