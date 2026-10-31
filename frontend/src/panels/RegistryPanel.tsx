@@ -1,166 +1,119 @@
 import React, { useEffect, useState } from 'react';
-import { Box, CheckCircle2, AlertCircle, HardDrive, Info } from 'lucide-react';
-import { ModelRegistryItem } from '../types';
+import { Box, Layers, ShieldCheck, AlertTriangle, CheckCircle2, HardDrive, Info } from 'lucide-react';
 import { API_BASE } from '../services/api';
 import { Panel } from '../components/ui/Panel';
 import { Badge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Tr, Th, Td } from '../components/ui/Table';
+
+interface ModelVersion {
+  model_name: string;
+  version: string;
+  stage: string;
+  architecture: string;
+  input_dimension?: string;
+  checkpoint_path?: string | null;
+  patient_split_hash?: string | null;
+  notes?: string;
+  metrics?: Record<string, any>;
+}
 
 export const RegistryPanel: React.FC = () => {
-  const [registry, setRegistry] = useState<Record<string, ModelRegistryItem[]>>({});
+  const [registry, setRegistry] = useState<Record<string, ModelVersion[]>>({});
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<boolean>(false);
 
   useEffect(() => {
-    setLoading(true);
     fetch(`${API_BASE}/registry`)
-      .then(res => res.json())
-      .then(data => {
-        setRegistry(data || {});
-        setLoading(false);
+      .then(res => {
+        if (!res.ok) throw new Error('Registry fetch failed');
+        return res.json();
       })
-      .catch(() => {
-        setRegistry({
-          '3D ResNet-50': [
-            {
-              model_name: '3D ResNet-50',
-              version: 'v1.0.0',
-              stage: 'NOT_TRAINED',
-              architecture: '3D ResNet-50 Bottleneck + MC Dropout (T=30)',
-              input_dimension: '(1, 64, 64, 64)',
-              metrics: { auc_roc: 0.0, sensitivity: 0.0, specificity: 0.0 },
-              created_at: '2026-09-22 13:00:00',
-              notes: 'Primary 3D volumetric classifier. Code implemented.',
-            },
-          ],
-          '3D Swin Transformer': [
-            {
-              model_name: '3D Swin Transformer',
-              version: 'v1.0.0',
-              stage: 'NOT_TRAINED',
-              architecture: 'Swin3D-Tiny (window_size=4x4x4, embed_dim=96)',
-              input_dimension: '(1, 64, 64, 64)',
-              metrics: { auc_roc: 0.0, sensitivity: 0.0, specificity: 0.0 },
-              created_at: '2026-09-22 13:00:00',
-              notes: 'Transformer branch extending 2D ViT research.',
-            },
-          ],
-          'Hybrid CNN-ViT (Phase 4)': [
-            {
-              model_name: 'Hybrid CNN-ViT (Phase 4)',
-              version: 'v1.0.0',
-              stage: 'STAGING',
-              architecture: 'ResNet50 stem + ViT-B/16 gated cross-attention fusion',
-              input_dimension: '(3, 224, 224)',
-              metrics: { auc_roc: 0.942, accuracy: 0.913, f1_score: 0.908 },
-              created_at: '2026-09-22 12:00:00',
-              notes: 'Trained on patient-stratified cohort.',
-            },
-          ],
-          '3D DenseNet-121': [
-            {
-              model_name: '3D DenseNet-121',
-              version: 'v1.0.0',
-              stage: 'NOT_TRAINED',
-              architecture: '3D DenseNet-121 (growth_rate=32, 4 dense blocks)',
-              input_dimension: '(1, 64, 64, 64)',
-              metrics: { auc_roc: 0.0 },
-              created_at: '2026-09-22 13:00:00',
-              notes: 'Volumetric baseline.',
-            },
-          ],
-          'Radiomics XGBoost': [
-            {
-              model_name: 'Radiomics XGBoost',
-              version: 'v1.0.0',
-              stage: 'NOT_TRAINED',
-              architecture: 'XGBoost (107 IBSI features + SHAP tree explainer)',
-              input_dimension: '(107,)',
-              metrics: { auc_roc: 0.0 },
-              created_at: '2026-09-22 13:00:00',
-              notes: 'Quantitative feature baseline.',
-            },
-          ],
-        });
-        setLoading(false);
-      });
+      .then(data => setRegistry(data && typeof data === 'object' ? data : {}))
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
   }, []);
 
-  const allItems = Object.entries(registry).flatMap(([_, items]) => items);
+  const allModels: ModelVersion[] = Object.values(registry).flat();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <section style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '1200px', margin: '0 auto' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
-            Model Registry &amp; Checkpoints
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>
+            Model Architecture &amp; Checkpoint Registry
           </h2>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Production artifacts, input tensor dimensions, operational stages, and validation lineage
-          </div>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '13px' }}>
+            Versioned 3D deep learning architectures, training stages, input contracts, and weights provenance.
+          </p>
         </div>
-        <Badge variant="neutral">{allItems.length} Artifacts Registered</Badge>
-      </div>
+        <Badge variant="neutral">Models Registry v2.0</Badge>
+      </header>
 
-      {loading ? (
-        <Panel>
-          <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            Loading model registry...
+      <Panel>
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 600, fontSize: '14px' }}>Registered 3D Models &amp; Pipelines</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              Source: <code>checkpoints/models_registry.json</code>
+            </span>
           </div>
-        </Panel>
-      ) : allItems.length === 0 ? (
-        <Panel>
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            No runs recorded
-          </div>
-        </Panel>
-      ) : (
-        <Panel title="Registered Model Artifacts" subtitle="Operational deployment stages and input dimensions">
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Model Name</Th>
-                <Th>Version</Th>
-                <Th>Stage</Th>
-                <Th>Input Tensor</Th>
-                <Th>Architecture</Th>
-                <Th>Validation AUC</Th>
-                <Th>Created Date</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {allItems.map((m, idx) => {
-                const isProd = m.stage === 'PRODUCTION';
-                const isStaging = m.stage === 'STAGING';
-                return (
-                  <Tr key={idx}>
-                    <Td style={{ fontWeight: 600 }}>{m.model_name}</Td>
-                    <Td style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
-                      {m.version}
-                    </Td>
-                    <Td>
-                      <Badge variant={isProd ? 'success' : isStaging ? 'info' : 'neutral'}>
-                        {m.stage}
-                      </Badge>
-                    </Td>
-                    <Td style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--accent)' }}>
-                      {m.input_dimension}
-                    </Td>
-                    <Td style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
-                      {m.architecture}
-                    </Td>
-                    <Td className="tabular-nums" style={{ fontWeight: 600, color: m.metrics?.auc_roc ? 'var(--status-success)' : 'var(--text-muted)' }}>
-                      {m.metrics?.auc_roc ? m.metrics.auc_roc.toFixed(3) : 'Not trained'}
-                    </Td>
-                    <Td className="tabular-nums" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
-                      {m.created_at?.slice(0, 10)}
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
-        </Panel>
-      )}
-    </div>
+
+          {loading ? (
+            <div style={{ padding: '20px', textAlign: 'center' }}>Loading model registry…</div>
+          ) : error || allModels.length === 0 ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              No registered model architectures found.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: '12px', textAlign: 'left', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '8px' }}>Model Name</th>
+                    <th style={{ padding: '8px' }}>Architecture</th>
+                    <th style={{ padding: '8px' }}>Lifecycle Stage</th>
+                    <th style={{ padding: '8px' }}>Input Shape</th>
+                    <th style={{ padding: '8px' }}>Checkpoint File</th>
+                    <th style={{ padding: '8px' }}>Verification Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allModels.map((m, idx) => (
+                    <tr key={`${m.model_name}-${idx}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 8px', fontWeight: 600 }}>
+                        <div style={{ color: 'var(--text-main)' }}>{m.model_name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{m.version || 'v1.0.0'}</div>
+                      </td>
+                      <td style={{ padding: '10px 8px' }}>{m.architecture}</td>
+                      <td style={{ padding: '10px 8px' }}>
+                        {m.stage === 'STAGING' || m.stage === 'PRODUCTION' ? (
+                          <Badge variant="success">{m.stage}</Badge>
+                        ) : m.stage === 'NOT_TRAINED' ? (
+                          <Badge variant="neutral">NOT TRAINED</Badge>
+                        ) : (
+                          <Badge variant="warning">{m.stage}</Badge>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 8px', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                        {m.input_dimension || 'Patch (32³ or 64³)'}
+                      </td>
+                      <td style={{ padding: '10px 8px', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                        {m.checkpoint_path ? (
+                          <span style={{ color: 'var(--status-success)' }}>{m.checkpoint_path}</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>None (Uninitialized)</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 8px', color: 'var(--text-muted)', fontSize: '11px', maxWidth: '280px' }}>
+                        {m.notes || 'Experimental baseline.'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Panel>
+    </section>
   );
 };

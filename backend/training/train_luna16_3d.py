@@ -116,6 +116,13 @@ MODEL_BUILDERS = {
 
 def _split_hash_for_loaders(train_loader, val_loader, test_loader) -> str:
     """Hash actual patient/series membership for real and synthetic runs."""
+    existing_hashes = {
+        getattr(loader.dataset, "split_hash_sha256", None)
+        for loader in (train_loader, val_loader, test_loader)
+    }
+    if len(existing_hashes) == 1 and None not in existing_hashes:
+        return existing_hashes.pop()
+
     membership = {}
     for name, loader in (("train", train_loader), ("validation", val_loader), ("test", test_loader)):
         dataset = loader.dataset

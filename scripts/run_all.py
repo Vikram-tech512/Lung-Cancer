@@ -73,8 +73,12 @@ def main() -> int:
     run([PY, "-m", "pytest", "backend/tests/test_models.py", "-v"], ROOT, "Model forward pass smoke tests")
 
     # Step 2: Full Test Suite
-    hdr("STEP 2: Automated Backend Test Suite (DICOM, Pipeline, Interop, XAI)")
+    hdr("STEP 2: Automated Backend Test Suite (DICOM, Pipeline, Interop, XAI, Continuous Reporting)")
     run([PY, "-m", "pytest", "backend/tests", "-v"], ROOT, "Full backend test suite")
+
+    # Step 2b: Continuous Reporting & CPU Benchmark Verification
+    hdr("STEP 2B: Continuous Reporting & CPU-Level Inference Benchmark")
+    run([PY, "experiments/benchmark_continuous_reporting.py"], ROOT, "CPU continuous reporting benchmark")
 
     # Step 3: Frontend Build Verification
     hdr("STEP 3: Frontend Client Build Verification")

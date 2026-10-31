@@ -39,7 +39,7 @@ CACHE_DB = Path(os.getenv("RADIOMICS_CACHE_DB", "./results/radiomics_cache.db"))
 
 class RadiomicsPipeline:
     """
-    Full radiomics pipeline: extraction → caching → malignancy scoring.
+    Radiomics feature extraction and caching. This class does not estimate malignancy.
 
     Parameters
     ----------
@@ -95,19 +95,29 @@ class RadiomicsPipeline:
         dict of feature_name → float value
         """
         if mask is None:
-            mask = self._auto_mask(volume)
+            raise ValueError("A verified segmentation mask is required for radiomics extraction.")
 
         # Check cache
         cache_key = self._cache_key(volume, mask, spacing)
         if self.use_cache:
             cached = self._cache_get(cache_key)
-            if cached:
+            if cached and not (
+                cached.get("_source") == "synthetic_fallback"
+                or "nodule_score" in cached
+                or "malignancy_score" in cached
+            ):
                 log.info("radiomics_cache_hit", key=cache_key[:8])
                 return cached
 
         # Extract
         t0 = time.monotonic()
-        features = self._run_pyradiomics(volume, mask, spacing)
+        try:
+            features = self._run_pyradiomics(volume, mask, spacing)
+        except ImportError as exc:
+            raise RuntimeError("PyRadiomics and SimpleITK are required for feature extraction.") from exc
+        except Exception as exc:
+            log.error("radiomics_extraction_failed", error_type=type(exc).__name__)
+            raise RuntimeError("Radiomics feature extraction failed; no fallback features were generated.") from exc
         elapsed  = time.monotonic() - t0
 
         RADIOMICS_EXTRACTION_DURATION.labels(feature_class="all").observe(elapsed)
@@ -116,11 +126,6 @@ class RadiomicsPipeline:
             n_features=len(features),
             elapsed_s=round(elapsed, 2),
         )
-
-        # Add nodule score with malignancy score alias
-        score = self._score(features)
-        features["nodule_score"] = score
-        features["malignancy_score"] = score
 
         if self.use_cache:
             self._cache_set(cache_key, features)
@@ -157,11 +162,7 @@ class RadiomicsPipeline:
             return features
 
         except ImportError:
-            log.warning("pyradiomics_not_installed", detail="Returning synthetic features")
-            return self._synthetic_features()
-        except Exception as exc:
-            log.error("pyradiomics_extraction_failed", error=str(exc))
-            return self._synthetic_features()
+            raise
 
     def _get_extractor(self) -> Any:
         if self._extractor is not None:
@@ -181,43 +182,6 @@ class RadiomicsPipeline:
         return self._extractor
 
     # ------------------------------------------------------------------
-    # Malignancy scoring
-    # ------------------------------------------------------------------
-    def _score(self, features: Dict[str, Any]) -> float:
-        """
-        XGBoost-based malignancy probability from radiomics features.
-        Falls back to a heuristic when no model checkpoint is available.
-        """
-        try:
-            import xgboost as xgb
-            ckpt = Path("checkpoints") / "radiomics_xgb.json"
-            if not ckpt.exists():
-                return self._heuristic_score(features)
-            if self._xgb_model is None:
-                model = xgb.Booster()
-                model.load_model(str(ckpt))
-                self._xgb_model = model
-            feat_vec = self._feature_vector(features)
-            dmat = xgb.DMatrix(feat_vec.reshape(1, -1))
-            return float(np.clip(self._xgb_model.predict(dmat)[0], 0, 1))
-        except Exception:
-            return self._heuristic_score(features)
-
-    @staticmethod
-    def _heuristic_score(features: Dict[str, Any]) -> float:
-        """Simple linear heuristic for dev/testing."""
-        energy  = features.get("original_firstorder_Energy", 1e6)
-        entropy = features.get("original_firstorder_Entropy", 3.0)
-        # Normalised heuristic
-        score = min(1.0, max(0.0, (entropy / 8.0) * 0.7 + (energy / 1e8) * 0.3))
-        return round(float(score), 4)
-
-    @staticmethod
-    def _feature_vector(features: Dict[str, Any]) -> np.ndarray:
-        vals = [float(v) for v in features.values() if isinstance(v, (int, float))]
-        return np.array(vals[:100], dtype=np.float32)   # fixed 100-dim
-
-    # ------------------------------------------------------------------
     # Auto-mask
     # ------------------------------------------------------------------
     @staticmethod
@@ -229,26 +193,6 @@ class RadiomicsPipeline:
         closed  = binary_closing(binary, iterations=3)
         filled  = binary_fill_holes(closed)
         return filled.astype(np.uint8)
-
-    # ------------------------------------------------------------------
-    # Synthetic fallback
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _synthetic_features() -> Dict[str, Any]:
-        rng = np.random.default_rng(0)
-        return {
-            "original_firstorder_Mean":         float(rng.normal(-500, 80)),
-            "original_firstorder_Entropy":      float(rng.uniform(3.5, 6.5)),
-            "original_firstorder_Energy":       float(rng.uniform(1e5, 1e8)),
-            "original_firstorder_Skewness":     float(rng.normal(0, 0.5)),
-            "original_shape_VoxelVolume":       float(rng.uniform(500, 5000)),
-            "original_shape_Sphericity":        float(rng.uniform(0.6, 0.95)),
-            "original_glcm_Contrast":           float(rng.uniform(0.01, 0.5)),
-            "original_glcm_Correlation":        float(rng.uniform(0.7, 0.99)),
-            "original_glcm_JointEnergy":        float(rng.uniform(0.01, 0.15)),
-            "original_glrlm_RunLengthNonUniformity": float(rng.uniform(100, 5000)),
-            "_source": "synthetic_fallback",
-        }
 
     # ------------------------------------------------------------------
     # SQLite cache

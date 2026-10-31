@@ -250,6 +250,15 @@ class TestCurveGenerator:
         assert report["sensitivity"] is None
         assert report["specificity"] == 1.0
 
+    def test_empty_evaluation_does_not_substitute_metric_values(self):
+        from backend.pipeline.evaluate.evaluator import ModelEvaluator
+
+        report = ModelEvaluator()._classification_report([], [], [])
+        assert report["n_samples"] == 0
+        assert report["auc"] is None
+        assert report["accuracy"] is None
+        assert report["sensitivity"] is None
+
 
 # ===========================================================================
 # 6. Statistical Tests
@@ -281,18 +290,23 @@ class TestStatisticalTests:
 
 
 # ===========================================================================
-# 7. RadiomicsPipeline (synthetic fallback — no PyRadiomics required)
+# 7. RadiomicsPipeline must not replace missing extraction with synthetic output
 # ===========================================================================
 class TestRadiomicsPipeline:
-    def test_extract_returns_features(self):
+    def test_missing_extractor_does_not_return_synthetic_features(self, monkeypatch):
         from backend.pipeline.radiomics.pipeline import RadiomicsPipeline
         pipe = RadiomicsPipeline(use_cache=False)
         vol  = np.random.randn(64, 64, 64).astype(np.float32)
         mask = np.ones((64, 64, 64), dtype=np.uint8)
-        feats = pipe.extract(vol, mask, spacing=(1.0, 1.0, 1.0))
-        assert isinstance(feats, dict)
-        assert len(feats) > 0
-        assert "malignancy_score" in feats
+        monkeypatch.setattr(pipe, "_run_pyradiomics", lambda *_args, **_kwargs: (_ for _ in ()).throw(ImportError("missing dependency")))
+        with pytest.raises(RuntimeError, match="required for feature extraction"):
+            pipe.extract(vol, mask, spacing=(1.0, 1.0, 1.0))
+
+    def test_requires_a_segmentation_mask(self):
+        from backend.pipeline.radiomics.pipeline import RadiomicsPipeline
+        pipe = RadiomicsPipeline(use_cache=False)
+        with pytest.raises(ValueError, match="segmentation mask is required"):
+            pipe.extract(np.zeros((4, 4, 4), dtype=np.float32))
 
 
 # ===========================================================================

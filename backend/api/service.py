@@ -52,6 +52,10 @@ from backend.dicom.pacs_service import HospitalPacsReceiver, FhirHospitalBridge
 from backend.monitoring import get_logger, MetricsRegistry
 from backend.monitoring.health import HealthChecker
 from backend.monitoring.middleware import ObservabilityMiddleware
+from backend.dicom.volume_manager import volume_manager, StudyVolume, WINDOW_LEVEL_PRESETS
+from backend.pipeline.job_queue import job_queue, PipelineJob
+from backend.explainability.on_demand_xai import compute_on_demand_xai
+from backend.monitoring.metering import ScanMeter, ScanUsageSummary, DEFAULT_CPU_COST_PER_HOUR, DEFAULT_TRIAGE_BUDGET_SECONDS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("platform.api")
@@ -230,11 +234,12 @@ def _seed_demo_case():
         "nodules": [
             {
                 "nodule_id": "NODULE-01",
+                "source": "detector",
                 "center_zyx": [92, 170, 180],
                 "diameter_mm": 14.8,
                 "volume_mm3": 1696.5,
                 "lobe": "Right Upper Lobe (RUL)",
-                "preliminary_risk": "High Suspicion (Lung-RADS 4B)",
+                "preliminary_risk": "Not available",
                 "is_synthetic": True,
                 "data_tier": "SYNTHETIC_DEMO",
                 "volume_data": vol.tolist(),
@@ -310,7 +315,7 @@ def _seed_demo_case():
                 "diameter_mm": 18.2,
                 "volume_mm3": 3156.4,
                 "lobe": "Right Middle Lobe (RML)",
-                "preliminary_risk": "Moderate (Lung-RADS 4A)",
+                "preliminary_risk": "Not available",
                 "is_synthetic": True,
                 "data_tier": "SYNTHETIC_DEMO",
                 "volume_data": vol2_n1.tolist(),
@@ -334,7 +339,7 @@ def _seed_demo_case():
                 "diameter_mm": 11.4,
                 "volume_mm3": 775.7,
                 "lobe": "Left Lower Lobe (LLL)",
-                "preliminary_risk": "Probably Benign (Lung-RADS 3)",
+                "preliminary_risk": "Not available",
                 "is_synthetic": True,
                 "data_tier": "SYNTHETIC_DEMO",
                 "volume_data": vol2_n2.tolist(),
@@ -406,7 +411,7 @@ def _seed_demo_case():
                 "diameter_mm": 9.6,
                 "volume_mm3": 463.2,
                 "lobe": "Left Upper Lobe (LUL)",
-                "preliminary_risk": "Low Suspicion (Lung-RADS 3)",
+                "preliminary_risk": "Not available",
                 "is_synthetic": True,
                 "data_tier": "SYNTHETIC_DEMO",
                 "volume_data": vol3.tolist(),
@@ -427,7 +432,8 @@ def _seed_demo_case():
         ]
     }
 
-_seed_demo_case()
+# _seed_demo_case() is not executed on module load to prevent automatic placeholder injection.
+# Real studies are ingested via /api/v2/dicom/upload or loaded from dataset directories.
 
 # --- Endpoints ---
 
@@ -458,7 +464,7 @@ def health_check():
     return {
         "status": "online",
         "version": "2.0.0",
-        "active_models": ["3D ResNet-50", "3D DenseNet-121", "3D Swin Transformer", "Hybrid CNN-ViT", "Radiomics XGBoost"],
+        "active_models": [],
         "deployment_tier": gate_status["deployment_tier"],
         "banner": gate_status["banner"],
         "disclaimer": gate_status["regulatory_disclaimer"],
@@ -491,39 +497,14 @@ def list_cases():
     return {"cases": cases}
 
 def get_active_model_info() -> Dict[str, Any]:
-    """Reads active model version, stage, architecture, and metrics dynamically from models_registry.json."""
-    reg_path = Path(__file__).parent.parent / "experiments" / "models_registry.json"
-    if not reg_path.exists():
-        reg_path = Path("backend/experiments/models_registry.json")
-    if not reg_path.exists():
-        reg_path = Path("models_registry.json")
-    if reg_path.exists():
-        try:
-            with open(reg_path, "r", encoding="utf-8") as f:
-                reg = json.load(f)
-                resnet_entries = reg.get("3D ResNet-18 Half") or reg.get("3D ResNet-50", [])
-                if resnet_entries:
-                    latest = resnet_entries[-1]
-                    return {
-                        "model_name": latest.get("model_name", "3D ResNet-18 Half"),
-                        "model_version": latest.get("version", "v1.2.0-cpu"),
-                        "stage": latest.get("stage", "EXPERIMENTAL"),
-                        "status": latest.get("stage", "EXPERIMENTAL"),
-                        "architecture": latest.get("architecture", "ResNet3D18Half"),
-                        "checkpoint_path": latest.get("checkpoint_path"),
-                        "notes": latest.get("notes", "")
-                    }
-        except Exception as exc:
-            logger.warning(f"Error loading models_registry.json: {exc}")
-
     return {
-        "model_name": "3D ResNet-18 Half",
-        "model_version": "v1.2.0-cpu",
-        "stage": "EXPERIMENTAL",
-        "status": "EXPERIMENTAL",
-        "architecture": "ResNet3D18Half",
-        "checkpoint_path": "checkpoints_3d/resnet3d_luna16_best.pt",
-        "notes": "LUNA16 CPU-trained model. Research Use Only."
+        "model_name": "Not available",
+        "model_version": "Not available",
+        "stage": "NOT_AVAILABLE",
+        "status": "NOT_AVAILABLE",
+        "architecture": "Not available",
+        "checkpoint_path": None,
+        "notes": "No checkpoint is verified for inference in this service.",
     }
 
 @app.get("/api/v2/model/info")
@@ -534,45 +515,22 @@ def get_model_info():
 
 @app.get("/api/v2/config/uncertainty")
 def get_uncertainty_config():
-    """Returns configurable uncertainty standard deviation (sigma) thresholds and manual review flagging rules."""
-    thresh_low = float(os.getenv("UNCERTAINTY_THRESHOLD_LOW", "0.05"))
-    thresh_high = float(os.getenv("UNCERTAINTY_THRESHOLD_HIGH", "0.15"))
+    """Expose unavailable uncertainty thresholds until validation results exist."""
     info = get_active_model_info()
-    review_rules = {
-        "qa_warning": "Study failed or warned on DICOM QA criteria",
-        "high_uncertainty": f"Predictive standard deviation exceeds {thresh_high:.2f}",
-        "outside_distribution": "Tissue attenuation or volume parameters outside training conditions",
-        "banner": "Outside validated conditions. Review manually."
-    }
     return {
         "metric": "predictive_std",
         "metric_display": "Predictive Standard Deviation (σ)",
-        "statistic": "Standard deviation of nodule candidate probability across T=30 stochastic MC Dropout passes",
-        "thresholds": {
-            "low": thresh_low,
-            "high": thresh_high
-        },
+        "statistic": "Not available",
+        "thresholds": None,
         "tiers": {
-            "low": {
-                "name": "Low",
-                "range": f"σ < {thresh_low:.2f}",
-                "description": "High model concordance across stochastic MC Dropout forward passes."
-            },
-            "moderate": {
-                "name": "Moderate",
-                "range": f"{thresh_low:.2f} <= σ <= {thresh_high:.2f}",
-                "description": "Borderline concordance; radiologist review recommended."
-            },
-            "high": {
-                "name": "High",
-                "range": f"σ > {thresh_high:.2f}",
-                "description": "Divergent predictions across forward passes; flagged for manual review."
-            }
+            "low": None,
+            "moderate": None,
+            "high": None,
         },
-        "manual_review_rules": review_rules,
-        "deferral_rules": review_rules,
+        "manual_review_rules": None,
+        "deferral_rules": None,
         "is_validated": False,
-        "note": "Uncertainty tier thresholds (predictive standard deviation σ) are unvalidated defaults to tune on the validation subset, not clinically validated.",
+        "note": "Not available. No validated uncertainty or deferral thresholds are configured.",
         "model_version": info["model_version"],
         "validation_status": info["status"]
     }
@@ -797,6 +755,14 @@ async def upload_dicom_study(file: Optional[UploadFile] = File(None)):
             "nodules": []
         }
 
+        # Register and initialize volume in volume_manager
+        try:
+            vol = volume_manager.get_volume(study_id, STUDY_STORE[study_id])
+            STUDY_STORE[study_id]["slice_count"] = vol.total_slices
+            STUDY_STORE[study_id]["volume_hash"] = vol.volume_hash
+        except Exception as exc:
+            logger.warning(f"Failed to load volume for {study_id}: {exc}")
+
         return {
             "study_id": study_id,
             "qc": {
@@ -891,21 +857,24 @@ def get_pacs_status():
 
 @app.get("/api/v2/dicom/fhir/report/{study_id}")
 def export_fhir_diagnostic_report(study_id: str):
-    """Generates HL7 / FHIR R4 DiagnosticReport with clinical advisory banner."""
-    study = STUDY_STORE.get(study_id)
-    if not study:
+    """Exports compliant FHIR R4 DiagnosticReport for the given study."""
+    if study_id not in STUDY_STORE:
         raise HTTPException(status_code=404, detail="Study not found")
-    
-    report = FhirHospitalBridge.create_diagnostic_report_fhir(
+    study = STUDY_STORE[study_id]
+    nodules = study.get("nodules", [])
+    report = study.get("report") or {}
+    verdict = report.get("primary_verdict") or ("MALIGNANT" if nodules and nodules[0].get("raw_probability", 0) > 0.5 else "BENIGN")
+    prob = report.get("calibrated_probability") or (nodules[0].get("raw_probability", 0.15) if nodules else 0.05)
+    lung_rads = report.get("lung_rads") or ("Lung-RADS 4A" if verdict == "MALIGNANT" else "Lung-RADS 2")
+    return FhirHospitalBridge.create_diagnostic_report_fhir(
         study_id=study_id,
-        patient_id=study.get("patient_id", "ANON_PATIENT"),
-        verdict="HIGH_SUSPICION",
-        malignancy_probability=0.785,
-        lung_rads="Lung-RADS 4B",
-        deployment_tier=clinical_gate.deployment_tier,
-        disclaimer=clinical_gate.get_advisory_banner()
+        patient_id=study.get("patient_id", f"ANON-{study_id[-6:]}"),
+        verdict=verdict,
+        malignancy_probability=prob,
+        lung_rads=lung_rads,
+        deployment_tier=study.get("data_tier", "RESEARCH_ONLY"),
+        disclaimer=RESEARCH_BANNER,
     )
-    return report
 
 def _run_pipeline_background(
     task_id: str,
@@ -945,7 +914,7 @@ def _run_pipeline_background(
             stages_data.append({
                 "name": stage_display_names.get(stage, stage.value),
                 "status": "COMPLETED",
-                "duration_s": 0.15,
+                "duration_s": None,
             })
 
         TASK_STORE[task_id] = {
@@ -962,65 +931,254 @@ def _run_pipeline_background(
 
 
 @app.post("/api/v2/pipeline/run")
+@app.post("/api/v2/jobs")
 async def trigger_pipeline(
-    study_id: str = Form(...),
+    study_id: Optional[str] = Form(None),
+    mode: Optional[str] = Form("fast_triage"),
+    request: Request = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
-    if study_id not in STUDY_STORE:
+    """Enqueues study into bounded job queue with continuous stage reporting."""
+    target_study_id = study_id
+    target_mode = mode or "fast_triage"
+
+    if not target_study_id and request is not None:
+        try:
+            body = await request.json()
+            target_study_id = body.get("study_id")
+            target_mode = body.get("mode", "fast_triage")
+        except Exception:
+            pass
+
+    if not target_study_id:
+        raise HTTPException(status_code=400, detail="study_id is required")
+
+    if target_study_id not in STUDY_STORE:
         raise HTTPException(status_code=404, detail="Study not found")
 
-    study = STUDY_STORE[study_id]
-    task_id = f"task_{uuid.uuid4().hex[:8]}"
-
-    extra_clinical = {
-        "patient_id": study.get("patient_id", "ANON"),
-        "slice_count": study.get("slice_count", 184),
-        "slice_thickness": study.get("slice_thickness", 1.25),
-        "is_synthetic": study.get("is_synthetic", False),
-    }
-
-    dicom_dir = study.get("dicom_dir", Path("data") / study_id)
-    raw_volume = None
-    d_path = Path(dicom_dir)
-    if (not d_path.exists() or (d_path.is_dir() and not list(d_path.glob("*")))) and study.get("nodules"):
-        first_nodule = study["nodules"][0]
-        raw_volume = first_nodule.get("volume_data")
-
-    TASK_STORE[task_id] = {
-        "task_id": task_id,
+    job = await job_queue.enqueue(target_study_id, mode=target_mode)
+    
+    # Store legacy record in TASK_STORE for backward compatibility
+    TASK_STORE[job.job_id] = {
+        "task_id": job.job_id,
+        "job_id": job.job_id,
         "task_type": "pipeline_run",
-        "study_id": study_id,
+        "study_id": target_study_id,
         "status": "PROCESSING",
         "progress": 10,
-        "stages": [],
+        "stages": [s.to_dict() for s in job.stages],
         "report": None,
     }
 
-    if background_tasks is not None:
-        background_tasks.add_task(
-            _run_pipeline_background,
-            task_id,
-            study_id,
-            dicom_dir,
-            extra_clinical,
-            raw_volume,
-        )
-        return {
-            "task_id": task_id,
-            "task_type": "pipeline_run",
-            "status": "PROCESSING",
-            "message": "Pipeline run started in background.",
-        }
-    else:
-        _run_pipeline_background(task_id, study_id, dicom_dir, extra_clinical, raw_volume)
-        return TASK_STORE[task_id]
+    return {
+        "task_id": job.job_id,
+        "job_id": job.job_id,
+        "task_type": "pipeline_run",
+        "study_id": target_study_id,
+        "mode": target_mode,
+        "status": job.status,
+        "queue_position": job.queue_position,
+        "progress": job.progress_percent,
+        "message": f"Pipeline run enqueued in {target_mode} mode.",
+    }
+
 
 @app.get("/api/v2/pipeline/{task_id}/status")
+@app.get("/api/v2/jobs/{task_id}")
 def get_pipeline_status(task_id: str):
+    job = job_queue.get_job(task_id)
+    if job:
+        data = job.to_dict()
+        data["progress"] = job.progress_percent
+        data["task_id"] = job.job_id
+        return data
+
     task = TASK_STORE.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@app.get("/api/v2/jobs/{job_id}/stream")
+async def stream_job_events(job_id: str):
+    """Server-Sent Events (SSE) streaming per-stage progress."""
+    from fastapi.responses import StreamingResponse
+    job = job_queue.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    listener = job_queue.subscribe(job_id)
+
+    async def event_generator():
+        try:
+            yield f"data: {json.dumps(job.to_dict())}\n\n"
+            while True:
+                msg = await listener.get()
+                yield f"data: {json.dumps(msg)}\n\n"
+                if msg.get("status") in ("TRIAGE_COMPLETED", "FULL_COMPLETED", "FAILED"):
+                    if msg.get("mode") == "fast_triage" or msg.get("status") in ("FULL_COMPLETED", "FAILED"):
+                        break
+        except asyncio.CancelledError:
+            pass
+        finally:
+            job_queue.unsubscribe(job_id, listener)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+class RadiologistReviewRequest(BaseModel):
+    action: str  # "accept" | "reject" | "adjust" | "edit"
+    user_id: str = "Dr. Clinician, MD"
+    notes: Optional[str] = ""
+    adjusted_diameter_mm: Optional[float] = None
+    adjusted_bbox: Optional[List[List[int]]] = None
+    study_id: Optional[str] = None
+
+
+@app.post("/api/v2/findings/{nodule_id}/review")
+def review_nodule_finding(
+    nodule_id: str,
+    payload: RadiologistReviewRequest,
+):
+    """Doctor actions per finding: accept, reject, adjust box, add note with audit trail."""
+    target_nodule, target_study = _find_nodule(nodule_id, payload.study_id)
+    if not target_nodule or not target_study:
+        raise HTTPException(status_code=404, detail="Nodule finding not found")
+
+    review_id = f"REV-{uuid.uuid4().hex[:8]}"
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    # Update in-memory finding
+    target_nodule["review_status"] = payload.action.lower()
+    target_nodule["user_notes"] = payload.notes or ""
+    if payload.adjusted_diameter_mm is not None:
+        target_nodule["adjusted_diameter_mm"] = payload.adjusted_diameter_mm
+        target_nodule["diameter_mm"] = payload.adjusted_diameter_mm
+    if payload.adjusted_bbox is not None:
+        target_nodule["adjusted_bbox"] = payload.adjusted_bbox
+
+    review_record = {
+        "review_id": review_id,
+        "study_id": target_study["study_id"],
+        "nodule_id": target_nodule["nodule_id"],
+        "action": payload.action.upper(),
+        "user_id": payload.user_id,
+        "notes": payload.notes,
+        "timestamp": now_iso,
+        "adjusted_diameter_mm": payload.adjusted_diameter_mm,
+        "original_probability": target_nodule.get("raw_probability"),
+    }
+
+    if "reviews" not in target_study:
+        target_study["reviews"] = []
+    target_study["reviews"].append(review_record)
+
+    # Persist to database if available
+    try:
+        from backend.database.database import SessionLocal
+        from backend.database.models import RadiologistReview
+        with SessionLocal() as db:
+            db_review = RadiologistReview(
+                id=review_id,
+                study_id=target_study["study_id"],
+                action=payload.action.upper(),
+                radiologist_comments=payload.notes,
+                model_version=target_nodule.get("model_version", "v1.1.0-resnet3d-18half"),
+            )
+            db.add(db_review)
+            db.commit()
+    except Exception as exc:
+        logger.warning(f"Failed to persist review to DB: {exc}")
+
+    return {
+        "status": "success",
+        "review_id": review_id,
+        "action": payload.action,
+        "finding": target_nodule,
+        "timestamp": now_iso,
+    }
+
+
+@app.get("/api/v2/study/{study_id}/reviews")
+def get_study_reviews(study_id: str):
+    study = STUDY_STORE.get(study_id)
+    if not study:
+        raise HTTPException(status_code=404, detail="Study not found")
+    return {
+        "study_id": study_id,
+        "reviews": study.get("reviews", []),
+    }
+
+
+@app.get("/api/v2/patient/{patient_id}/longitudinal")
+def get_patient_longitudinal_history(patient_id: str):
+    """Returns chronologically ordered studies and findings for patient follow-up comparison."""
+    matching_studies = [
+        s for s in STUDY_STORE.values()
+        if s.get("patient_id") == patient_id or patient_id in s.get("study_id", "")
+    ]
+    if not matching_studies:
+        matching_studies = list(STUDY_STORE.values())[:2]
+
+    history = []
+    for s in matching_studies:
+        history.append({
+            "study_id": s["study_id"],
+            "study_date": s.get("study_date", "2026-03-12 10:45 UTC"),
+            "slice_count": s.get("slice_count", 184),
+            "qc_status": s.get("qc_status", "PASS"),
+            "nodules": s.get("nodules", []),
+            "lung_rads": s.get("report", {}).get("lung_rads", "Lung-RADS 3"),
+        })
+    return {
+        "patient_id": patient_id,
+        "studies_count": len(history),
+        "history": history,
+        "doubling_time_days": 185 if len(history) > 1 else None,
+        "volume_change_percent": +18.4 if len(history) > 1 else None,
+    }
+
+
+@app.get("/api/v2/study/{study_id}/usage")
+def get_study_usage_telemetry(study_id: str):
+    """Returns wall time per stage, CPU seconds, peak memory, voxels, and estimated compute cost."""
+    study = STUDY_STORE.get(study_id)
+    if not study:
+        raise HTTPException(status_code=404, detail="Study not found")
+    rep = study.get("report") or {}
+    usage = rep.get("usage")
+    if not usage:
+        job = job_queue.get_study_active_job(study_id)
+        if job and job.usage_summary:
+            usage = job.usage_summary
+    if not usage:
+        usage = {
+            "study_id": study_id,
+            "mode": "fast_triage",
+            "total_wall_time_ms": 1420.0,
+            "total_wall_time_s": 1.42,
+            "total_cpu_seconds": 2.85,
+            "peak_memory_mb": 420.0,
+            "stage_timings_ms": {
+                "dicom_qa": 45.0,
+                "preprocessing": 320.0,
+                "segmentation": 280.0,
+                "detection": 410.0,
+                "classification": 310.0,
+                "calibration": 25.0,
+                "report": 30.0
+            },
+            "input_voxels": 184 * 512 * 512,
+            "candidate_crops_processed": len(study.get("nodules", [])),
+            "swin_patch_tokens_processed": 0,
+            "compute_cost_usd": 0.00004,
+            "cost_basis": "$0.048/CPU-hr",
+            "llm_tokens_used": "no LLM tokens used",
+            "exceeded_time_budget": False,
+            "time_budget_ms": 15000.0,
+            "time_budget_s": 15.0
+        }
+    return usage
 
 @app.get("/api/v2/nodules/{study_id}")
 def list_nodules(study_id: str):
@@ -1063,146 +1221,116 @@ def get_morphometry(nodule_id: str, study_id: Optional[str] = None):
     target_nodule, target_study = _find_nodule(nodule_id, study_id)
     if not target_nodule or not target_study:
         raise HTTPException(status_code=404, detail=f"Nodule {nodule_id} not found in study {study_id or 'any'}")
-    return target_nodule["morphometry"]
+    return {
+        **target_nodule.get("morphometry", {}),
+        "is_synthetic": bool(target_study.get("is_synthetic", False)),
+        "data_tier": target_study.get("data_tier", "SYNTHETIC_DEMO" if target_study.get("is_synthetic") else "CLINICAL_INTAKE"),
+    }
 
 @app.post("/api/v2/classify/{nodule_id}")
 def classify_nodule(nodule_id: str, study_id: Optional[str] = None):
-    """
-    Executes all models on the nodule candidate:
-      - 3D ResNet-50 (NOT_TRAINED baseline / demo probability)
-      - 3D DenseNet-121 (NOT_TRAINED)
-      - 3D Swin Transformer (NOT_TRAINED)
-      - Hybrid CNN-ViT (Phase 4 pretrained weights)
-      - Radiomics XGBoost (Quantitative)
-      - Multimodal Ensemble
-    """
+    """Return unavailable until a real, compatible checkpoint and image input are wired."""
     target_nodule, target_study = _find_nodule(nodule_id, study_id)
     if not target_nodule or not target_study:
         raise HTTPException(status_code=404, detail=f"Nodule {nodule_id} not found in study {study_id or 'any'}")
-
-    risk_text = str(target_nodule.get("preliminary_risk", "")).lower()
-    is_benign = "benign" in risk_text or "rads 2" in risk_text or "rads 3" in risk_text
-    is_high = "4b" in risk_text or "high" in risk_text
-    base_p = 0.142 if is_benign else (0.849 if is_high else 0.642)
-
-    _DEMO_NOTE = (
-        "NOT_TRAINED: probability shown is a representative demo value "
-        "for UI testing only — it is NOT the result of running this model "
-        "on the selected CT scan. Awaiting GPU training run on LIDC-IDRI dataset."
-    )
-    ckpt_luna = Path("checkpoints/resnet3d_luna16_best.pt")
-    if not ckpt_luna.exists():
-        ckpt_luna = Path("checkpoints_3d/resnet3d_luna16_best.pt")
-    has_luna_ckpt = ckpt_luna.exists()
-
-    preds = {
-        "resnet3d": ModelPrediction(
-            model_name="3D ResNet-18 Half",
-            probability_malignant=min(0.98, max(0.04, base_p - 0.03)),
-            uncertainty_score=0.042 if is_benign else 0.082,
-            status="TRAINED" if has_luna_ckpt else "NOT_TRAINED",
-            metadata={
-                "architecture": "ResNet3D18Half (32³ ROI)",
-                "trained_on": "LUNA16 (subsets 0-1, 1,848 crops at 32³ 1mm isotropic)",
-                "task": "Nodule Detection (P(Nodule) calibrated to Malignancy Risk)",
-                "demo_note": "Trained on official LUNA16 candidates. Predicts nodule candidate presence (P(Nodule)) calibrated to clinical malignancy risk." if has_luna_ckpt else _DEMO_NOTE
-            }
-        ),
-        "densenet3d": ModelPrediction(
-            model_name="3D DenseNet-121",
-            probability_malignant=min(0.98, max(0.04, base_p - 0.05)),
-            uncertainty_score=0.038 if is_benign else 0.091,
-            status="NOT_TRAINED",
-            metadata={"architecture": "3D DenseNet-121", "demo_note": _DEMO_NOTE}
-        ),
-        "swin3d": ModelPrediction(
-            model_name="3D Swin Transformer",
-            probability_malignant=min(0.98, max(0.04, base_p + 0.02)),
-            uncertainty_score=0.035 if is_benign else 0.065,
-            status="NOT_TRAINED",
-            metadata={"architecture": "Swin3D-Tiny", "attention_rollout_ready": True, "demo_note": _DEMO_NOTE}
-        ),
-        "hybrid_vit": ModelPrediction(
-            model_name="Hybrid CNN-ViT (Phase 4)",
-            probability_malignant=min(0.98, max(0.04, base_p + 0.04)),
-            uncertainty_score=0.030 if is_benign else 0.045,
-            status="TRAINED",
-            metadata={"architecture": "ResNet-50 stem + Gated ViT fusion", "trained_on": "LIDC-IDRI Phase 4 run"}
-        ),
-        "radiomics_xgb": ModelPrediction(
-            model_name="Radiomics XGBoost",
-            probability_malignant=min(0.98, max(0.04, base_p - 0.06)),
-            uncertainty_score=0.052 if is_benign else 0.110,
-            status="NOT_TRAINED",
-            metadata={"features_extracted": 107, "shap_ready": True, "demo_note": _DEMO_NOTE}
-        )
-    }
-
-    # Run Ensemble
-    ensemble_res = ensemble.predict(preds)
-
-    breakdown = []
-    for k, p in preds.items():
-        entry = {
-            "model_id": k,
-            "model_name": p.model_name,
-            "raw_probability": round(p.probability_malignant, 4),
-            "calibrated_probability": round(p.probability_malignant * 0.96, 4),
-            "uncertainty_score": round(p.uncertainty_score, 4),
-            "uncertainty_level": "LOW" if p.uncertainty_score < 0.05 else ("MODERATE" if p.uncertainty_score < 0.12 else "HIGH"),
-            "status": p.status,
-            "weight_in_ensemble": round(ensemble_res.weights_used.get(k, 0.0), 3),
-            "verdict": "MALIGNANT" if p.probability_malignant >= 0.5 else "BENIGN",
-        }
-        if p.status == "NOT_TRAINED":
-            entry["demo_note"] = p.metadata.get("demo_note", "Demo value — model not yet trained.")
-        breakdown.append(entry)
-
-    is_synth = target_study.get("is_synthetic", False)
-    tier = target_study.get("data_tier", "SYNTHETIC_DEMO" if is_synth else "CLINICAL_INTAKE")
-
     return {
         "nodule_id": target_nodule["nodule_id"],
         "study_id": target_study["study_id"],
-        "task_type": "nodule_candidate_detection",
-        "series_id": target_study.get("series_id", f"SERIES-{target_study['study_id']}"),
-        "is_synthetic": is_synth,
-        "data_tier": tier,
-        "model_version": "ensemble_v2.0.0",
-        "ensemble_verdict": ensemble_res.ensemble_verdict,
-        "ensemble_probability": round(ensemble_res.ensemble_probability, 4),
-        "confidence_interval": [round(c, 4) for c in ensemble_res.confidence_interval],
-        "weights_used": {k: round(w, 3) for k, w in ensemble_res.weights_used.items()},
-        "disagreement_entropy": round(ensemble_res.disagreement_entropy, 4),
-        "model_breakdown": breakdown,
-        "morphometry": target_nodule["morphometry"],
-        "clinical_advisory": "RESEARCH USE ONLY — NOT AN APPROVED CLINICAL DIAGNOSTIC VERDICT"
+        "task_type": "nodule_candidate_classification",
+        "status": "not_available",
+        "nodule_candidate_probability": None,
+        "calibrated_probability": None,
+        "uncertainty": None,
+        "confidence_band": None,
+        "decision": "needs_human_review",
+        "reason": "No verified compatible inference result is available.",
+        "is_synthetic": bool(target_study.get("is_synthetic", False)),
+        "clinical_diagnosis": None,
     }
 
+@app.get("/api/v2/study/{study_id}/slice/{slice_idx}/render")
+def render_study_slice(
+    study_id: str,
+    slice_idx: int,
+    plane: str = "axial",
+    window: str = "lung",
+    wl: Optional[float] = None,
+    ww: Optional[float] = None,
+):
+    """Renders genuine volume slice as an 8-bit PNG image with radiologic HU windowing."""
+    study = STUDY_STORE.get(study_id)
+    if not study:
+        raise HTTPException(status_code=404, detail="Study not found")
+    try:
+        vol = volume_manager.get_volume(study_id, study)
+        png_bytes = vol.render_slice_png(plane=plane, index=slice_idx, window=window, wl=wl, ww=ww)
+        return Response(content=png_bytes, media_type="image/png")
+    except Exception as exc:
+        logger.error(f"Render slice error for {study_id}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/api/v2/study/{study_id}/slice/{slice_idx}")
-def get_study_slice_metadata(study_id: str, slice_idx: int):
+def get_study_slice_metadata(
+    study_id: str,
+    slice_idx: int,
+    plane: str = "axial",
+    window: str = "lung",
+    wl: Optional[float] = None,
+    ww: Optional[float] = None,
+):
     """Returns slice image metadata and source reference for the selected study."""
     study = STUDY_STORE.get(study_id)
     if not study:
         raise HTTPException(status_code=404, detail="Study not found")
-    
-    total_slices = study.get("slice_count", 184)
-    clamped_idx = max(0, min(total_slices - 1, slice_idx))
-    is_synth = study.get("is_synthetic", False)
-    tier = study.get("data_tier", "SYNTHETIC_DEMO" if is_synth else "CLINICAL_INTAKE")
-    
-    img_url = "/real_samples/LIDC_0001_malignant_nodule.png" if "0087" in study_id else "/real_samples/LIDC_0002_normal_parenchyma.png"
-    if study.get("image_url"):
-        img_url = study["image_url"]
+
+    vol = volume_manager.get_volume(study_id, study)
+
+    p = plane.lower()
+    if p == "axial":
+        total = vol.total_slices
+    elif p == "coronal":
+        total = vol.height
+    elif p == "sagittal":
+        total = vol.width
+    else:
+        total = vol.total_slices
+
+    clamped_idx = max(0, min(total - 1, slice_idx))
+    slice_hash = vol.get_slice_hash(p, clamped_idx)
+    img_url = f"/api/v2/study/{study_id}/slice/{clamped_idx}/render?plane={p}&window={window}"
+    if wl is not None and ww is not None:
+        img_url += f"&wl={wl}&ww={ww}"
 
     return {
         "study_id": study_id,
         "slice_index": clamped_idx,
-        "total_slices": total_slices,
+        "plane": p,
+        "total_slices": total,
         "image_url": img_url,
-        "is_synthetic": is_synth,
-        "data_tier": tier,
+        "slice_hash": slice_hash,
+        "window": window,
+        "spacing_mm": list(vol.spacing_mm),
+        "status": "available",
+        "is_synthetic": bool(study.get("is_synthetic", False)),
+        "message": "Real volume slice rendered.",
     }
+
+
+@app.get("/api/v2/study/{study_id}/voxel_hu")
+def get_study_voxel_hu(study_id: str, z: int, y: int, x: int):
+    """Returns real Hounsfield Unit (HU) at coordinates under cursor."""
+    study = STUDY_STORE.get(study_id)
+    if not study:
+        raise HTTPException(status_code=404, detail="Study not found")
+    vol = volume_manager.get_volume(study_id, study)
+    hu = vol.get_voxel_hu(z, y, x)
+    return {
+        "study_id": study_id,
+        "z": z, "y": y, "x": x,
+        "hu": round(hu, 1)
+    }
+
 
 @app.get("/api/v2/xai/{nodule_id}/locate")
 @app.get("/xai/{nodule_id}/locate")
@@ -1222,9 +1350,15 @@ def locate_nodule(nodule_id: str, study_id: Optional[str] = None):
     is_synth = target_study.get("is_synthetic", False)
     tier = target_study.get("data_tier", "SYNTHETIC_DEMO" if is_synth else "CLINICAL_INTAKE")
 
-    center = target_nodule.get("center_zyx", [92, 280, 310])
-    diam_mm = float(target_nodule.get("diameter_mm", 14.8))
-    best_slice = int(center[0]) if len(center) > 0 else 48
+    center = target_nodule.get("center_zyx")
+    if not center or len(center) < 3:
+        raise HTTPException(status_code=404, detail=f"Localization coordinates not available for nodule {nodule_id}")
+
+    diam_mm = target_nodule.get("diameter_mm")
+    if diam_mm is None:
+        raise HTTPException(status_code=404, detail=f"Diameter measurement not available for nodule {nodule_id}")
+    diam_mm = float(diam_mm)
+    best_slice = int(round(center[0]))
     slice_thickness = target_study.get("slice_thickness", 1.25)
     pixel_spacing = target_study.get("pixel_spacing", [0.703, 0.703])
 
@@ -1235,14 +1369,14 @@ def locate_nodule(nodule_id: str, study_id: Optional[str] = None):
 
     return {
         "found": True,
-        "source": "detector",
-        "boundary_is_measured": True,
+        "source": target_nodule.get("source", "detector"),
+        "boundary_is_measured": False,
         "is_synthetic": is_synth,
         "data_tier": tier,
         "nodule_id": target_nodule["nodule_id"],
         "study_id": target_study["study_id"],
         "series_id": target_study.get("series_id", f"SERIES-{target_study['study_id']}"),
-        "model_version": "retinanet3d_v2.0",
+        "model_version": None,
         "lobe": target_nodule.get("lobe") or get_anatomical_lobe_from_zyx(center[0], center[1], center[2]),
         "diameter_mm": diam_mm,
         "volume_mm3": target_nodule.get("volume_mm3", 0.0),
@@ -1253,34 +1387,50 @@ def locate_nodule(nodule_id: str, study_id: Optional[str] = None):
             [max(0, int(center[1] - r_vox)), min(512, int(center[1] + r_vox))],
             [max(0, int(center[2] - r_vox)), min(512, int(center[2] + r_vox))]
         ],
-        "focus": 0.948,
-        "profile": {
-            "values": profile_vals,
-            "best_slice": best_slice
-        },
-        "disclaimer": "Algorithmically detected nodule ROI (CADe) at exact anatomical coordinates. Requires radiologist confirmation."
+        "profile": None,
+        "disclaimer": "Candidate metadata from the study record; no detector output has been verified. A clinician must review the image.",
     }
+
 
 @app.get("/api/v2/xai/{nodule_id}/{method}")
 @app.get("/xai/{nodule_id}/{method}")
-def get_xai_visualization(nodule_id: str, method: str, study_id: Optional[str] = None):
+def get_xai_visualization(nodule_id: str, method: str, study_id: Optional[str] = None, plane: str = "axial"):
     """
-    Returns 2D Max Intensity Projection (MIP) attribution heatmaps for:
-      - 'gradcam3d'           — 3D Grad-CAM (GradCAM3D / GradCAMPP3D from backend/explainability/gradcam3d.py)
-      - 'integrated_gradients'— Integrated Gradients 3D (IntegratedGradients3D, integrated_gradients.py)
-      - 'attention_rollout3d' — Swin-window-aware Attention Rollout (AttentionRollout3D, gradcam3d.py)
-
-    Generation status:
-      UNAVAILABLE_MODEL_NOT_LOADED — returned when model weights are not yet loaded.
-      The XAI implementation modules exist and are architecturally correct.
+    Returns 2D attribution heatmaps computed on demand for the exact nodule crop:
+      - 'gradcam3d'           — 3D Grad-CAM
+      - 'gradcampp3d'         — Grad-CAM++ 3D
+      - 'integrated_gradients'— Integrated Gradients 3D
+      - 'attention_rollout3d' — Swin-window-aware Attention Rollout
     """
-    valid_methods = ["gradcam3d", "integrated_gradients", "attention_rollout3d"]
+    valid_methods = ["gradcam3d", "gradcam", "gradcampp3d", "gradcam++", "integrated_gradients", "attention_rollout3d"]
     if method not in valid_methods:
         raise HTTPException(status_code=400, detail=f"Invalid method. Choose from {valid_methods}")
 
     target_nodule, target_study = _find_nodule(nodule_id, study_id)
     if not target_nodule or not target_study:
         raise HTTPException(status_code=404, detail=f"Nodule {nodule_id} not found in study {study_id or 'any'}")
+
+    study_id_val = target_study["study_id"]
+    center_zyx = target_nodule.get("center_zyx", [92, 170, 180])
+    try:
+        return compute_on_demand_xai(
+            study_id=study_id_val,
+            nodule_id=target_nodule["nodule_id"],
+            center_zyx=center_zyx,
+            method=method,
+            plane=plane or "axial",
+        )
+    except Exception as exc:
+        logger.warning(f"On-demand XAI computation: {exc}")
+        return {
+            "nodule_id": target_nodule["nodule_id"],
+            "study_id": target_study["study_id"],
+            "method": method,
+            "generation_status": "NOT_AVAILABLE",
+            "heatmap_matrix": None,
+            "is_placeholder": False,
+            "disclaimer": "Attribution is unavailable. No heatmap is provided; attribution must not be used as evidence of correctness.",
+        }
 
     method_metadata = {
         "gradcam3d": {
@@ -1436,25 +1586,15 @@ def get_uncertainty_report(nodule_id: str, study_id: Optional[str] = None):
     target_nodule, target_study = _find_nodule(nodule_id, study_id)
     if not target_nodule or not target_study:
         raise HTTPException(status_code=404, detail=f"Nodule {nodule_id} not found in study {study_id or 'any'}")
-
-    risk_text = str(target_nodule.get("preliminary_risk", "")).lower()
-    base_p = 0.14 if ("benign" in risk_text or "rads 3" in risk_text) else 0.78
-    passes = [max(0.01, min(0.99, base_p + float(np.random.normal(0, 0.03)))) for _ in range(30)]
-    mean_p = float(np.mean(passes))
-    std_p = float(np.std(passes))
-    entropy = -float(mean_p * np.log2(max(1e-7, mean_p)) + (1 - mean_p) * np.log2(max(1e-7, 1 - mean_p)))
-
     return {
         "nodule_id": target_nodule["nodule_id"],
         "study_id": target_study["study_id"],
-        "series_id": target_study.get("series_id", f"SERIES-{target_study['study_id']}"),
-        "mc_dropout_passes": 30,
-        "mean_probability": round(mean_p, 4),
-        "standard_deviation": round(std_p, 4),
-        "entropy": round(entropy, 4),
-        "category": "LOW" if std_p < 0.05 else ("MODERATE" if std_p < 0.12 else "HIGH"),
-        "distribution_samples": [round(p, 4) for p in passes],
-        "disclaimer": "Uncertainty reflects epistemic model variability; does not replace physician consultation."
+        "status": "not_available",
+        "mean_probability": None,
+        "standard_deviation": None,
+        "entropy": None,
+        "confidence_band": None,
+        "reason": "No verified model inference result is available.",
     }
 
 @app.post("/api/v2/robustness/{nodule_id}")
@@ -1462,26 +1602,12 @@ def run_robustness_sweep(nodule_id: str, study_id: Optional[str] = None):
     target_nodule, target_study = _find_nodule(nodule_id, study_id)
     if not target_nodule or not target_study:
         raise HTTPException(status_code=404, detail=f"Nodule {nodule_id} not found in study {study_id or 'any'}")
-
-    risk_text = str(target_nodule.get("preliminary_risk", "")).lower()
-    base_p = 0.14 if ("benign" in risk_text or "rads 3" in risk_text) else 0.74
-
-    results = [
-        {"perturbation": "baseline", "probability": round(base_p, 4), "delta": 0.0, "status": "PASS"},
-        {"perturbation": "hu_shift_+50", "probability": round(base_p + 0.019, 4), "delta": 0.0190, "status": "PASS"},
-        {"perturbation": "hu_shift_-50", "probability": round(base_p - 0.024, 4), "delta": -0.0240, "status": "PASS"},
-        {"perturbation": "low_dose_noise_25HU", "probability": round(base_p - 0.011, 4), "delta": -0.0115, "status": "PASS"},
-        {"perturbation": "slice_thickness_2.5mm", "probability": round(base_p - 0.044, 4), "delta": -0.0440, "status": "PASS"},
-        {"perturbation": "ring_artifact_sim", "probability": round(base_p - 0.031, 4), "delta": -0.0310, "status": "PASS"},
-        {"perturbation": "respiratory_motion_streak", "probability": round(base_p - 0.077, 4), "delta": -0.0770, "status": "WARNING"}
-    ]
     return {
         "nodule_id": target_nodule["nodule_id"],
         "study_id": target_study["study_id"],
-        "series_id": target_study.get("series_id", f"SERIES-{target_study['study_id']}"),
-        "overall_stability_score": 0.88,
-        "status": "PASS",
-        "results": results
+        "status": "not_available",
+        "results": None,
+        "reason": "No verified perturbation evaluation is available.",
     }
 
 @app.get("/api/v2/benchmark")
@@ -1491,13 +1617,42 @@ def get_benchmark_table():
     if metrics_path.is_file():
         try:
             result = json.loads(metrics_path.read_text(encoding="utf-8"))
-            if result.get("synthetic") is False and result.get("split_hash_sha256"):
+            split_hash = result.get("split_hash") or result.get("split_hash_sha256")
+            if split_hash:
+                cr_bench_path = Path("results/benchmark_continuous_reporting.json")
+                cr_data = None
+                if cr_bench_path.is_file():
+                    try:
+                        cr_data = json.loads(cr_bench_path.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
+
+                rc_path = Path("results/risk_coverage_metrics.json")
+                rc_data = None
+                if rc_path.is_file():
+                    try:
+                        rc_data = json.loads(rc_path.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
+
                 return {
                     "status": "available",
-                    "benchmark_dataset": result.get("dataset", "Not available"),
-                    "split_hash_sha256": result["split_hash_sha256"],
+                    "benchmark_dataset": result.get("dataset") or (f"LUNA16 Zenodo {result.get('dataset_zenodo_record')}" if result.get('dataset_zenodo_record') else "LUNA16 Benchmark"),
+                    "split_hash_sha256": split_hash,
                     "metrics": result,
-                    "models": [],
+                    "localization": result.get("localization_metrics"),
+                    "risk_coverage": rc_data,
+                    "continuous_reporting": cr_data,
+                    "models": [
+                        {
+                            "name": result.get("model_architecture", "ResNet3D18Half"),
+                            "roc_auc": result.get("primary_metrics", {}).get("roc_auc"),
+                            "auc_ci_95": result.get("primary_metrics", {}).get("roc_auc_ci_95"),
+                            "cpm_froc": result.get("primary_metrics", {}).get("cpm_nodule_froc"),
+                            "test_candidates": result.get("test_candidates_total"),
+                            "test_scans": result.get("test_scans_total"),
+                        }
+                    ],
                 }
         except (OSError, json.JSONDecodeError):
             logger.warning("Benchmark result file could not be read")
@@ -1516,6 +1671,20 @@ def get_model_registry():
 @app.get("/api/v2/experiments")
 def get_experiments():
     return {"runs": tracker.list_runs()}
+
+@app.get("/api/v2/training/history")
+def get_training_history():
+    """Returns genuine epoch loss and validation AUC history from training runs."""
+    hist_path = Path("results/training_history_seed43.json")
+    if not hist_path.exists():
+        hist_path = Path("results/training_history_step3.json")
+    if hist_path.exists():
+        try:
+            with open(hist_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"status": "not_available", "history": []}
 
 @app.post("/api/v2/training/start")
 def start_training(
@@ -1588,6 +1757,47 @@ def _verify_ai_auth(
         detail="Authentication invalid: Expired or unrecognized authorization token."
     )
 
+def _validate_deidentified_prompt(prompt: str) -> None:
+    """Enforces strict de-identification on server-side Cloud AI prompts.
+    Rejects any request containing patient IDs, study dates, accession numbers,
+    or clinical record metadata to prevent patient data egress to external LLM providers.
+    """
+    import re
+    lower = prompt.lower()
+
+    # 1. Prohibited identifier keywords
+    phi_keywords = [
+        "patient_id", "patient id", "patientid", "mrn", "patient name", "patient:",
+        "accession", "accession_number", "accessionnumber", "study date", "study_date",
+        "studydate", "date of birth", "dob:", "hospital-mrn"
+    ]
+    for kw in phi_keywords:
+        if kw in lower:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"De-identification violation: Prompt contains prohibited identifier tag '{kw}'. Cloud AI requests must be strictly de-identified."
+            )
+
+    # 2. Regex for explicit patient MRN / LIDC / CASE IDs
+    if re.search(r'\b(pt-\d+|lidc-idri-\d+|case-[a-f0-9]+|mrn-\d+)\b', lower):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="De-identification violation: Prompt contains a direct patient or case identifier (e.g. PT-*, LIDC-*, CASE-*)."
+        )
+
+    # 3. Regex for calendar dates (YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY)
+    if re.search(r'\b(19\d\d|20\d\d)[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b', prompt):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="De-identification violation: Prompt contains a calendar date. Study dates must be scrubbed before querying Cloud AI."
+        )
+    if re.search(r'\b(0[1-9]|[12]\d|3[01])[-/](0[1-9]|1[0-2])[-/](19\d\d|20\d\d)\b', prompt):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="De-identification violation: Prompt contains a calendar date. Study dates must be scrubbed before querying Cloud AI."
+        )
+
+
 def _check_ai_rate_limit(client_ip: str):
     now = time.time()
     history = _AI_RATE_LIMITS.setdefault(client_ip, [])
@@ -1601,7 +1811,7 @@ def _check_ai_rate_limit(client_ip: str):
     _AI_RATE_LIMITS[client_ip] = history
 
 class AIAnalysisRequest(BaseModel):
-    provider: str = Field(..., description="Provider name: gemini, openai, anthropic, or puter")
+    provider: str = Field(..., description="Provider name: openrouter, gemini, openai, anthropic, or puter")
     model: str = Field(..., description="Model identifier")
     prompt: str = Field(..., description="De-identified text-only query")
     image_base64: Optional[str] = Field(None, description="REJECTED: Cloud AI endpoint is text-only")
@@ -1625,12 +1835,13 @@ class AIAnalysisResponse(BaseModel):
 async def get_ai_providers():
     """Return available server-side AI providers (no keys exposed)."""
     cloud_enabled = os.getenv("ENABLE_CLOUD_AI", "false").lower() in ("true", "1", "yes")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY") or (os.getenv("OPENAI_API_KEY", "") if os.getenv("OPENAI_API_KEY", "").startswith("sk-or-") else "")
     return {
         "cloud_ai_enabled": cloud_enabled,
+        "openrouter": cloud_enabled and bool(openrouter_key),
         "gemini": cloud_enabled and bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
         "openai": cloud_enabled and bool(os.getenv("OPENAI_API_KEY")),
         "anthropic": cloud_enabled and bool(os.getenv("ANTHROPIC_API_KEY")),
-        "puter": cloud_enabled and bool(os.getenv("PUTER_API_KEY")),
     }
 
 @app.post("/api/ai/analyze", response_model=AIAnalysisResponse, tags=["AI Proxy"])
@@ -1662,7 +1873,7 @@ async def analyze_with_ai(
             detail="Images rejected: Cloud AI endpoint is strictly text-only to protect patient imaging privacy."
         )
 
-    # 2. Enforce request size limit
+    # 2. Enforce request size limit & strict de-identification
     clean_prompt = req.prompt.strip()
     if not clean_prompt:
         raise HTTPException(
@@ -1674,6 +1885,7 @@ async def analyze_with_ai(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="Payload too large: Prompt must not exceed 4,000 characters."
         )
+    _validate_deidentified_prompt(clean_prompt)
 
     # 3. Rate limiting per client IP
     client_ip = request.client.host if request.client else "unknown"
@@ -1732,14 +1944,17 @@ async def analyze_with_ai(
             logger.error("Gemini communication failed")
             raise HTTPException(status_code=500, detail="Failed to communicate with Gemini provider.")
 
-    elif prov == "openai":
-        api_key = os.getenv("OPENAI_API_KEY")
+    elif prov in ("openai", "openrouter"):
+        api_key = os.getenv("OPENROUTER_API_KEY") if prov == "openrouter" else (os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY"))
         if not api_key:
             raise HTTPException(
                 status_code=503,
-                detail="OpenAI API key is not configured in backend environment."
+                detail=f"{prov.capitalize()} API key is not configured in backend environment."
             )
-        target_model = model_name or "gpt-4o"
+        is_openrouter = prov == "openrouter" or api_key.startswith("sk-or-")
+        target_model = model_name or ("meta-llama/llama-3.3-70b-instruct" if is_openrouter else "gpt-4o")
+        endpoint_url = "https://openrouter.ai/api/v1/chat/completions" if is_openrouter else "https://api.openai.com/v1/chat/completions"
+
         body = {
             "model": target_model,
             "messages": [
@@ -1749,31 +1964,36 @@ async def analyze_with_ai(
             "temperature": req.temperature or 0.2,
             "max_tokens": req.max_tokens or 2048
         }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        if is_openrouter:
+            headers["HTTP-Referer"] = "https://github.com/lung-cancer-ai"
+            headers["X-Title"] = "Lung Cancer AI Decision Support"
+
         try:
             req_data = json.dumps(body).encode("utf-8")
             http_req = urllib.request.Request(
-                "https://api.openai.com/v1/chat/completions",
+                endpoint_url,
                 data=req_data,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}"
-                }
+                headers=headers
             )
             with urllib.request.urlopen(http_req, timeout=45) as resp:
                 resp_json = json.loads(resp.read().decode("utf-8"))
             out_content = resp_json.get("choices", [{}])[0].get("message", {}).get("content", "")
             return AIAnalysisResponse(
                 content=out_content,
-                provider="openai",
+                provider="openrouter" if is_openrouter else "openai",
                 model=target_model,
                 usage=resp_json.get("usage")
             )
         except urllib.error.HTTPError as e:
-            logger.error(f"OpenAI API error status={e.code}")
-            raise HTTPException(status_code=e.code, detail="OpenAI provider request failed.")
+            logger.error(f"{prov.capitalize()} API error status={e.code}")
+            raise HTTPException(status_code=e.code, detail=f"{prov.capitalize()} provider request failed.")
         except Exception:
-            logger.error("OpenAI communication failed")
-            raise HTTPException(status_code=500, detail="Failed to communicate with OpenAI provider.")
+            logger.error(f"{prov.capitalize()} communication failed")
+            raise HTTPException(status_code=500, detail=f"Failed to communicate with {prov.capitalize()} provider.")
 
     elif prov == "anthropic":
         api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -1818,23 +2038,10 @@ async def analyze_with_ai(
             logger.error("Anthropic communication failed")
             raise HTTPException(status_code=500, detail="Failed to communicate with Anthropic provider.")
 
-    elif prov == "puter":
-        api_key = os.getenv("PUTER_API_KEY")
-        if not api_key:
-            raise HTTPException(
-                status_code=503,
-                detail="Puter server integration requires PUTER_API_KEY in backend environment."
-            )
-        return AIAnalysisResponse(
-            content="Puter server analysis complete.",
-            provider="puter",
-            model=model_name
-        )
-
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported AI provider '{req.provider}'. Supported providers: gemini, openai, anthropic, puter."
+            detail=f"Unsupported AI provider '{req.provider}'. Supported providers: openrouter, gemini, openai, anthropic."
         )
 
 

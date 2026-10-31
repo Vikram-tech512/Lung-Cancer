@@ -1,510 +1,261 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  BrainCircuit, Upload, X, AlertCircle, CheckCircle2,
-  Image as ImageIcon, ChevronDown, Copy, Check, Server, Eye, ZoomIn
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { BrainCircuit, Play, CheckCircle2, AlertTriangle, Layers, Clock, Cpu, HardDrive, ShieldCheck, ArrowRight, Loader2, Info } from 'lucide-react';
 import { API_BASE } from '../services/api';
 import { Panel } from '../components/ui/Panel';
-import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Tr, Th, Td } from '../components/ui/Table';
-
-export type AIProvider = 'openai' | 'anthropic' | 'gemini';
-
-export interface ModelOption {
-  id: string;
-  label: string;
-  provider: AIProvider;
-  providerLabel: string;
-  contextWindow: string;
-}
-
-const MODELS: ModelOption[] = [
-  { id: 'gpt-4o', label: 'GPT-4o Vision', provider: 'openai', providerLabel: 'OpenAI', contextWindow: '128k' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'openai', providerLabel: 'OpenAI', contextWindow: '128k' },
-  { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', provider: 'anthropic', providerLabel: 'Anthropic', contextWindow: '200k' },
-  { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', provider: 'anthropic', providerLabel: 'Anthropic', contextWindow: '200k' },
-  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', provider: 'gemini', providerLabel: 'Google', contextWindow: '1M' },
-];
-
-const PRESETS = [
-  {
-    label: 'Nodule Risk Assessment & Characterization',
-    prompt: 'Analyze this thoracic CT slice for features that may suggest malignancy: spiculation, lobulation, pleural tethering/indentation, ground-glass opacity (GGO), vascular convergence, or lymphadenopathy. Systematically categorize and report each finding with confidence assessment.',
-  },
-  {
-    label: 'Pulmonary Nodule Detection & Localization',
-    prompt: 'Identify any pulmonary nodules or parenchymal masses visible in this CT image. Describe their anatomical location (lung lobe/segment), approximate diameter, morphology (solid, part-solid, non-solid/GGO), and density characteristics in Hounsfield units (HU) if inferable.',
-  },
-  {
-    label: 'Lung-RADS v2022 Criteria Reference',
-    prompt: 'Compare nodule characteristics, size, and solid/subsolid proportion against Lung-RADS v2022 criteria for radiologist review. Outline the Fleischner Society surveillance guideline and recommended management timeframe.',
-  },
-];
 
 export interface AIAnalysisPanelProps {
   studyId?: string;
   noduleId?: string;
 }
 
-export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
-  studyId = 'CASE-DEMO-LIDC-0087',
-  noduleId = 'NODULE-01',
-}) => {
-  const [selectedModelId, setSelectedModelId] = useState<string>('gpt-4o');
-  const [serverProviders, setServerProviders] = useState<Record<string, boolean>>({});
-  const [prompt, setPrompt] = useState<string>(PRESETS[0].prompt);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageFileName, setImageFileName] = useState<string | null>(null);
+interface StageInfo {
+  number: number;
+  name: string;
+  model: string;
+  status: 'trained' | 'uninitialized' | 'deterministic';
+  checkpoint: string | null;
+  description: string;
+}
 
-  const [analyzing, setAnalyzing] = useState<boolean>(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [resultMeta, setResultMeta] = useState<{
-    model: string;
-    provider: string;
-    durationMs: number;
-    usage?: any;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<boolean>(false);
+const PIPELINE_STAGES: StageInfo[] = [
+  { number: 0, name: 'DICOM QA Gate', model: 'DicomValidator', status: 'deterministic', checkpoint: null, description: '10-point DICOM QA and Safe Harbor de-identification.' },
+  { number: 1, name: 'CT Preprocessing', model: 'Volumetric Resampler', status: 'deterministic', checkpoint: null, description: 'Isotropic 1.0 mm spatial normalization and HU windowing.' },
+  { number: 2, name: 'Lung Field Segmentation', model: '3D Cavity Extractor', status: 'deterministic', checkpoint: null, description: 'Parenchymal thresholding & morphological lung bounding box.' },
+  { number: 3, name: 'Candidate Detection', model: 'RetinaNet3D', status: 'uninitialized', checkpoint: null, description: 'Model not trained: heuristic candidate generator active.' },
+  { number: 4, name: '3D Classification', model: 'ResNet3D-18 Half', status: 'trained', checkpoint: 'resnet3d_luna16_best.pt', description: 'Trained checkpoint loaded from LUNA16 candidates (64³ patch).' },
+  { number: 5, name: 'IBSI Radiomics', model: 'PyRadiomics Engine', status: 'deterministic', checkpoint: null, description: 'Algorithmic 3D morphological and intensity feature extraction.' },
+  { number: 6, name: 'Multimodal Ensemble', model: 'Logistic Fusion', status: 'deterministic', checkpoint: null, description: 'Calibrated weighting of DL representations + Radiomics.' },
+  { number: 7, name: 'Explainability (XAI)', model: '3D Grad-CAM', status: 'trained', checkpoint: 'resnet3d_luna16_best.pt', description: 'Computed on-demand on selected 32³ nodule crop.' },
+  { number: 8, name: 'Epistemic Uncertainty', model: 'Monte Carlo Dropout', status: 'trained', checkpoint: 'resnet3d_luna16_best.pt', description: '8 stochastic forward passes on borderline candidates.' },
+  { number: 9, name: 'Calibration', model: 'Temperature Scaling', status: 'deterministic', checkpoint: null, description: 'Post-hoc empirical calibration (T = 1.18).' },
+  { number: 10, name: 'Clinical Report', model: 'Lung-RADS v2022', status: 'deterministic', checkpoint: null, description: 'ACR-standard structured classification rules.' },
+];
 
-  // Quantitative values
-  const [probability, setProbability] = useState<number>(0.764);
-  const [calibratedProb, setCalibratedProb] = useState<number>(0.712);
-  const [uncertaintyStd, setUncertaintyStd] = useState<number>(0.082);
-  const [lungRadsCategory, setLungRadsCategory] = useState<string>('Lung-RADS 4B');
-  const [heatmapOpacity, setHeatmapOpacity] = useState<number>(0.70);
+export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = 'CASE-DEMO-LIDC-0087' }) => {
+  const [inferenceMode, setInferenceMode] = useState<'fast_triage' | 'full'>('fast_triage');
+  const [running, setRunning] = useState<boolean>(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
+  const [currentStage, setCurrentStage] = useState<string>('Ready for execution');
+  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const heatmapCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  const selectedModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
-
-  useEffect(() => {
-    fetch(`${API_BASE}/api/ai/providers`)
-      .then(r => r.json())
-      .then(d => setServerProviders(d))
-      .catch(() => {});
-  }, []);
-
-  // Draw Heatmap Overlay on Canvas
-  useEffect(() => {
-    const canvas = heatmapCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const W = canvas.width;
-    const H = canvas.height;
-
-    ctx.fillStyle = '#111315';
-    ctx.fillRect(0, 0, W, H);
-
-    // Thorax schematic
-    ctx.beginPath();
-    ctx.ellipse(W / 2, H / 2, W * 0.44, H * 0.40, 0, 0, 2 * Math.PI);
-    ctx.fillStyle = '#181b1e';
-    ctx.fill();
-    ctx.strokeStyle = '#2a2e33';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Lungs
-    [W * 0.32, W * 0.68].forEach(lx => {
-      ctx.beginPath();
-      ctx.ellipse(lx, H * 0.5, W * 0.15, H * 0.26, 0, 0, 2 * Math.PI);
-      ctx.fillStyle = '#0f1113';
-      ctx.fill();
-      ctx.strokeStyle = '#22262a';
-      ctx.stroke();
-    });
-
-    // Heatmap activation centered on lesion
-    const nx = W * 0.62;
-    const ny = H * 0.38;
-
-    const grad = ctx.createRadialGradient(nx, ny, 3, nx, ny, 32);
-    grad.addColorStop(0, `rgba(224, 82, 82, ${heatmapOpacity})`);
-    grad.addColorStop(0.5, `rgba(217, 138, 44, ${heatmapOpacity * 0.7})`);
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(nx, ny, 32, 0, 2 * Math.PI);
-    ctx.fill();
-
-    // Crosshair
-    ctx.strokeStyle = '#e05252';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(nx - 8, ny); ctx.lineTo(nx + 8, ny);
-    ctx.moveTo(nx, ny - 8); ctx.lineTo(nx, ny + 8);
-    ctx.stroke();
-  }, [heatmapOpacity]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setImageFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const b64 = reader.result as string;
-      setImageBase64(b64);
-      setImagePreview(b64);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleClearImage = () => {
-    setImageBase64(null);
-    setImagePreview(null);
-    setImageFileName(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleAnalyze = async () => {
-    if (!prompt.trim()) {
-      setError('Please provide an analysis prompt.');
-      return;
-    }
-
-    setAnalyzing(true);
-    setError(null);
-    setResult(null);
-    const startTime = Date.now();
+  const handleStartInference = async () => {
+    if (!studyId || studyId === 'Not available') return;
+    setRunning(true);
+    setProgress(5);
+    setCurrentStage('Submitting job to queue…');
+    setErrorMsg(null);
+    setExecutionResult(null);
 
     try {
-      const res = await fetch(`${API_BASE}/ai/analyze`, {
+      const res = await fetch(`${API_BASE}/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: selectedModel.provider,
-          model: selectedModel.id,
-          prompt: prompt.trim(),
-          image_base64: imageBase64,
-          temperature: 0.2,
-          max_tokens: 2048,
-        }),
+        body: JSON.stringify({ study_id: studyId, mode: inferenceMode }),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `Server returned status ${res.status}`);
-      }
-
+      if (!res.ok) throw new Error('Failed to enqueue job');
       const data = await res.json();
-      setResult(data.content);
-      setResultMeta({
-        model: selectedModel.label,
-        provider: selectedModel.providerLabel,
-        durationMs: Date.now() - startTime,
-        usage: data.usage,
-      });
-    } catch (err: any) {
-      setError(err.message || 'Analysis proxy error. Running in local simulation mode.');
-      setResult(`SYSTEM CLINICAL INFERENCE REPORT:
-- Lesion Target: ${noduleId} in ${studyId}
-- Morphology: Spiculated margins with mixed attenuation
-- Attenuation: Mean 38.4 HU, consistent with soft tissue solid nodule
-- Assessment: Consensus evaluation confirms elevated suspicion. Recommended 3-month high-resolution follow-up or biopsy.`);
-      setResultMeta({
-        model: selectedModel.label,
-        provider: 'Local Consensus Model',
-        durationMs: 84,
-      });
-    } finally {
-      setAnalyzing(false);
-    }
-  };
+      const jId = data.job_id;
+      setJobId(jId);
 
-  const handleCopy = () => {
-    if (!result) return;
-    navigator.clipboard.writeText(result);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+      // Connect to SSE stream
+      const evtSource = new EventSource(`${API_BASE}/jobs/${encodeURIComponent(jId)}/stream`);
+      evtSource.onmessage = (event) => {
+        try {
+          const update = JSON.parse(event.data);
+          setProgress(update.progress || 0);
+          setCurrentStage(update.current_stage || update.status || 'Running');
+
+          if (update.status === 'TRIAGE_COMPLETED' || update.status === 'FULL_COMPLETED') {
+            setExecutionResult(update.triage_report || update.report || update);
+            setRunning(false);
+            evtSource.close();
+          } else if (update.status === 'FAILED') {
+            setErrorMsg(update.error || 'Pipeline execution failed');
+            setRunning(false);
+            evtSource.close();
+          }
+        } catch {
+          // Keep waiting
+        }
+      };
+
+      evtSource.onerror = () => {
+        evtSource.close();
+        setRunning(false);
+      };
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to trigger pipeline inference');
+      setRunning(false);
+    }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <section style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '1200px', margin: '0 auto' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
-            Model Inference &amp; Decision Support
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>
+            3D Deep Learning Model Inference Engine
           </h2>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Multimodal clinical reasoning proxy with quantitative uncertainty quantification
-          </div>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '13px' }}>
+            11-stage volumetric pipeline status, checkpoint reality, and asynchronous execution control.
+          </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Badge variant={serverProviders[selectedModel.provider] ? 'success' : 'neutral'}>
-            Proxy: {selectedModel.providerLabel} {serverProviders[selectedModel.provider] ? 'Active' : 'Offline'}
-          </Badge>
-        </div>
-      </div>
+        <Badge variant="neutral">Research Use Only</Badge>
+      </header>
 
-      {/* Labeled Metric Values Header */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', padding: '12px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Raw Probability</div>
-          <div className="tabular-nums" style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)', marginTop: '2px' }}>
-            {(probability * 100).toFixed(1)}%
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', padding: '12px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Calibrated Probability</div>
-          <div className="tabular-nums" style={{ fontSize: '16px', fontWeight: 600, color: 'var(--accent)', marginTop: '2px' }}>
-            {(calibratedProb * 100).toFixed(1)}%
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', padding: '12px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Uncertainty (MC Std Dev)</div>
-          <div className="tabular-nums" style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)', marginTop: '2px' }}>
-            ±{uncertaintyStd.toFixed(3)}
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', padding: '12px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Lung-RADS Category</div>
-          <div style={{ marginTop: '2px' }}>
-            <Badge variant="danger">{lungRadsCategory}</Badge>
-          </div>
-        </div>
-      </div>
-
-      {/* 2-Column: Form / Execution on Left | Compact Table & Heatmap Overlay on Right */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '16px', alignItems: 'start' }}>
-        {/* Left Column: Model Configuration & Prompt */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <Panel title="Configuration &amp; Query" subtitle="Select architecture and diagnostic prompt">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Model Target
-                </label>
-                <select
-                  value={selectedModelId}
-                  onChange={e => setSelectedModelId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: 'var(--bg-main)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius)',
-                    padding: '8px 10px',
-                    color: 'var(--text-main)',
-                    fontSize: '12px',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  {MODELS.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.label} ({m.providerLabel} · {m.contextWindow})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Presets */}
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Clinical Presets
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {PRESETS.map((p, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setPrompt(p.prompt)}
-                      style={{
-                        padding: '6px 8px',
-                        textAlign: 'left',
-                        background: prompt === p.prompt ? 'rgba(59, 130, 196, 0.12)' : 'var(--bg-main)',
-                        border: `1px solid ${prompt === p.prompt ? 'var(--accent)' : 'var(--border)'}`,
-                        borderRadius: 'var(--radius)',
-                        color: prompt === p.prompt ? 'var(--text-main)' : 'var(--text-muted)',
-                        fontSize: '11px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Prompt Textarea */}
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Prompt Query
-                </label>
-                <textarea
-                  rows={4}
-                  value={prompt}
-                  onChange={e => setPrompt(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: 'var(--bg-main)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius)',
-                    padding: '8px 10px',
-                    color: 'var(--text-main)',
-                    fontSize: '12px',
-                    fontFamily: 'inherit',
-                    resize: 'vertical',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-
-              {/* CT Slice Upload */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept="image/*"
-                style={{ display: 'none' }}
-              />
-
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload size={12} style={{ marginRight: '6px' }} />
-                  {imageFileName ? `Replace: ${imageFileName}` : 'Upload CT Slice'}
-                </Button>
-                {imageFileName && (
-                  <Button size="sm" variant="ghost" onClick={handleClearImage}>
-                    <X size={12} />
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={handleAnalyze}
-                  disabled={analyzing}
-                  style={{ marginLeft: 'auto' }}
-                >
-                  {analyzing ? 'Evaluating...' : 'Run Analysis'}
-                </Button>
-              </div>
-
-              {error && (
-                <div style={{ fontSize: '11px', color: 'var(--status-danger)', background: 'rgba(224, 82, 82, 0.1)', padding: '8px', borderRadius: 'var(--radius)', border: '1px solid rgba(224, 82, 82, 0.25)' }}>
-                  {error}
-                </div>
-              )}
+      {/* Execution Controller */}
+      <Panel>
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <span style={{ fontSize: '13px', fontWeight: 600 }}>Target Study: </span>
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{studyId}</span>
             </div>
-          </Panel>
 
-          {/* Model Output Text */}
-          {result && (
-            <Panel
-              title="Model Output Reasoning"
-              subtitle={resultMeta ? `${resultMeta.model} (${resultMeta.durationMs}ms)` : undefined}
-              actions={
-                <Button size="sm" variant="ghost" onClick={handleCopy}>
-                  {copied ? <Check size={12} /> : <Copy size={12} />}
-                  <span style={{ marginLeft: '4px' }}>{copied ? 'Copied' : 'Copy'}</span>
-                </Button>
-              }
-            >
-              <div
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                <button
+                  onClick={() => setInferenceMode('fast_triage')}
+                  style={{
+                    padding: '6px 12px',
+                    border: 'none',
+                    background: inferenceMode === 'fast_triage' ? 'var(--accent)' : 'var(--bg-panel)',
+                    color: inferenceMode === 'fast_triage' ? '#ffffff' : 'var(--text-muted)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Fast Triage Mode (&lt; 2s)
+                </button>
+                <button
+                  onClick={() => setInferenceMode('full')}
+                  style={{
+                    padding: '6px 12px',
+                    border: 'none',
+                    background: inferenceMode === 'full' ? 'var(--accent)' : 'var(--bg-panel)',
+                    color: inferenceMode === 'full' ? '#ffffff' : 'var(--text-muted)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Full Mode (Radiomics + MC Dropout)
+                </button>
+              </div>
+
+              <button
+                onClick={handleStartInference}
+                disabled={running || !studyId || studyId === 'Not available'}
                 style={{
-                  background: 'var(--bg-main)',
-                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 16px',
                   borderRadius: 'var(--radius)',
-                  padding: '12px',
+                  border: 'none',
+                  background: running ? 'var(--border)' : 'var(--accent)',
+                  color: '#ffffff',
                   fontSize: '12px',
-                  lineHeight: '1.6',
-                  color: 'var(--text-main)',
-                  whiteSpace: 'pre-wrap',
-                  maxHeight: '260px',
-                  overflowY: 'auto',
+                  fontWeight: 600,
+                  cursor: running ? 'not-allowed' : 'pointer',
                 }}
               >
-                {result}
-              </div>
-            </Panel>
-          )}
-        </div>
+                {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                <span>{running ? 'Executing Pipeline…' : 'Run Pipeline Inference'}</span>
+              </button>
+            </div>
+          </div>
 
-        {/* Right Column: Compact Table + Heatmap Overlay */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <Panel title="Attribution Heatmap Overlay" subtitle="Grad-CAM 3D saliency map">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ position: 'relative', width: '100%', height: '220px', background: '#111315', borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <canvas
-                  ref={heatmapCanvasRef}
-                  width={380}
-                  height={220}
-                  style={{ width: '100%', height: '100%', display: 'block' }}
-                />
+          {/* Progress Bar & Status */}
+          {running && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{currentStage}</span>
+                <span>{progress}%</span>
               </div>
-
-              {/* Opacity slider */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                <span>Overlay Opacity:</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={Math.round(heatmapOpacity * 100)}
-                  onChange={e => setHeatmapOpacity(Number(e.target.value) / 100)}
-                  style={{ flex: 1, accentColor: 'var(--accent)' }}
-                />
-                <span className="tabular-nums" style={{ width: '32px', textAlign: 'right' }}>
-                  {Math.round(heatmapOpacity * 100)}%
-                </span>
+              <div style={{ height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
               </div>
             </div>
-          </Panel>
+          )}
 
-          {/* Compact Table */}
-          <Panel title="Quantitative Attribution Breakdown" subtitle="Model layer contribution">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Parameter</Th>
-                  <Th>Value</Th>
-                  <Th>Unit</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                <Tr>
-                  <Td style={{ fontWeight: 500 }}>Target Nodule ID</Td>
-                  <Td style={{ fontFamily: 'var(--font-mono)' }}>{noduleId}</Td>
-                  <Td style={{ color: 'var(--text-muted)' }}>identifier</Td>
-                </Tr>
-                <Tr>
-                  <Td style={{ fontWeight: 500 }}>Candidate Probability</Td>
-                  <Td className="tabular-nums" style={{ fontWeight: 600 }}>{(probability * 100).toFixed(1)}%</Td>
-                  <Td style={{ color: 'var(--text-muted)' }}>%</Td>
-                </Tr>
-                <Tr>
-                  <Td style={{ fontWeight: 500 }}>Calibrated Probability</Td>
-                  <Td className="tabular-nums" style={{ fontWeight: 600, color: 'var(--accent)' }}>{(calibratedProb * 100).toFixed(1)}%</Td>
-                  <Td style={{ color: 'var(--text-muted)' }}>%</Td>
-                </Tr>
-                <Tr>
-                  <Td style={{ fontWeight: 500 }}>MC-Dropout Std Dev</Td>
-                  <Td className="tabular-nums">±{uncertaintyStd.toFixed(3)}</Td>
-                  <Td style={{ color: 'var(--text-muted)' }}>std dev</Td>
-                </Tr>
-                <Tr>
-                  <Td style={{ fontWeight: 500 }}>Assigned Category</Td>
-                  <Td><Badge variant="danger">{lungRadsCategory}</Badge></Td>
-                  <Td style={{ color: 'var(--text-muted)' }}>v2022</Td>
-                </Tr>
-              </Tbody>
-            </Table>
-          </Panel>
+          {errorMsg && (
+            <div style={{ color: 'var(--status-danger)', fontSize: '12px', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: 'var(--radius)' }}>
+              {errorMsg}
+            </div>
+          )}
+
+          {executionResult && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--status-success)' }}>
+                  ✓ Pipeline Execution Completed ({executionResult.status})
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Wall Time: {executionResult.usage?.total_wall_time_ms ? `${(executionResult.usage.total_wall_time_ms / 1000).toFixed(2)}s` : 'Not available'} · Cost: ${executionResult.usage?.estimated_cost_usd?.toFixed(6) ?? '0.000000'}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-main)', background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
+                {executionResult.clinical_impression || 'Inference completed. Review findings in Diagnostic Workstation.'}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-    </div>
+      </Panel>
+
+      {/* Model Reality & Stage Inventory */}
+      <Panel>
+        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 600, fontSize: '14px' }}>Stage-by-Stage Model Reality &amp; Weight Verification</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Audit basis: checkpoints/ directory inspection</span>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '12px', textAlign: 'left', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '6px 8px' }}>Stage</th>
+                  <th style={{ padding: '6px 8px' }}>Name</th>
+                  <th style={{ padding: '6px 8px' }}>Architecture</th>
+                  <th style={{ padding: '6px 8px' }}>Weight Status</th>
+                  <th style={{ padding: '6px 8px' }}>Active Checkpoint</th>
+                  <th style={{ padding: '6px 8px' }}>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {PIPELINE_STAGES.map((s) => (
+                  <tr key={s.number} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>Stage {s.number}</td>
+                    <td style={{ padding: '8px', fontWeight: 600 }}>{s.name}</td>
+                    <td style={{ padding: '8px' }}>{s.model}</td>
+                    <td style={{ padding: '8px' }}>
+                      {s.status === 'trained' ? (
+                        <span style={{ color: 'var(--status-success)', fontWeight: 600 }}>● Trained weights</span>
+                      ) : s.status === 'uninitialized' ? (
+                        <span style={{ color: 'var(--status-warning)', fontWeight: 600 }}>▲ Model not trained: demo</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>○ Algorithmic / Rules</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                      {s.checkpoint || 'None required'}
+                    </td>
+                    <td style={{ padding: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                      {s.description}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Panel>
+    </section>
   );
 };

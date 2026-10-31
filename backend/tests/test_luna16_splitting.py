@@ -43,3 +43,20 @@ def test_luna16_split_asserts_patient_and_series_disjointness():
     candidate = _candidate("same-series", 0)
     with pytest.raises(AssertionError, match="appears in"):
         assert_luna16_splits_disjoint([candidate], [], [candidate])
+
+
+def test_repository_defaults_do_not_include_developer_windows_paths():
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    files = [
+        repo_root / "backend" / "core" / "config.py",
+        repo_root / "backend" / "datasets" / "histopathology.py",
+        repo_root / "backend" / "training" / "train_luna16_3d.py",
+        repo_root / "deploy" / "aws-deploy.ps1",
+        repo_root / "deploy" / "deploy-cloudfront.ps1",
+    ]
+    forbidden = ("C:\\Users\\", "C:\\LUNA16_DATA", "AWSCLIV2\\aws.exe")
+    for path in files:
+        source = path.read_text(encoding="utf-8")
+        assert not any(value in source for value in forbidden), str(path)

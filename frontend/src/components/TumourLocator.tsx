@@ -50,59 +50,7 @@ interface PublicationCase {
   bboxLabel: string;
 }
 
-const DEFAULT_CASES: PublicationCase[] = [
-  {
-    id: 'case1',
-    studyId: 'LIDC-IDRI-0001',
-    seriesId: '1.3.6.1.4.1.14519.5.2.1.6279.6001.298806137288633453246975630178',
-    name: 'Case 1 — Right Upper Lobe Solitary Nodule',
-    subheading: 'Study: LIDC-IDRI-0001 · Axial Slice 48 · Lung Window (-600 / 1500 HU)',
-    sliceNumber: 48,
-    noduleType: 'Spiculated Solid Nodule [TCIA Benchmark Reference]',
-    diameterMm: '14.2 mm (Consensus Annotation)',
-    evidenceType: 'REFERENCE_BENCHMARK',
-    evidenceLabel: 'Reference Benchmark (LIDC Consensus)',
-    attributionNote: 'Verified 4-radiologist consensus boundary · Slice 48 focus',
-    imageSrc: '/xai_cases/case1_image.png',
-    labelSrc: '/xai_cases/case1_label.png',
-    heatmapSrc: '/xai_cases/case1_heatmap.png',
-    bboxLabel: 'Consensus Boundary [RUL]',
-  },
-  {
-    id: 'case2',
-    studyId: 'CASE-EVAL-0002',
-    seriesId: 'SERIES-EVAL-HILUM-02',
-    name: 'Case 2 — Central / Right Hilar Mass',
-    subheading: 'Study: CASE-EVAL-0002 · Axial Slice 34 · Mediastinal Window (40 / 400 HU)',
-    sliceNumber: 34,
-    noduleType: 'Central Lobulated Mass [Clinical Evaluation Archive]',
-    diameterMm: '34.6 mm (Histology-Correlated)',
-    evidenceType: 'CLINICAL_EVALUATION',
-    evidenceLabel: 'Clinical Evaluation Series',
-    attributionNote: 'Surgical resection verified · Mediastinal nodal station focus',
-    imageSrc: '/xai_cases/case2_image.png',
-    labelSrc: '/xai_cases/case2_label.png',
-    heatmapSrc: '/xai_cases/case2_heatmap.png',
-    bboxLabel: 'Central Mass [Hilum]',
-  },
-  {
-    id: 'case3',
-    studyId: 'LIDC-IDRI-0078',
-    seriesId: '1.3.6.1.4.1.14519.5.2.1.6279.6001.179049373636402403649495123984',
-    name: 'Case 3 — Left Lower Lobe Subpleural Adenocarcinoma',
-    subheading: 'Study: LIDC-IDRI-0078 · Axial Slice 52 · Thin Reconstruction (1.25 mm)',
-    sliceNumber: 52,
-    noduleType: 'Subpleural Part-Solid Lesion [TCIA Benchmark Reference]',
-    diameterMm: '18.5 mm (Consensus Annotation)',
-    evidenceType: 'REFERENCE_BENCHMARK',
-    evidenceLabel: 'Reference Benchmark (LIDC Consensus)',
-    attributionNote: 'Verified 4-radiologist consensus boundary · Slice 52 focus',
-    imageSrc: '/xai_cases/case3_image.png',
-    labelSrc: '/xai_cases/case3_label.png',
-    heatmapSrc: '/xai_cases/case3_heatmap.png',
-    bboxLabel: 'Adenocarcinoma [LLL]',
-  },
-];
+const DEFAULT_CASES: PublicationCase[] = [];
 
 /**
  * Automatically inspects the image canvas to detect candidate lesion coordinates
@@ -513,7 +461,7 @@ export const TumourLocator: React.FC<Props> = ({
         bboxLabel: hasRealRegion ? (findingLabel ? `${findingLabel} [ROI]` : 'Target Lesion [Detected]') : 'Unlocalized Region',
       };
 
-      setCases([dynamicCase, ...DEFAULT_CASES]);
+      setCases([dynamicCase]);
       setActiveCaseIndex(0);
 
       if (onDynamicRegionUpdate) {
@@ -746,6 +694,23 @@ export const TumourLocator: React.FC<Props> = ({
     ctx.arc(cx, dotY, 4, 0, 2 * Math.PI);
     ctx.fill();
   }, [values, slice]);
+
+  if (cases.length === 0) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        padding: '36px', border: '1px dashed var(--border)', borderRadius: 'var(--radius)',
+        background: 'var(--bg-panel)', textAlign: 'center'
+      }}>
+        <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>
+          No CT Study Loaded for Localization
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '380px' }}>
+          Select a case from the Case Archive or upload a thoracic CT volume to view anatomical nodule localization and activation heatmaps.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

@@ -63,13 +63,13 @@ class DetectionStage:
             import torch
             from backend.models.detection.detector3d.retinanet3d import RetinaNet3D
             ckpt_path = self.checkpoint_dir / "retinanet3d_best.pt"
-            model = RetinaNet3D(num_classes=2, backbone_depth=50)
-            if ckpt_path.exists():
-                state = torch.load(ckpt_path, map_location=self.device)
-                model.load_state_dict(state.get("model_state_dict", state))
-                log.info("detection_model_loaded", checkpoint=str(ckpt_path))
-            else:
+            if not ckpt_path.exists():
                 log.warning("detection_checkpoint_missing", path=str(ckpt_path))
+                return None
+            model = RetinaNet3D(num_classes=2, backbone_depth=50)
+            state = torch.load(ckpt_path, map_location=self.device)
+            model.load_state_dict(state.get("model_state_dict", state))
+            log.info("detection_model_loaded", checkpoint=str(ckpt_path))
             model = model.to(self.device).eval()
             self._model = model
         except Exception as exc:

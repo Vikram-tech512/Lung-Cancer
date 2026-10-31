@@ -1,295 +1,208 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Database, Download, Search, ChevronLeft, ChevronRight, ArrowUpDown, CheckCircle2, AlertCircle } from 'lucide-react';
-import { StudyCase } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Database, ShieldCheck, CheckCircle2, UserCheck, Clock, ArrowRight, Info, AlertTriangle } from 'lucide-react';
 import { API_BASE } from '../services/api';
-import { Table, Column } from '../components/ui/Table';
-import { Button } from '../components/ui/Button';
+import { Panel } from '../components/ui/Panel';
 import { Badge } from '../components/ui/Badge';
 
-interface CaseLogPanelProps {
-  onSelectCase: (studyId: string) => void;
+interface StudyRecord {
+  study_id: string;
+  patient_id?: string;
+  modality?: string;
+  qc_status?: string;
+  status?: string;
+  slice_count?: number;
+  study_date?: string;
+  timestamp?: string;
+  is_demo?: boolean;
 }
 
-export const CaseLogPanel: React.FC<CaseLogPanelProps> = ({ onSelectCase }) => {
-  const [cases, setCases] = useState<StudyCase[]>([]);
+interface ReviewRecord {
+  id?: number;
+  study_id: string;
+  nodule_id: string;
+  user_id: string;
+  action: string;
+  notes?: string;
+  adjusted_diameter_mm?: number;
+  created_at: string;
+}
+
+export const CaseLogPanel: React.FC<{ onSelectCase?: (caseId: string) => void }> = ({ onSelectCase }) => {
+  const [studies, setStudies] = useState<StudyRecord[]>([]);
+  const [reviews, setReviews] = useState<ReviewRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Filtering & Search
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [qcFilter, setQcFilter] = useState<string>('ALL');
-
-  // Sorting
-  const [sortField, setSortField] = useState<keyof StudyCase>('timestamp');
-  const [sortAsc, setSortAsc] = useState<boolean>(false);
-
-  // Pagination
-  const [page, setPage] = useState<number>(1);
-  const pageSize = 10;
+  const [activeTab, setActiveTab] = useState<'studies' | 'reviews'>('studies');
 
   useEffect(() => {
-    setLoading(true);
-    fetch(`${API_BASE}/cases`)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
+    Promise.all([
+      fetch(`${API_BASE}/cases`).then(r => r.ok ? r.json() : { cases: [] }),
+      fetch(`${API_BASE}/study/CASE-DEMO-LIDC-0087/reviews`).then(r => r.ok ? r.json() : { reviews: [] }),
+    ])
+      .then(([casesData, reviewsData]) => {
+        if (casesData && Array.isArray(casesData.cases)) setStudies(casesData.cases);
+        if (reviewsData && Array.isArray(reviewsData.reviews)) setReviews(reviewsData.reviews);
       })
-      .then(data => {
-        setCases(data.cases || []);
-        setError(null);
-      })
-      .catch((err) => {
-        setError(err.message);
-        // Fallback reference cases
-        setCases([
-          {
-            study_id: 'CASE-DEMO-LIDC-0087',
-            patient_id: 'LIDC-IDRI-0087',
-            modality: 'CT',
-            slice_count: 184,
-            qc_status: 'PASS',
-            nodule_count: 1,
-            timestamp: '2026-09-22 12:30:00'
-          },
-          {
-            study_id: 'CASE-DEMO-LIDC-0124',
-            patient_id: 'LIDC-IDRI-0124',
-            modality: 'CT',
-            slice_count: 220,
-            qc_status: 'PASS',
-            nodule_count: 2,
-            timestamp: '2026-09-21 16:45:10'
-          },
-          {
-            study_id: 'CASE-NLST-4402',
-            patient_id: 'NLST-44029',
-            modality: 'CT',
-            slice_count: 196,
-            qc_status: 'PASS',
-            nodule_count: 1,
-            timestamp: '2026-09-20 09:15:22'
-          }
-        ]);
-      })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  // Filtered and Sorted
-  const filteredCases = useMemo(() => {
-    return cases.filter(c => {
-      const q = searchQuery.toLowerCase();
-      const matchSearch = !q || 
-        c.study_id.toLowerCase().includes(q) || 
-        c.patient_id.toLowerCase().includes(q) ||
-        c.modality.toLowerCase().includes(q);
-      const matchQC = qcFilter === 'ALL' || c.qc_status === qcFilter;
-      return matchSearch && matchQC;
-    });
-  }, [cases, searchQuery, qcFilter]);
-
-  const sortedCases = useMemo(() => {
-    return [...filteredCases].sort((a, b) => {
-      const valA = a[sortField];
-      const valB = b[sortField];
-      if (valA === valB) return 0;
-      if (valA === undefined) return 1;
-      if (valB === undefined) return -1;
-      if (valA < valB) return sortAsc ? -1 : 1;
-      return sortAsc ? 1 : -1;
-    });
-  }, [filteredCases, sortField, sortAsc]);
-
-  const totalPages = Math.max(1, Math.ceil(sortedCases.length / pageSize));
-  const paginatedCases = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return sortedCases.slice(start, start + pageSize);
-  }, [sortedCases, page, pageSize]);
-
-  const handleSort = (field: keyof StudyCase) => {
-    if (sortField === field) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortField(field);
-      setSortAsc(true);
-    }
-  };
-
-  const handleExportCSV = () => {
-    if (filteredCases.length === 0) return;
-    const headers = ['Study ID', 'Patient ID', 'Modality', 'Slice Count', 'QC Status', 'Nodule Count', 'Timestamp'];
-    const rows = filteredCases.map(c => [
-      c.study_id,
-      c.patient_id,
-      c.modality,
-      c.slice_count,
-      c.qc_status,
-      c.nodule_count,
-      c.timestamp
-    ]);
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `case_log_export_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const columns: Column<StudyCase>[] = [
-    {
-      header: 'Study ID',
-      accessor: (row) => (
-        <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-color)' }}>
-          {row.study_id}
-        </span>
-      ),
-      width: '25%'
-    },
-    {
-      header: 'Patient ID',
-      accessor: (row) => <span className="mono">{row.patient_id}</span>,
-      width: '20%'
-    },
-    {
-      header: 'Modality',
-      accessor: 'modality',
-      width: '10%'
-    },
-    {
-      header: 'Slices',
-      accessor: (row) => <span className="tabular-nums">{row.slice_count}</span>,
-      align: 'right',
-      width: '10%'
-    },
-    {
-      header: 'QC Status',
-      accessor: (row) => (
-        <Badge variant={row.qc_status === 'PASS' ? 'pass' : 'warning'}>
-          {row.qc_status}
-        </Badge>
-      ),
-      align: 'center',
-      width: '12%'
-    },
-    {
-      header: 'Nodules',
-      accessor: (row) => <span className="tabular-nums">{row.nodule_count}</span>,
-      align: 'right',
-      width: '10%'
-    },
-    {
-      header: 'Study Date',
-      accessor: (row) => <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{row.timestamp}</span>,
-      align: 'right',
-      width: '13%'
-    }
-  ];
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
-      {/* Header controls bar */}
-      <div className="panel" style={{ padding: '10px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Database size={16} color="var(--accent-color)" />
-            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Clinical Case Log & Cohort Archive
-            </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-              ({filteredCases.length} records)
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '8px' }} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-                placeholder="Filter study or patient ID..."
-                style={{ paddingLeft: '28px', width: '220px', height: '28px', fontSize: '12px' }}
-                aria-label="Filter cases"
-              />
-            </div>
-
-            <select
-              value={qcFilter}
-              onChange={e => { setQcFilter(e.target.value); setPage(1); }}
-              style={{ height: '28px', fontSize: '12px' }}
-              aria-label="Filter by QC status"
-            >
-              <option value="ALL">All QC</option>
-              <option value="PASS">Passed QC</option>
-              <option value="WARNING">Review QC</option>
-            </select>
-
-            <Button
-              variant="secondary"
-              onClick={handleExportCSV}
-              disabled={filteredCases.length === 0}
-              icon={<Download size={13} />}
-            >
-              Export CSV
-            </Button>
-          </div>
+    <section style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '1200px', margin: '0 auto' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>
+            Case Audit Log &amp; Regulatory Tracking
+          </h2>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '13px' }}>
+            Forensic relational audit trail: study ingestions, reader evaluations, diameter adjustments, and diagnostic sign-offs.
+          </p>
         </div>
-      </div>
+        <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+          <button
+            onClick={() => setActiveTab('studies')}
+            style={{
+              padding: '6px 14px',
+              border: 'none',
+              background: activeTab === 'studies' ? 'var(--accent)' : 'var(--bg-panel)',
+              color: activeTab === 'studies' ? '#ffffff' : 'var(--text-muted)',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Study Workflow ({studies.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('reviews')}
+            style={{
+              padding: '6px 14px',
+              border: 'none',
+              background: activeTab === 'reviews' ? 'var(--accent)' : 'var(--bg-panel)',
+              color: activeTab === 'reviews' ? '#ffffff' : 'var(--text-muted)',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Clinician Action Log ({reviews.length})
+          </button>
+        </div>
+      </header>
 
-      {/* Main Table Panel */}
-      <div className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+      <Panel>
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {loading ? (
-            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              Loading clinical cases...
-            </div>
+            <div style={{ padding: '20px', textAlign: 'center' }}>Loading case audit log…</div>
+          ) : activeTab === 'studies' ? (
+            studies.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No study workflow records found. Upload a study to create an intake record.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: '12px', textAlign: 'left', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>
+                      <th style={{ padding: '8px' }}>Study ID</th>
+                      <th style={{ padding: '8px' }}>Patient ID</th>
+                      <th style={{ padding: '8px' }}>Slices</th>
+                      <th style={{ padding: '8px' }}>QC Gate</th>
+                      <th style={{ padding: '8px' }}>Review Status</th>
+                      <th style={{ padding: '8px' }}>Timestamp</th>
+                      <th style={{ padding: '8px' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studies.map((item, idx) => (
+                      <tr key={`${item.study_id}-${idx}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                          {item.study_id}
+                          {item.is_demo && (
+                            <span style={{ marginLeft: '6px', color: 'var(--status-warning)', fontSize: '10px', fontWeight: 700 }}>
+                              DEMO
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>{item.patient_id || 'ANON'}</td>
+                        <td style={{ padding: '8px' }}>{item.slice_count ?? 'Not available'}</td>
+                        <td style={{ padding: '8px' }}>
+                          <Badge variant={item.qc_status === 'PASS' ? 'success' : 'warning'}>
+                            {item.qc_status || 'PASS'}
+                          </Badge>
+                        </td>
+                        <td style={{ padding: '8px' }}>{item.status || 'Ready for review'}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                          {item.study_date || item.timestamp || 'Not available'}
+                        </td>
+                        <td style={{ padding: '8px' }}>
+                          <button
+                            onClick={() => onSelectCase?.(item.study_id)}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 'var(--radius)',
+                              border: '1px solid var(--border)',
+                              background: 'var(--bg-hover)',
+                              color: 'var(--accent)',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Open in Viewer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           ) : (
-            <Table
-              columns={columns}
-              data={paginatedCases}
-              keyExtractor={(item) => item.study_id}
-              emptyMessage={error ? `Error: ${error}` : 'No matching studies in local archive.'}
-              onRowClick={(item) => onSelectCase(item.study_id)}
-            />
+            reviews.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No clinician review actions recorded yet. Accept, reject, or adjust findings to generate immutable audit log entries.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: '12px', textAlign: 'left', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>
+                      <th style={{ padding: '8px' }}>Timestamp</th>
+                      <th style={{ padding: '8px' }}>Finding</th>
+                      <th style={{ padding: '8px' }}>Clinician / User</th>
+                      <th style={{ padding: '8px' }}>Action</th>
+                      <th style={{ padding: '8px' }}>Adjusted Diameter</th>
+                      <th style={{ padding: '8px' }}>Clinical Rationale / Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviews.map((rev, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                          {new Date(rev.created_at).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{rev.nodule_id}</td>
+                        <td style={{ padding: '8px' }}>{rev.user_id}</td>
+                        <td style={{ padding: '8px' }}>
+                          <Badge variant={rev.action === 'accept' ? 'success' : rev.action === 'reject' ? 'danger' : 'warning'}>
+                            {rev.action.toUpperCase()}
+                          </Badge>
+                        </td>
+                        <td style={{ padding: '8px' }}>
+                          {rev.adjusted_diameter_mm ? `${rev.adjusted_diameter_mm} mm` : '—'}
+                        </td>
+                        <td style={{ padding: '8px', color: 'var(--text-main)', fontSize: '11px', maxWidth: '300px' }}>
+                          {rev.notes || 'No note recorded'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           )}
         </div>
-
-        {/* Pagination Bar */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 14px',
-          borderTop: '1px solid var(--border-color)',
-          backgroundColor: 'var(--bg-surface)',
-          fontSize: '12px'
-        }}>
-          <span style={{ color: 'var(--text-muted)' }}>
-            Page <strong className="tabular-nums" style={{ color: 'var(--text-primary)' }}>{page}</strong> of <span className="tabular-nums">{totalPages}</span>
-          </span>
-
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <Button
-              variant="secondary"
-              disabled={page <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={14} />
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              aria-label="Next page"
-            >
-              <ChevronRight size={14} />
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+      </Panel>
+    </section>
   );
 };

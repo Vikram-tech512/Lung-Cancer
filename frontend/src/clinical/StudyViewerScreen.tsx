@@ -47,14 +47,14 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
 
   // Study metadata & QA state
   const [studyMeta, setStudyMeta] = useState<any>({
-    patient_id: 'PT-981240-NLST',
-    study_date: '2026-03-12 10:45 UTC',
-    series: 'Thorax LDCT 1.25mm Standard',
+    patient_id: 'Not available',
+    study_date: 'Not available',
+    series: 'Not available',
     modality: 'CT',
-    slice_count: 184,
+    slice_count: 0,
     slice_thickness_mm: 1.25,
     pixel_spacing_mm: 0.703,
-    qa_status: 'PASS',
+    qa_status: 'Not evaluated',
     qa_warnings: [] as string[],
   });
 
@@ -157,22 +157,8 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
           setSelectedFindingId(mapped[0].nodule_id);
           setSliceIndex(Math.round(mapped[0].center_zyx[0]));
         } else {
-          // Default demo finding if empty
-          const defaultFinding: FindingItem = {
-            nodule_id: 'CAND-01',
-            center_zyx: [92, 240, 160],
-            diameter_mm: 11.4,
-            volume_mm3: 775.2,
-            lobe: 'Right Upper Lobe (Apical Segment S1)',
-            nodule_prob: 0.742,
-            uncertainty_tier: 'Moderate',
-            review_status: 'pending',
-            model_version: currentVersion,
-            input_hash: 'sha256:7c1d33ba',
-          };
-          setFindings([defaultFinding]);
-          setSelectedFindingId('CAND-01');
-          setSliceIndex(92);
+          setFindings([]);
+          setSelectedFindingId('');
         }
       })
       .catch(() => {
@@ -188,56 +174,32 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
   // Load genuine CT scan slice
   useEffect(() => {
     let active = true;
-    setImageLoading(true);
-
-    let targetUrl = '/real_samples/LIDC_0001_malignant_nodule.png';
-    if (studyId.includes('0124') || studyId.toLowerCase().includes('benign')) {
-      targetUrl = '/real_samples/LIDC_0002_normal_parenchyma.png';
-    } else if (studyId.includes('0078')) {
-      targetUrl = '/real_samples/LIDC_0078_malignant_adenocarcinoma.png';
+    if (!studyId) {
+      setScanImage(null);
+      setImageLoading(false);
+      return;
     }
 
-    fetch(`${API_BASE}/study/${encodeURIComponent(studyId)}/slice/${sliceIndex}`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (!active) return;
-        const resolvedUrl = data?.image_url || targetUrl;
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          if (!active) return;
-          setScanImage(img);
-          setImageLoading(false);
-        };
-        img.onerror = () => {
-          if (!active) return;
-          const fallback = new Image();
-          fallback.crossOrigin = 'anonymous';
-          fallback.onload = () => {
-            if (!active) return;
-            setScanImage(fallback);
-            setImageLoading(false);
-          };
-          fallback.src = targetUrl;
-        };
-        img.src = resolvedUrl;
-      })
-      .catch(() => {
-        if (!active) return;
-        const fallback = new Image();
-        fallback.crossOrigin = 'anonymous';
-        fallback.onload = () => {
-          if (!active) return;
-          setScanImage(fallback);
-          setImageLoading(false);
-        };
-        fallback.src = targetUrl;
-      });
+    setImageLoading(true);
+    const resolvedUrl = `${API_BASE}/study/${encodeURIComponent(studyId)}/slice/${sliceIndex}/render?plane=${viewingPlane}&window=${windowPreset}`;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (!active) return;
+      setScanImage(img);
+      setImageLoading(false);
+    };
+    img.onerror = () => {
+      if (!active) return;
+      setScanImage(null);
+      setImageLoading(false);
+    };
+    img.src = resolvedUrl;
 
     return () => {
       active = false;
     };
-  }, [studyId, sliceIndex]);
+  }, [studyId, sliceIndex, viewingPlane, windowPreset]);
 
   // Fetch Grad-CAM attribution when enabled
   useEffect(() => {
@@ -498,6 +460,24 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
   const hasHighUncertainty = findings.some(f => f.uncertainty_tier === 'High');
   const hasQaWarning = studyMeta.qa_status === 'WARNING' || studyMeta.qa_status === 'REJECT';
   const shouldDefer = hasHighUncertainty || hasQaWarning;
+
+  if (!studyId || studyId === 'Not available' || studyId === '') {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        height: '400px', border: '1px dashed var(--border-subtle)', borderRadius: '4px',
+        padding: '32px', textAlign: 'center', background: 'var(--bg-surface)'
+      }}>
+        <Info size={32} color="var(--accent)" style={{ marginBottom: '12px', opacity: 0.8 }} />
+        <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>
+          No CT Study Selected
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '380px', lineHeight: 1.5 }}>
+          Select a case from the Case Archive or upload a new DICOM volume to begin multiplanar review.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>

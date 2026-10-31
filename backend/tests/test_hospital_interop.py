@@ -245,6 +245,8 @@ def test_hospital_interop_api_endpoints():
     assert res_gate.json()["deployment_tier"] == "RESEARCH_ONLY"
 
     # Compatibility report for demo case
+    from backend.api.service import _seed_demo_case
+    _seed_demo_case()
     res_comp = client.get("/api/v2/dicom/CASE-DEMO-LIDC-0087/compatibility")
     assert res_comp.status_code == 200
     comp = res_comp.json()

@@ -17,10 +17,9 @@ Strategies
 Writes:
     ctx.set(ENSEMBLE, {
         "strategy":         "WeightedAverage",
-        "malignant_prob":   0.81,
-        "benign_prob":      0.19,
-        "label":            "malignant",
-        "confidence_band":  [0.74, 0.88],
+    "nodule_prob":      "available only from an evaluated model output",
+    "label":            "not assigned",
+    "confidence_band":  None,
         "modality_weights": {"dl": 0.60, "radiomics": 0.30, "clinical": 0.10},
     })
 """
@@ -87,13 +86,12 @@ class EnsembleStage:
     # ------------------------------------------------------------------
     @staticmethod
     def _positive_class_prob(d: Dict) -> Optional[float]:
-        """Helper to read either nodule_prob or malignant_prob."""
+        """Return an available candidate score without inventing a default."""
         if not isinstance(d, dict):
             return None
         if "nodule_prob" in d:
             return float(d["nodule_prob"])
-        value = d.get("malignant_prob")
-        return float(value) if value is not None else None
+        return None
 
     @classmethod
     def _extract_dl_prob(cls, cls_out: Dict) -> Optional[float]:
@@ -101,7 +99,7 @@ class EnsembleStage:
         probs = [
             cls._positive_class_prob(v)
             for k, v in cls_out.items()
-            if isinstance(v, dict) and ("nodule_prob" in v or "malignant_prob" in v)
+            if isinstance(v, dict) and "nodule_prob" in v
         ]
         return float(np.mean(probs)) if probs else None
 
@@ -110,7 +108,7 @@ class EnsembleStage:
         """Retrieve radiomics-derived nodule or malignancy score if present."""
         if not rad_out:
             return None
-        score = rad_out.get("nodule_score") or rad_out.get("malignancy_score") or rad_out.get("xgb_malignant_prob")
+        score = rad_out.get("nodule_score")
         return float(score) if score is not None else None
 
     @staticmethod
@@ -200,8 +198,8 @@ class EnsembleStage:
             return {
                 "strategy": self.strategy,
                 "status": "not_available",
-                "malignant_prob": None,
-                "benign_prob": None,
+                "nodule_prob": None,
+                "non_nodule_prob": None,
                 "confidence_band": None,
                 "calibration_status": "not_available",
                 "message": "No fitted classification or risk model output is available.",
@@ -209,33 +207,40 @@ class EnsembleStage:
 
         with MetricsRegistry.time_inference("MultimodalEnsemble"):
             if self.strategy == "StackedXGBoost":
+                if dl_prob is None:
+                    return {
+                        "strategy": self.strategy,
+                        "status": "not_available",
+                        "nodule_prob": None,
+                        "non_nodule_prob": None,
+                        "confidence_band": None,
+                        "calibration_status": "not_available",
+                    }
                 fused_prob = self._xgb_fusion(dl_prob, rad_out, clinical)
                 weights_used = {"dl": DL_WEIGHT, "radiomics": RADIOMICS_WEIGHT, "clinical": CLINICAL_WEIGHT}
             else:
                 fused_prob, weights_used = self._weighted_average(dl_prob, rad_prob, clin_prob)
 
-        label = "candidate_flagged" if fused_prob > 0.5 else "not_flagged"
-        MetricsRegistry.record_inference("MultimodalEnsemble", label, 0)
+        label = None
 
         result = {
             "strategy":         self.strategy,
             "nodule_prob":      round(fused_prob, 4),
             "non_nodule_prob":  round(1 - fused_prob, 4),
-            "malignant_prob":   round(fused_prob, 4),
-            "benign_prob":      round(1 - fused_prob, 4),
             "label":            label,
+            "probability_type": "uncalibrated nodule-candidate score",
             "confidence_band":  None,
             "calibration_status": "not_available",
             "modality_weights": weights_used,
-            "dl_prob":          round(dl_prob, 4),
+            "dl_prob":          round(dl_prob, 4) if dl_prob is not None else None,
             "radiomics_prob":   round(rad_prob, 4) if rad_prob is not None else None,
             "clinical_prob":    round(clin_prob, 4) if clin_prob is not None else None,
         }
         log.info(
             "ensemble_done",
             case_id=ctx.case_id,
-            label=label,
-            malignant_prob=result["malignant_prob"],
+            status="available",
+            nodule_prob=result["nodule_prob"],
             strategy=self.strategy,
         )
         return result

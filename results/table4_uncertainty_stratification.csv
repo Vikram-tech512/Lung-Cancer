@@ -1,4 +1,10 @@
-Tier,Rule,Sample_Count,Error_Rate,Brier_Score
-Low Uncertainty,sigma < 0.045,4766,0.0319,0.0294
-Moderate Uncertainty,0.045 <= sigma < 0.12,388,0.2706,0.1690
-High Uncertainty,sigma >= 0.12,4,0.2500,0.1689
+coverage_fraction,retained_candidates,retained_positives,missed_nodules_retained,nodules_routed_to_clinician,sensitivity_on_retained,effective_sensitivity,max_sigma_threshold
+1.00,75950,158,56,0,64.6%,64.6%,0.1842
+0.95,72152,154,44,4,67.5%,72.2%,0.0650
+0.90,68355,147,35,11,71.4%,77.8%,0.0461
+0.85,64557,138,28,20,75.4%,82.3%,0.0385
+0.80,60760,127,21,31,79.5%,86.7%,0.0310
+0.75,56962,115,16,43,83.5%,89.9%,0.0245
+0.70,53165,102,12,56,88.2%,92.4%,0.0143
+0.60,45570,81,6,77,93.8%,96.2%,0.0058
+0.50,37975,59,2,99,97.2%,98.7%,0.0002

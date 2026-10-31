@@ -47,30 +47,6 @@ REPORT_OUTPUT_DIR = Path(os.getenv("REPORT_OUTPUT_DIR", "./results/reports"))
 PLATFORM_VERSION  = os.getenv("PLATFORM_VERSION", "2.0.0")
 
 
-# ---------------------------------------------------------------------------
-# Lung-RADS classification helper
-# ---------------------------------------------------------------------------
-def _lung_rads(malignant_prob: float, diameter_mm: Optional[float]) -> tuple[str, str]:
-    """
-    Simplified Lung-RADS 2022 category and recommendation.
-    Not a substitute for a validated clinical decision tool.
-    """
-    diam = diameter_mm or 0.0
-    if diam < 6 or malignant_prob < 0.15:
-        cat, rec = "1", "Continue annual LDCT screening."
-    elif diam < 8 or malignant_prob < 0.35:
-        cat, rec = "2", "Continue annual LDCT screening."
-    elif diam < 15 or malignant_prob < 0.55:
-        cat, rec = "3", "LDCT follow-up in 6 months."
-    elif diam < 20 or malignant_prob < 0.75:
-        cat, rec = "4A", "LDCT follow-up in 3 months or PET-CT."
-    elif malignant_prob < 0.90:
-        cat, rec = "4B", "Tissue sampling recommended."
-    else:
-        cat, rec = "4X", "High suspicion — multidisciplinary team review."
-    return cat, rec
-
-
 class ReportStage:
     """Generates the final structured clinical report from all stage outputs."""
 
@@ -93,7 +69,7 @@ class ReportStage:
             if candidates else None
         )
 
-        mal_prob = ens_out.get("malignant_prob", cls_out.get("consensus_prob", 0.5))
+        model_score = ens_out.get("nodule_prob", cls_out.get("consensus_prob"))
         # Clinical safety: Lung-RADS category must NEVER be auto-assigned by the AI
         lung_rads_cat = None
         recommendation = "For radiologist review. Lung-RADS category to be assigned manually by reviewing radiologist."
@@ -102,12 +78,8 @@ class ReportStage:
         top_radiomics = self._top_radiomics(rad_out)
 
         # Uncertainty summary
-        entropy = unc_out.get("predictive_entropy", unc_out.get("entropy"))
-        uncertainty_level = (
-            "low" if (entropy or 0) < 0.3
-            else "medium" if (entropy or 0) < 0.7
-            else "high"
-        )
+        entropy = unc_out.get("predictive_entropy")
+        uncertainty_level = unc_out.get("confidence_band") or "not_available"
 
         report: Dict[str, Any] = {
             "report_version": "2.0",
@@ -133,15 +105,17 @@ class ReportStage:
                 },
                 "3_classification": {
                     model: {
-                        "nodule_prob": res.get("malignant_prob"),
+                        "unvalidated_model_score": res.get("nodule_prob"),
+                        "calibrated_probability": None,
                         "label": "For radiologist review",
                     }
                     for model, res in cls_out.items()
-                    if isinstance(res, dict) and "malignant_prob" in res
+                    if isinstance(res, dict) and "nodule_prob" in res
                 },
                 "4_ensemble": {
                     "strategy":        ens_out.get("strategy"),
-                    "nodule_prob":     ens_out.get("malignant_prob"),
+                    "unvalidated_model_score": model_score,
+                    "calibrated_probability": ens_out.get("calibrated_probability"),
                     "label":           "For radiologist review",
                     "confidence_band": ens_out.get("confidence_band"),
                 },

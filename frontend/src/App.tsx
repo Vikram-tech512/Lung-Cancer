@@ -39,8 +39,8 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   // Clinical Operations
-  { id: 'workstation',  label: 'Workstation',             category: 'clinical', icon: Activity },
-  { id: 'viewer',       label: '2×2 CT Viewer',           category: 'clinical', icon: Eye },
+  { id: 'viewer',       label: 'Diagnostic Workstation',  category: 'clinical', icon: Eye },
+  { id: 'workstation',  label: 'Case Archive',            category: 'clinical', icon: Activity },
   { id: 'intake',       label: 'DICOM Intake & QC',       category: 'clinical', icon: Upload },
   { id: 'verdict',      label: 'Radiology Report',        category: 'clinical', icon: FileText },
   { id: 'morphometry',  label: '3D Morphometry',          category: 'clinical', icon: Ruler },
@@ -55,13 +55,14 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export const App: React.FC = () => {
-  const [activePanel, setActivePanel] = useState<PanelId>('workstation');
+  const [activePanel, setActivePanel] = useState<PanelId>('viewer');
   const [currentStudyId, setCurrentStudyId] = useState<string>('CASE-DEMO-LIDC-0087');
-  const [currentNoduleId, setCurrentNoduleId] = useState<string>('NODULE-01');
-  const [patientId, setPatientId] = useState<string>('PAT-0087-LIDC');
-  const [studyDate, setStudyDate] = useState<string>('2026-09-22 10:42');
+  const [currentNoduleId, setCurrentNoduleId] = useState<string>('Not available');
+  const [patientId, setPatientId] = useState<string>('Not available');
+  const [studyDate, setStudyDate] = useState<string>('Not available');
+  const [isSyntheticStudy, setIsSyntheticStudy] = useState<boolean>(true);
   const [backendReady, setBackendReady] = useState<boolean | null>(null);
-  const [modelVersion, setModelVersion] = useState<string>('ResNet3D18-Half / Swin3D (v2.0)');
+  const [modelVersion, setModelVersion] = useState<string>('Not available');
 
   // Poll backend health status
   useEffect(() => {
@@ -91,7 +92,9 @@ export const App: React.FC = () => {
 
   const handleStudyLoaded = (studyId: string) => {
     setCurrentStudyId(studyId);
-    setPatientId(studyId.replace('CASE-DEMO-', 'PAT-'));
+    setIsSyntheticStudy(true);
+    setPatientId('Not available');
+    setStudyDate('Not available');
     setActivePanel('viewer');
   };
 
@@ -133,7 +136,7 @@ export const App: React.FC = () => {
         }}
       >
         <span>RESEARCH USE ONLY — Investigational Prototype — Not Cleared for Standalone Diagnostic Decisions</span>
-        {currentStudyId.includes('DEMO') && (
+        {isSyntheticStudy && (
           <span
             style={{
               background: '#3f2d08',
@@ -166,9 +169,9 @@ export const App: React.FC = () => {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, letterSpacing: '0.02em' }}>
-            <span style={{ color: 'var(--accent)', fontWeight: 700 }}>PACS</span>
+            <span style={{ color: 'var(--accent)', fontWeight: 700 }}>RESEARCH CT</span>
             <span style={{ color: 'var(--text-muted)' }}>/</span>
-            <span>Thoracic Oncology Workstation</span>
+            <span>Thoracic CT Workstation</span>
           </div>
 
           <div style={{ height: '14px', width: '1px', background: 'var(--border)' }} />
@@ -188,7 +191,7 @@ export const App: React.FC = () => {
             </div>
             <div>
               <span style={{ color: 'var(--text-muted)' }}>Modality: </span>
-              <span>CT CHEST (1.0 mm reconstructed)</span>
+              <span>Not available</span>
             </div>
           </div>
         </div>
@@ -325,21 +328,22 @@ export const App: React.FC = () => {
         <main
           style={{
             flex: 1,
-            overflowY: 'auto',
-            padding: '16px 20px',
+            overflowY: activePanel === 'viewer' ? 'hidden' : 'auto',
+            padding: activePanel === 'viewer' ? 0 : '16px 20px',
             background: 'var(--bg-main)',
           }}
         >
-          {activePanel === 'workstation' && <WorkstationPanel />}
           {activePanel === 'viewer' && (
             <CTViewerPanel
               studyId={currentStudyId}
               onInspectNodule={handleInspectNodule}
+              onSelectStudy={(id) => setCurrentStudyId(id)}
             />
           )}
+          {activePanel === 'workstation' && <WorkstationPanel onSelectStudy={handleStudyLoaded} />}
           {activePanel === 'intake' && <IntakePanel onStudyLoaded={handleStudyLoaded} />}
-          {activePanel === 'verdict' && <VerdictPanel noduleId={currentNoduleId} />}
-          {activePanel === 'morphometry' && <MorphometryPanel noduleId={currentNoduleId} />}
+          {activePanel === 'verdict' && <VerdictPanel noduleId={currentNoduleId} studyId={currentStudyId} />}
+          {activePanel === 'morphometry' && <MorphometryPanel noduleId={currentNoduleId} studyId={currentStudyId} />}
           {activePanel === 'ai-analysis' && (
             <AIAnalysisPanel
               studyId={currentStudyId}
@@ -350,7 +354,9 @@ export const App: React.FC = () => {
             <CaseLogPanel
               onSelectCase={(caseId) => {
                 setCurrentStudyId(caseId);
-                setPatientId(caseId.replace('CASE-DEMO-', 'PAT-'));
+                setIsSyntheticStudy(true);
+                setPatientId('Not available');
+                setStudyDate('Not available');
                 setActivePanel('viewer');
               }}
             />
@@ -388,7 +394,7 @@ export const App: React.FC = () => {
           </span>
           <span style={{ color: 'var(--border)' }}>|</span>
           <span>
-            Radiomics: <strong style={{ color: 'var(--text-main)' }}>IBSI Standardized (107 features)</strong>
+            Radiomics: <strong style={{ color: 'var(--text-main)' }}>Not available</strong>
           </span>
         </div>
 

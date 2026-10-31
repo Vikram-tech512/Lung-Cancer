@@ -46,6 +46,55 @@
   --radius-xs: 2px;
   --radius-sm: 3px;
   --radius-md: 4px;
+
+  /* Compatibility aliases used by the existing panels */
+  --bg-main: var(--bg-app);
+  --text-main: var(--text-primary);
+  --text-body: var(--text-primary);
+  --border: var(--border-color);
+  --accent: var(--accent-color);
+  --primary: var(--accent-color);
+  --primary-light: #6aa3d2;
+  --accent-cyan: var(--accent-color);
+  --border-accent: var(--border-focus);
+  --accent-amber: var(--status-warning);
+  --accent-red: var(--status-fail);
+  --accent-emerald: var(--status-pass);
+  --status-success: var(--status-pass);
+  --status-danger: var(--status-fail);
+}
+
+.worklist-screen,
+.report-screen {
+  --bg-app: #f5f6f7;
+  --bg-panel: #ffffff;
+  --bg-surface: #eef1f3;
+  --bg-hover: #e7ecef;
+  --bg-active: #dce7ee;
+  --border-color: #c7d0d6;
+  --border-focus: #315f7f;
+  --text-primary: #20252a;
+  --text-secondary: #43515c;
+  --text-muted: #596773;
+  --text-inverse: #ffffff;
+  --accent-color: #315f7f;
+  --accent-subtle: #e3edf3;
+  --status-warning: #8a5700;
+  --status-warning-bg: #fff4d5;
+  --status-warning-border: #d9b76b;
+  --status-fail: #a72525;
+  --status-fail-bg: #fdeaea;
+  --status-fail-border: #dfa5a5;
+  --status-pass: #315f46;
+  --status-pass-bg: #edf5ef;
+  --status-pass-border: #afcbb5;
+  --bg-main: var(--bg-app);
+  --text-main: var(--text-primary);
+  --text-body: var(--text-primary);
+  --border: var(--border-color);
+  --accent: var(--accent-color);
+  color: var(--text-primary);
+  color-scheme: light;
 }
 
 *, *::before, *::after {

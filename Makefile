@@ -64,7 +64,7 @@ typecheck:
 docker-up:
 	$(DOCKER) up --build -d
 	@echo ""
-	@echo "  ✅ Services started:"
+	@echo "  Services started:"
 	@echo "     Frontend    →  http://localhost:3000"
 	@echo "     Backend API →  http://localhost:8000/docs"
 	@echo "     Prometheus  →  http://localhost:9090"
@@ -98,6 +98,9 @@ train-swin3d:
 
 smoke-test:
 	$(PYTHON) -m pytest backend/tests/test_models.py -v
+
+reproduce:
+	$(PYTHON) experiments/run_experiments.py --device cpu --split-mode subset
 
 # ─── Cleanup ─────────────────────────────────────────────────────────────────
 clean:

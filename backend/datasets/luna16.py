@@ -479,36 +479,43 @@ class LUNA16Dataset(Dataset):
         # SimpleITK uses x,y,z; our pipeline uses z,y,x
         return (voxel_xyz[2], voxel_xyz[1], voxel_xyz[0])
 
+    def _get_resampled_volume_and_itk(self, series_uid: str) -> Tuple[np.ndarray, "sitk.Image"]:
+        """Retrieve or compute isotropic 1mm resampled volume and itk image in memory (LRU of 3)."""
+        if not hasattr(self, "_volume_cache"):
+            self._volume_cache = {}
+
+        if series_uid in self._volume_cache:
+            return self._volume_cache[series_uid]
+
+        # Bound memory usage: keep up to 3 scans in memory (~300MB RAM)
+        if len(self._volume_cache) >= 3:
+            oldest_uid = next(iter(self._volume_cache))
+            del self._volume_cache[oldest_uid]
+
+        mhd_path = self._get_mhd_path(series_uid)
+        itk_img = sitk.ReadImage(str(mhd_path))
+        spacing = tuple(reversed(itk_img.GetSpacing()))   # (x,y,z) -> (z,y,x)
+        volume = sitk.GetArrayFromImage(itk_img).astype(np.float32)
+
+        resampled, _ = self.pipeline.resample_volume(volume, spacing, order=1)
+
+        itk_img_rs = sitk.GetImageFromArray(resampled)
+        itk_img_rs.SetSpacing([1.0, 1.0, 1.0])
+        itk_img_rs.SetOrigin(itk_img.GetOrigin())
+        itk_img_rs.SetDirection(itk_img.GetDirection())
+
+        self._volume_cache[series_uid] = (resampled, itk_img_rs)
+        return resampled, itk_img_rs
+
     def _extract_crop(self, cand: LUNA16Candidate) -> np.ndarray:
-        """Load CT, resample to 1mm iso, extract cubic crop. Uses disk cache."""
+        """Load CT, resample to 1mm iso, extract cubic crop. Uses disk and in-memory scan cache."""
         key = self._cache_key(cand)
         cached = self._load_from_cache(key)
         if cached is not None:
             return cached
 
-        mhd_path = self._get_mhd_path(cand.series_uid)
+        resampled, itk_img_rs = self._get_resampled_volume_and_itk(cand.series_uid)
 
-        # Load .mhd volume
-        itk_img = sitk.ReadImage(str(mhd_path))
-        spacing  = tuple(reversed(itk_img.GetSpacing()))   # (x,y,z) → (z,y,x)
-        volume   = sitk.GetArrayFromImage(itk_img).astype(np.float32)  # (D,H,W)
-
-        # Resample to isotropic 1mm
-        resampled, _ = self.pipeline.resample_volume(volume, spacing, order=1)
-
-        # World → voxel in resampled space
-        scale = np.array(spacing) / np.array(self.pipeline.target_spacing)
-        center_zyx = (
-            int(round(cand.coord_z * scale[0])) if hasattr(cand, 'coord_z') else 0,
-            int(round(cand.coord_y * scale[1])),
-            int(round(cand.coord_x * scale[2])),
-        )
-        # Proper world→voxel: use itk TransformPhysicalPointToIndex
-        itk_img_rs = sitk.GetImageFromArray(resampled)
-        itk_img_rs.SetSpacing([1.0, 1.0, 1.0])
-        orig_origin  = itk_img.GetOrigin()
-        itk_img_rs.SetOrigin(orig_origin)
-        itk_img_rs.SetDirection(itk_img.GetDirection())
         vxl = itk_img_rs.TransformPhysicalPointToIndex(
             (float(cand.coord_x), float(cand.coord_y), float(cand.coord_z))
         )
@@ -517,7 +524,7 @@ class LUNA16Dataset(Dataset):
         crop = self.pipeline.extract_nodule_crop(
             resampled, center_zyx, self.crop_size, pad_value=-1000.0
         )
-        crop = self.pipeline.apply_window(crop)   # → [0, 1] float32
+        crop = self.pipeline.apply_window(crop)   # -> [0, 1] float32
 
         self._save_to_cache(key, crop)
         return crop
@@ -630,7 +637,8 @@ def get_luna16_loaders(
         candidates, val_frac=val_frac, test_frac=test_frac, seed=seed,
         split_mode=split_mode,
     )
-    split_hash = luna16_split_hash(train_cands, val_cands, test_cands)
+    val_cands.sort(key=lambda c: c.series_uid)
+    test_cands.sort(key=lambda c: c.series_uid)
     if max_neg_per_pos is not None:
         positives = [c for c in train_cands if c.label == 1]
         negatives = [c for c in train_cands if c.label == 0]
@@ -639,6 +647,11 @@ def get_luna16_loaders(
             negatives = random.Random(seed).sample(negatives, max_negatives)
         train_cands = positives + negatives
         random.Random(seed).shuffle(train_cands)
+
+    # Hash the actual memberships used by the resulting datasets, after
+    # training-only negative subsampling. Validation and test remain natural.
+    assert_luna16_splits_disjoint(train_cands, val_cands, test_cands)
+    split_hash = luna16_split_hash(train_cands, val_cands, test_cands)
 
     cs = (crop_size, crop_size, crop_size)
     cache = Path(cache_dir) if cache_dir else None

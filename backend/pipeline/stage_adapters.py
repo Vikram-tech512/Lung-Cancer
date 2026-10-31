@@ -257,14 +257,19 @@ class RadiomicsExtractor:
             }
 
         spacing = prep.get("spacing", (1.0, 1.0, 1.0))
-        features = pipe.extract_features(vol, mask, spacing=spacing)
-
-        nodule_score = features.get("nodule_score", features.get("malignancy_score"))
+        try:
+            features = pipe.extract(vol, mask, spacing=spacing)
+        except RuntimeError:
+            return {
+                "features": None,
+                "feature_count": None,
+                "nodule_score": None,
+                "status": "not_available",
+            }
         return {
             "features": features,
             "feature_count": len(features),
-            "nodule_score": nodule_score,
-            "malignancy_score": nodule_score,
+            "nodule_score": None,
             "status": "COMPLETED",
         }
 
@@ -299,8 +304,8 @@ class MCDropoutAdapter:
         entropy = float(-(p * math.log2(p) + (1.0 - p) * math.log2(1.0 - p)))
         return {
             "predictive_std": None,
-            "entropy": round(entropy, 4),
-            "predictive_entropy": round(entropy, 4),
+            "single_pass_entropy": round(entropy, 4),
+            "predictive_entropy": None,
             "tier": None,
             "status": "mc_dropout_not_available",
         }

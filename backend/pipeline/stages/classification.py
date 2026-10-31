@@ -9,11 +9,11 @@ Reads:
 
 Writes:
     ctx.set(CLASSIFICATION, {
-        "ResNet3D":       {"malignant_prob": 0.82, "benign_prob": 0.18, "logit": 1.51},
-        "DenseNet3D":     {"malignant_prob": 0.79, ...},
+        "ResNet3D":       {"nodule_prob": 0.82, "non_nodule_prob": 0.18, "logit": 1.51},
+        "DenseNet3D":     {"nodule_prob": 0.79, ...},
         "SwinTransformer3D": {...},
         "consensus_prob": 0.80,
-        "consensus_label": "malignant",
+        "consensus_label": None,
     })
 """
 
@@ -42,7 +42,7 @@ def infer_nodule_crop(
     input_size: tuple = (32, 32, 32),
 ) -> Dict[str, float]:
     """
-    Infers nodule presence / malignancy on a 3D crop volume of size 32x32x32.
+    Estimates the candidate nodule class on a 3D crop volume of size 32x32x32.
     Resizes if crop dimensions differ.
     """
     import torch
@@ -101,10 +101,9 @@ def infer_nodule_crop(
     logit_val = float(logits[0, 1].item())
 
     return {
-        "malignant_prob": p_pos,
-        "benign_prob": p_neg,
         "nodule_prob": p_pos,
         "non_nodule_prob": p_neg,
+        "probability_type": "uncalibrated nodule-candidate score",
         "logit": logit_val,
     }
 
@@ -186,7 +185,7 @@ class ClassificationStage:
             model = SwinTransformer3D(num_classes=2)
             state = torch.load(ckpt, map_location=self.device)
             model.load_state_dict(state.get("model_state_dict", state), strict=False)
-                log.info("loaded_swin3d", checkpoint=str(ckpt))
+            log.info("loaded_swin3d", checkpoint=str(ckpt))
             return model.to(self.device).eval()
         except Exception as exc:
             log.warning("swin3d_load_failed", error=str(exc))
@@ -244,10 +243,9 @@ class ClassificationStage:
         p_pos = float(probs[1])
         p_neg = float(probs[0])
         return {
-            "malignant_prob": p_pos,
-            "benign_prob":    p_neg,
             "nodule_prob":    p_pos,
             "non_nodule_prob": p_neg,
+            "probability_type": "uncalibrated nodule-candidate score",
             "logit":          float(logits[0, 1].item()),
         }
 
@@ -285,24 +283,25 @@ class ClassificationStage:
                 continue
             pred = self._infer_one(model_name, tensor)
             results[model_name] = pred
-            probs_list.append(pred["malignant_prob"])
+            probs_list.append(pred["nodule_prob"])
 
             MetricsRegistry.record_inference(
                 model=model_name,
-                outcome="malignant" if pred["malignant_prob"] > 0.5 else "benign",
+                outcome="positive_candidate" if pred["nodule_prob"] >= pred["non_nodule_prob"] else "negative_candidate",
                 latency_ms=0,
             )
 
         # Consensus
         consensus_prob = float(np.mean(probs_list))
         results["consensus_prob"]  = round(consensus_prob, 4)
-        results["consensus_label"] = "malignant" if consensus_prob > 0.5 else "benign"
+        results["consensus_label"] = None
+        results["probability_type"] = "uncalibrated nodule-candidate score"
         results["status"] = "available"
 
         log.info(
             "classification_done",
             case_id=ctx.case_id,
             consensus_prob=results["consensus_prob"],
-            consensus_label=results["consensus_label"],
+            status=results["status"],
         )
         return results

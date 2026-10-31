@@ -17,9 +17,13 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
   findings,
   onBackToViewer
 }) => {
-  const [radiologistImpression, setRadiologistImpression] = useState<string>(
-    'Focal nodule candidate identified in the Right Upper Lobe. Quantitative dimensions verified via multiplanar CT reconstruction. Recommended for longitudinal surveillance per clinical screening protocol.'
-  );
+  const [radiologistImpression, setRadiologistImpression] = useState<string>(() => {
+    if (findings.length > 0) {
+      const top = findings[0];
+      return `Identified ${findings.length} candidate nodule(s). Dominant finding in ${top.lobe || 'lung field'} measuring ${top.diameter_mm} mm. Recommendation: Correlation with prior studies and clinical history.`;
+    }
+    return 'No suspicious pulmonary nodules detected. Clinician review required before final sign-off.';
+  });
 
   // Dropdown "Lung-RADS category (assigned by radiologist)" is EMPTY by default!
   const [assignedLungRads, setAssignedLungRads] = useState<string>('');
@@ -95,7 +99,7 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
     const exportPayload = {
       report_version: '2.0.0',
       case_id: studyId,
-      patient_id: 'PT-981240-NLST',
+      patient_id: studyId ? `PT-${studyId.replace(/^CASE-/, '')}` : 'Not available',
       status: 'SIGNED_OFF',
       signed_off_by: readerId,
       signed_off_at: signedOffTimestamp,
@@ -134,6 +138,24 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
     if (!isSignedOff) return;
     window.print();
   };
+
+  if (!studyId || studyId === 'Not available' || studyId === '') {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        height: '400px', border: '1px dashed var(--border-subtle)', borderRadius: '4px',
+        padding: '32px', textAlign: 'center', background: 'var(--bg-surface)'
+      }}>
+        <FileText size={32} color="var(--accent)" style={{ marginBottom: '12px', opacity: 0.8 }} />
+        <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>
+          No Report Draft Available
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '380px', lineHeight: 1.5 }}>
+          Select a case or run pipeline inference to generate a structured Lung-RADS report draft.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
