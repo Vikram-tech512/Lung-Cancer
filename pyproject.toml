@@ -28,6 +28,9 @@ Repository = "https://github.com/Vikram-tech512/Lung-Cancer"
 # Tool configurations
 # ---------------------------------------------------------------------------
 
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
 [tool.pytest.ini_options]
 testpaths    = ["backend/tests"]
 asyncio_mode = "auto"
