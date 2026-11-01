@@ -415,7 +415,7 @@ class JobQueueManager:
 
             # Run ResNet-18 Half classifier
             try:
-                res = infer_nodule_crop(crop_32, checkpoint_dir=Path("checkpoints"))
+                res = infer_nodule_crop(crop_32, checkpoint_dir=Path("checkpoints_3d"))
                 raw_prob = float(res["nodule_prob"])
             except Exception as e:
                 # If weights missing or exception, compute deterministic feature score from density/diameter
@@ -637,9 +637,9 @@ class JobQueueManager:
         import torch.nn.functional as F
         from backend.models.classification.resnet3d.model import ResNet3D50, ResNet3D18Half
 
-        ckpt = Path("checkpoints/resnet3d_luna16_best.pt")
+        ckpt = Path("checkpoints_3d/resnet3d_luna16_best.pt")
         if not ckpt.exists():
-            ckpt = Path("checkpoints/resnet3d_best.pt")
+            ckpt = Path("checkpoints_3d/resnet3d_best.pt")
 
         model = None
         if ckpt.exists():

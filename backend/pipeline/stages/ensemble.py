@@ -54,7 +54,7 @@ class EnsembleStage:
 
     def __init__(
         self,
-        checkpoint_dir: Path = Path("checkpoints"),
+        checkpoint_dir: Path = Path("checkpoints_3d"),
         strategy: str = "WeightedAverage",
     ) -> None:
         self.checkpoint_dir = checkpoint_dir

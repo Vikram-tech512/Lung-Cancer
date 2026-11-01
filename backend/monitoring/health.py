@@ -78,7 +78,7 @@ class HealthChecker:
 
     @staticmethod
     async def _check_checkpoints() -> Dict[str, Any]:
-        ckpt_dir = Path(os.getenv("CHECKPOINT_DIR", "./checkpoints"))
+        ckpt_dir = Path(os.getenv("CHECKPOINT_DIR", "./checkpoints_3d"))
         files = list(ckpt_dir.glob("**/*.pt")) + list(ckpt_dir.glob("**/*.pth"))
         return {
             "status": "ok" if files else "warning",

@@ -38,7 +38,7 @@ def infer_nodule_crop(
     crop_volume: np.ndarray,
     model: Optional[Any] = None,
     device: str = "cpu",
-    checkpoint_dir: Path = Path("checkpoints"),
+    checkpoint_dir: Path = Path("checkpoints_3d"),
     input_size: tuple = (32, 32, 32),
 ) -> Dict[str, float]:
     """
@@ -117,7 +117,7 @@ class ClassificationStage:
 
     def __init__(
         self,
-        checkpoint_dir: Path = Path("checkpoints"),
+        checkpoint_dir: Path = Path("checkpoints_3d"),
         device: str = "cpu",
         enabled_models: Optional[list] = None,
         input_size: tuple = (32, 32, 32),

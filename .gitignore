@@ -79,6 +79,7 @@ checkpoints_3d/
 # Results
 results/*
 !results/.gitkeep
+!results/benchmark_continuous_reporting.json
 
 # Experiment Run Manifests
 experiments_log/

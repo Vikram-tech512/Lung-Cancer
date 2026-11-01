@@ -59,7 +59,7 @@ class XAIStage:
             
             # If no active model was stored in context, attempt to instantiate from checkpoint
             if model is None:
-                ckpt_path = Path("checkpoints/resnet3d_luna16_best.pt")
+                ckpt_path = Path("checkpoints_3d/resnet3d_luna16_best.pt")
                 if not ckpt_path.exists():
                     ckpt_path = Path("checkpoints_3d/resnet3d_luna16_best.pt")
                 if ckpt_path.exists():

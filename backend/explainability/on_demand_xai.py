@@ -33,7 +33,7 @@ _WARMED_MODEL: Optional[nn.Module] = None
 _WARMED_TARGET_LAYER: Optional[nn.Module] = None
 
 
-def get_warm_classifier(checkpoint_dir: Path = Path("checkpoints"), device: str = "cpu") -> Tuple[nn.Module, nn.Module]:
+def get_warm_classifier(checkpoint_dir: Path = Path("checkpoints_3d"), device: str = "cpu") -> Tuple[nn.Module, nn.Module]:
     """Retrieves or warms the 3D classifier and its last conv layer."""
     global _WARMED_MODEL, _WARMED_TARGET_LAYER
     if _WARMED_MODEL is not None and _WARMED_TARGET_LAYER is not None:

@@ -37,23 +37,22 @@ export const AboutModelScreen: React.FC = () => {
     };
   }, []);
 
-  const discrimination = metricsData?.discrimination || {
-    auc: 0.6471,
-    auc_95_ci: null,
-    accuracy_raw: 0.15,
-    sensitivity_raw: 1.0,
-    specificity_raw: 0.0
-  };
+  const primaryMetrics = metricsData?.primary_metrics || {};
+  const discrimination = metricsData?.discrimination || {};
+  const aucVal: number | null = primaryMetrics.roc_auc ?? discrimination.auc ?? null;
+  const aucCi: [number, number] | null = primaryMetrics.roc_auc_ci_95 ?? discrimination.auc_95_ci ?? null;
+  const sensVal: number | null = discrimination.sensitivity_raw ?? primaryMetrics.sensitivity_1_0_fp ?? null;
+  const specVal: number | null = discrimination.specificity_raw ?? null;
+  const accVal: number | null = discrimination.accuracy_raw ?? null;
 
-  const calibration = metricsData?.calibration || {
-    optimal_temperature: null,
-    ece_uncalibrated: null,
-    ece_calibrated: null
-  };
+  const calibration = metricsData?.calibration || {};
+  const eceCalVal: number | null = calibration.ece_calibrated ?? null;
+  const eceUncalVal: number | null = calibration.ece_uncalibrated ?? null;
+  const optTempVal: number | null = calibration.optimal_temperature ?? null;
 
   const uncPasses = metricsData?.uncertainty_mc_dropout?.passes || 30;
-  const testCandidateCount = metricsData?.test_candidates || 20;
-  const testPatientCount = metricsData?.cohort_patients || 10;
+  const testCandidateCount = metricsData?.test_candidates_total || metricsData?.test_candidates || 'No data';
+  const testPatientCount = metricsData?.test_scans_total || metricsData?.cohort_patients || 'No data';
   const modelVer = modelInfo?.model_version || metricsData?.model_info?.model_version || 'v1.1.0-exp';
   const modelStage = modelInfo?.stage || modelInfo?.status || 'EXPERIMENTAL';
 
@@ -170,10 +169,10 @@ export const AboutModelScreen: React.FC = () => {
               <span style={{ fontSize: '10px', color: 'var(--accent-amber)', fontWeight: 600 }}>N = {testCandidateCount}</span>
             </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
-              {discrimination.auc.toFixed(3)}
+              {aucVal != null ? aucVal.toFixed(3) : 'No data'}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              95% CI: [{discrimination.auc_95_ci[0].toFixed(3)} - {discrimination.auc_95_ci[1].toFixed(3)}]
+              {aucCi && Array.isArray(aucCi) ? `95% CI: [${aucCi[0].toFixed(3)} - ${aucCi[1].toFixed(3)}]` : '95% CI: No data'}
             </div>
           </div>
 
@@ -183,10 +182,10 @@ export const AboutModelScreen: React.FC = () => {
               <span style={{ fontSize: '10px', color: 'var(--accent-amber)', fontWeight: 600 }}>N = {testCandidateCount}</span>
             </div>
             <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-main)', marginTop: '4px' }}>
-              Sens: {(discrimination.sensitivity_raw * 100).toFixed(0)}% · Spec: {(discrimination.specificity_raw * 100).toFixed(0)}%
+              {sensVal != null ? `Sens: ${(sensVal * 100).toFixed(0)}%` : 'Sens: No data'} · {specVal != null ? `Spec: ${(specVal * 100).toFixed(0)}%` : 'Spec: No data'}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              Raw Accuracy: {(discrimination.accuracy_raw * 100).toFixed(1)}%
+              {accVal != null ? `Raw Accuracy: ${(accVal * 100).toFixed(1)}%` : 'Raw Accuracy: No data'}
             </div>
           </div>
 
@@ -196,10 +195,10 @@ export const AboutModelScreen: React.FC = () => {
               <span style={{ fontSize: '10px', color: 'var(--accent-amber)', fontWeight: 600 }}>N = {testCandidateCount}</span>
             </div>
             <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
-              {calibration.ece_calibrated.toFixed(3)}
+              {eceCalVal != null ? eceCalVal.toFixed(3) : 'No data'}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Uncalibrated: {calibration.ece_uncalibrated.toFixed(3)} (T = {calibration.optimal_temperature.toFixed(2)})
+              {eceUncalVal != null ? `Uncalibrated: ${eceUncalVal.toFixed(3)} (T = ${optTempVal != null ? optTempVal.toFixed(2) : '—'})` : 'Uncalibrated: No data'}
             </div>
           </div>
 

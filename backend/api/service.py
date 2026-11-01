@@ -436,6 +436,24 @@ def _seed_demo_case():
 # _seed_demo_case() is not executed on module load to prevent automatic placeholder injection.
 # Real studies are ingested via /api/v2/dicom/upload or loaded from dataset directories.
 
+
+@app.on_event("startup")
+def verify_checkpoints_on_startup():
+    """Verifies that model weight checkpoints exist in checkpoints_3d at service boot; emits warning if missing."""
+    ckpt_dir = Path(os.getenv("CHECKPOINT_DIR", "checkpoints_3d"))
+    required_weights = [
+        "resnet3d_luna16_best.pt",
+        "resnet3d_detector_finetuned.pt",
+    ]
+    missing = [w for w in required_weights if not (ckpt_dir / w).is_file()]
+    if missing:
+        logger.warning(
+            f"[STARTUP WARNING] Missing required model weights in {ckpt_dir.resolve()}: {missing}. "
+            f"Classifier inference will operate with limited or uncalibrated weights."
+        )
+    else:
+        logger.info(f"[STARTUP] Checkpoints directory verified: {ckpt_dir.resolve()} (all required weights found: {required_weights})")
+
 # --- Endpoints ---
 
 @app.get("/metrics", tags=["Observability"])
@@ -735,83 +753,13 @@ async def upload_dicom_study(file: Optional[UploadFile] = File(None)):
                 "message": "Uploaded MetaImage study successfully ingested, validated, and registered."
             }
 
-        # 2b. Check for volumetric image slice series (PNG, JPEG, TIFF)
+        # 2b. Reject 2D non-calibrated images (PNG/JPEG/TIFF)
         img_files = sorted([f for f in temp_dir.rglob("*") if f.is_file() and f.suffix.lower() in [".png", ".jpg", ".jpeg", ".tif", ".tiff"]])
-        if img_files:
-            try:
-                from PIL import Image
-                slices = []
-                for imp in img_files:
-                    im = Image.open(imp).convert("L")
-                    arr = np.array(im, dtype=np.float32)
-                    hu_arr = (arr / 255.0) * 1400.0 - 1000.0
-                    slices.append(hu_arr)
-                vol_hu = np.stack(slices, axis=0)
-            except Exception as exc:
-                raise HTTPException(status_code=400, detail=f"Failed to read image series: {exc}")
-
-            study_id = f"CASE-{uuid.uuid4().hex[:8].upper()}"
-            persisted_dir = Path("data/uploads") / study_id
-            persisted_dir.mkdir(parents=True, exist_ok=True)
-            for imp in img_files:
-                shutil.copy2(imp, persisted_dir / imp.name)
-
-            STUDY_STORE[study_id] = {
-                "study_id": study_id,
-                "patient_id": f"IMG-{study_id[-6:]}",
-                "modality": "CT",
-                "slice_count": int(vol_hu.shape[0]),
-                "pixel_spacing": [0.703, 0.703],
-                "slice_thickness": 1.25,
-                "qc_status": "PASS",
-                "qc_findings": [f"Image slice series ingested successfully ({vol_hu.shape[0]} slices)"],
-                "compatibility_report": {
-                    "vendor": "Generic Image Series",
-                    "model_name": "Image Slice Importer",
-                    "kernel": "Standard",
-                    "usable_axial_slice_count": int(vol_hu.shape[0]),
-                    "derived_z_spacing_mm": 1.25,
-                    "is_compatible": True,
-                    "quirks": []
-                },
-                "deidentification_audit": {
-                    "stage_status": "PASS",
-                    "phi_tags_cleared_count": 0,
-                    "private_vendor_tags_removed": True,
-                    "reid_key_stored": True,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                },
-                "is_synthetic": False,
-                "image_dir": str(persisted_dir),
-                "nodules": []
-            }
-            from backend.dicom.volume_manager import StudyVolume
-            volume_manager.register_volume(
-                study_id,
-                StudyVolume(
-                    study_id=study_id,
-                    volume_hu=vol_hu,
-                    spacing_mm=(1.25, 0.703, 0.703),
-                    patient_id=STUDY_STORE[study_id]["patient_id"],
-                    is_synthetic=False
-                )
+        if img_files and not mhd_files:
+            raise HTTPException(
+                status_code=400,
+                detail="Uncalibrated 2D image formats (PNG/JPEG/TIFF) lack physical voxel spacing calibration (slice thickness and pixel spacing) and are not accepted for clinical measurement. Please upload calibrated DICOM (.dcm) or MetaImage (.mhd/.raw) thoracic CT series."
             )
-            vol = volume_manager.get_volume(study_id, STUDY_STORE[study_id])
-            STUDY_STORE[study_id]["slice_count"] = vol.total_slices
-            STUDY_STORE[study_id]["volume_hash"] = vol.volume_hash
-            return {
-                "study_id": study_id,
-                "qc": {
-                    "status": "PASS",
-                    "findings": STUDY_STORE[study_id]["qc_findings"],
-                    "slice_count": int(vol_hu.shape[0]),
-                    "slice_thickness": 1.25,
-                    "is_acceptable": True
-                },
-                "compatibility": STUDY_STORE[study_id]["compatibility_report"],
-                "deidentification": STUDY_STORE[study_id]["deidentification_audit"],
-                "message": "Uploaded image series successfully ingested and converted to CT volume."
-            }
 
         # 2c. Collect all candidate DICOM files
         dcm_files = sorted([f for f in temp_dir.rglob("*") if f.is_file()])
@@ -826,7 +774,7 @@ async def upload_dicom_study(file: Optional[UploadFile] = File(None)):
         if not readable_slices:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid archive: No readable DICOM files, MetaImage (.mhd/.raw), or volumetric image series found. Please upload a valid medical imaging archive."
+                detail="Invalid archive: No readable DICOM files or MetaImage (.mhd/.raw) series found. Please upload a valid medical imaging archive."
             )
 
         # 3. Multi-Vendor Compatibility Inspection
@@ -1625,8 +1573,8 @@ def get_xai_visualization(nodule_id: str, method: str, study_id: Optional[str] =
         from backend.explainability.integrated_gradients import IntegratedGradients3D
 
         ckpt_path = (
-            Path("checkpoints/resnet3d_luna16_best.pt")
-            if Path("checkpoints/resnet3d_luna16_best.pt").exists()
+            Path("checkpoints_3d/resnet3d_luna16_best.pt")
+            if Path("checkpoints_3d/resnet3d_luna16_best.pt").exists()
             else Path("checkpoints_3d/resnet3d_luna16_best.pt")
         )
         if ckpt_path.exists() and "volume_data" in target_nodule:

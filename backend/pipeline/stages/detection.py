@@ -53,7 +53,7 @@ class DetectionStage:
 
     def __init__(
         self,
-        checkpoint_dir: Path = Path("checkpoints"),
+        checkpoint_dir: Path = Path("checkpoints_3d"),
         device: str = "cpu",
         score_threshold: float = 0.005,
         max_candidates: int = 800,

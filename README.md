@@ -212,9 +212,9 @@ There is no trained deep learning detector checkpoint for Stage 3 in the reposit
   - **8.0 FP/scan Target**: **Unreachable** (maximum achievable false positive rate is 1.60 FP/scan with current candidate pool; closest operating point is actual 1.60 FP/scan).
 - **Latency & Compute Benchmarks (Measured on Real Full-Size CT Series, 197 Slices via `benchmark_continuous_reporting.py`)**:
   - Stage 3 Heuristic Candidate Detector: 1108.5 ms (cold), 1100.2 ms (warm median).
-  - Fast Triage Pipeline Total: 1255.1 ms (cold, 1.26s), 1303.9 ms (warm median, 1.30s), 1758.0 ms (warm P95, 1.76s) — within the < 15.0s budget (100% SLA compliance).
-  - Full Pipeline Mode Total: 2122.6 ms (2.12s).
-  - Peak Memory RSS: 839.3 MB (Budget: < 10,000 MB).
+  - Fast Triage Pipeline Total: 1085.9 ms (cold, 1.09s), 1263.3 ms (warm median, 1.26s), 1777.0 ms (warm P95, 1.78s) — within the < 15.0s budget (100% SLA compliance).
+  - Full Pipeline Mode Total: 2186.5 ms (2.19s).
+  - Peak Memory RSS: 840.6 MB (Budget: < 10,000 MB).
   - Estimated Compute Cost: $0.000017 per fast triage scan ($0.048/CPU-hr basis).
 
 ## Observability Endpoints
@@ -271,7 +271,7 @@ print(report.to_dict())
 To support clinical radiologist workflows on standard laptop CPUs (16 GB RAM) as well as GPU workstations, the pipeline features two operational inference modes managed by an asynchronous bounded job queue (`JobQueueManager`):
 
 1. **Fast Triage Mode (Default)**:
-   - Optimized for sub-2-second turnaround (measured median ~1.34s warm, 1.51s cold on CPU).
+   - Latency measured via results/benchmark_continuous_reporting.json: 1.26s warm median (1.09s cold, 1.78s warm P95) on CPU, within the 15.0s clinical budget (full mode: 2.19s).
    - Stages executed: DICOM QA, Resampling & Lung Bounding-Box Cropping, Candidate Generation (reduced resolution), Fast 3D Backbone (ResNet3D-18 Half) on top-K candidate crops (32³), Calibrated Probabilities, and Draft Lung-RADS Classification.
    - Eliminates heavy bottlenecks: skips full-volume Swin3D/DenseNet, Radiomics extraction, and pre-computed XAI.
    - Immediate draft report returned to the radiologist without blocking subsequent study uploads.

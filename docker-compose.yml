@@ -30,7 +30,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - PUTER_API_KEY=${PUTER_API_KEY}
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./lung_platform.db}
-      - CHECKPOINT_DIR=/app/checkpoints
+      - CHECKPOINT_DIR=/app/checkpoints_3d
       - MLFLOW_TRACKING_URI=/app/experiments_log
       - XAI_OUTPUT_DIR=/app/results/xai
       - REPORT_OUTPUT_DIR=/app/results/reports
@@ -38,7 +38,7 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./data:/app/data
-      - ./checkpoints:/app/checkpoints
+      - ./checkpoints_3d:/app/checkpoints_3d
       - ./results:/app/results
       - ./logs:/app/logs
     restart: unless-stopped
