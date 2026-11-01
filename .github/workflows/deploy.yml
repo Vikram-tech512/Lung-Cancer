@@ -97,18 +97,69 @@ jobs:
         run: echo "Frontend deployed to S3 and CloudFront invalidated."
 
   # ────────────────────────────────────────────────
-  # JOB 2: Deploy Backend → EC2 t2.micro
+  # JOB 2: Build Backend Image in CI & Push to Registry
+  # ────────────────────────────────────────────────
+  build-and-push-backend:
+    name: 🐳 Build & Push Backend Image (GHCR)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase repository name for Docker tag
+        id: repo_name
+        run: echo "IMAGE_NAME=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/backend" >> $GITHUB_ENV
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: ✅ Backend image pushed
+        run: echo "Backend Docker image successfully built and pushed to GHCR."
+
+  # ────────────────────────────────────────────────
+  # JOB 3: Deploy Backend → EC2 (Pull Pre-built Image & Restart)
   # ────────────────────────────────────────────────
   deploy-backend:
     name: 🐍 Deploy Backend (EC2 t2.micro)
     runs-on: ubuntu-latest
+    needs: [build-and-push-backend]
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      packages: read
     env:
       EC2_HOST: ${{ secrets.EC2_PUBLIC_IP }}
       EC2_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+      GH_USER: ${{ github.actor }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Lowercase repository name for Docker tag
+        run: echo "IMAGE_NAME=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/backend:latest" >> $GITHUB_ENV
 
       - name: Setup SSH key
         run: |
@@ -117,33 +168,39 @@ jobs:
           chmod 600 ~/.ssh/lung_cancer_ec2.pem
           ssh-keyscan -H ${{ env.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to EC2 via SSH
+      - name: Deploy to EC2 via SSH (Pull & Restart)
         run: |
-          ssh -i ~/.ssh/lung_cancer_ec2.pem ec2-user@${{ env.EC2_HOST }} << 'REMOTE_COMMANDS'
+          ssh -i ~/.ssh/lung_cancer_ec2.pem ec2-user@${{ env.EC2_HOST }} bash -c "'
             set -e
-            echo "=== Pulling latest code ==="
+            echo "=== Pulling latest git repository ==="
             cd /app
             git pull origin main
 
-            echo "=== Restarting backend container (no on-instance build on t2.micro) ==="
-            docker compose up -d --no-build --no-deps backend
+            echo "=== Authenticating with GHCR on EC2 ==="
+            echo "${{ env.GH_TOKEN }}" | docker login ghcr.io -u "${{ env.GH_USER }}" --password-stdin
+
+            echo "=== Pulling pre-built backend image from registry ==="
+            docker pull ${{ env.IMAGE_NAME }}
+
+            echo "=== Restarting backend container using pulled image (no on-instance build) ==="
+            BACKEND_IMAGE=${{ env.IMAGE_NAME }} docker compose up -d --no-build --no-deps backend
 
             echo "=== Waiting for health check with retry loop ==="
             SUCCESS=0
-            for i in $(seq 1 12); do
+            for i in \$(seq 1 12); do
               if curl -f -s http://localhost:8000/api/v2/health; then
                 echo "✅ Backend healthy!"
                 SUCCESS=1
                 break
               fi
-              echo "Health check attempt $i failed, retrying in 5s..."
+              echo "Health check attempt \$i failed, retrying in 5s..."
               sleep 5
             done
-            if [ "$SUCCESS" -ne 1 ]; then
+            if [ "\$SUCCESS" -ne 1 ]; then
               echo "❌ Health check failed after 60s"
               exit 1
             fi
-          REMOTE_COMMANDS
+          '"
 
       - name: ✅ Backend deployed
-        run: echo "Backend successfully redeployed on EC2."
+        run: echo "Backend pre-built image pulled and successfully redeployed on EC2."

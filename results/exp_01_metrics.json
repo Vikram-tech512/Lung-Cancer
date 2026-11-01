@@ -355,16 +355,83 @@
     }
   ],
   "localization": {
-    "stage_3_detector": "RetinaNet3D (heuristic fallback when checkpoint absent)",
-    "evaluated_scans": 10,
-    "total_ground_truth_nodules": 34,
-    "evaluated_nodules_count": 0,
-    "detection_sensitivity": 0.0,
-    "median_centroid_error_mm": null,
-    "p90_centroid_error_mm": null,
-    "within_radius_fraction": null,
-    "within_radius_pct": null,
-    "status": "Detection sensitivity is limited; 0/34 ground truth nodules matched by heuristic fallback detector without trained weights."
+    "stage_3_detector": "Heuristic Multi-Scale LoG/DoG (rule-based, no trained DL checkpoint)",
+    "status": "HEURISTIC_RULE_BASED",
+    "dataset_notice": "Only 10 scans available on disk (fewer than the 89 scans of full subset 3 test set); partitioned into 5 validation scans (17 nodules) for parameter tuning and 5 held-out test scans (17 nodules) for unbiased evaluation.",
+    "total_disk_scans": 10,
+    "total_disk_nodules": 1186,
+    "evaluated_test_scans": 5,
+    "total_test_nodules": 17,
+    "recalled_nodules_count": 11,
+    "detection_sensitivity": 0.6471,
+    "candidates_per_scan": 800.0,
+    "median_centroid_error_mm": 1.65,
+    "p90_centroid_error_mm": 5.57,
+    "within_radius_fraction": 0.6471,
+    "within_radius_pct": 64.7,
+    "recall_vs_candidates_per_scan": [
+      {
+        "candidate_budget": 50,
+        "candidates_per_scan": 50.0,
+        "recalled_nodules": 5,
+        "total_nodules": 17,
+        "recall": 0.2941,
+        "median_centroid_error_mm": 1.47,
+        "p90_centroid_error_mm": 3.44
+      },
+      {
+        "candidate_budget": 100,
+        "candidates_per_scan": 100.0,
+        "recalled_nodules": 5,
+        "total_nodules": 17,
+        "recall": 0.2941,
+        "median_centroid_error_mm": 1.47,
+        "p90_centroid_error_mm": 3.44
+      },
+      {
+        "candidate_budget": 200,
+        "candidates_per_scan": 200.0,
+        "recalled_nodules": 5,
+        "total_nodules": 17,
+        "recall": 0.2941,
+        "median_centroid_error_mm": 1.47,
+        "p90_centroid_error_mm": 3.44
+      },
+      {
+        "candidate_budget": 300,
+        "candidates_per_scan": 300.0,
+        "recalled_nodules": 7,
+        "total_nodules": 17,
+        "recall": 0.4118,
+        "median_centroid_error_mm": 1.48,
+        "p90_centroid_error_mm": 3.88
+      },
+      {
+        "candidate_budget": 500,
+        "candidates_per_scan": 500.0,
+        "recalled_nodules": 9,
+        "total_nodules": 17,
+        "recall": 0.5294,
+        "median_centroid_error_mm": 1.48,
+        "p90_centroid_error_mm": 6.27
+      },
+      {
+        "candidate_budget": 800,
+        "candidates_per_scan": 800.0,
+        "recalled_nodules": 11,
+        "total_nodules": 17,
+        "recall": 0.6471,
+        "median_centroid_error_mm": 1.65,
+        "p90_centroid_error_mm": 5.57
+      }
+    ],
+    "validation_tuning_summary": {
+      "validation_scans": 5,
+      "validation_nodules": 17,
+      "val_recall_at_1000_cands_per_scan": 0.8235,
+      "val_median_centroid_error_mm": 1.3,
+      "val_p90_centroid_error_mm": 2.38
+    }
   },
   "robustness": [
     {
@@ -434,6 +501,6 @@
   },
   "timing_sec": {
     "streaming_inference": 789.0,
-    "total_step4_sec": 253.6
+    "total_step4_sec": 198.5
   }
 }

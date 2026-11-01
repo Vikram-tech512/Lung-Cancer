@@ -13,6 +13,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: ${BACKEND_IMAGE:-ghcr.io/vikram-tech512/lung-cancer/backend:latest}
     container_name: lung-cancer-backend
     ports:
       - "8000:8000"

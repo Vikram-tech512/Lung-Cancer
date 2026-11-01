@@ -8,7 +8,7 @@ Coordinates all pipeline stages in a dependency-aware DAG:
   Stage 0 → Data validation & DICOM QA
   Stage 1 → CT Preprocessing  (HU windowing, isotropic resampling)
   Stage 2 → Segmentation       (UNet3D lung + nodule masks)
-  Stage 3 → Detection          (RetinaNet3D candidate generation)
+  Stage 3 → Detection          (Multi-scale LoG/DoG heuristic candidate generation)
   Stage 4 → Classification     (ResNet3D / DenseNet3D / SwinTransformer3D)
   Stage 5 → Radiomics          (PyRadiomics IBSI feature extraction)
   Stage 6 → Ensemble           (DL + Radiomics + Clinical fusion)

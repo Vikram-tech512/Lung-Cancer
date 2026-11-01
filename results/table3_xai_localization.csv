@@ -1,7 +1,9 @@
 evaluation_type,metric_name,metric_value,unit,interpretation
-Stage 3 Detector Localization,Evaluated Positive Nodules (N),0,count,Detections matched against annotations.csv
-Stage 3 Detector Localization,Detection Sensitivity,0.0%,%,Matched 0/34 nodules in test scans
-Stage 3 Detector Localization,Median Centroid Error,N/A,mm,Physical 3D Euclidean distance to annotated nodule center
-Stage 3 Detector Localization,P90 Centroid Error,N/A,mm,90th-percentile localization error bound
-Stage 3 Detector Localization,Fraction within Annotated Radius,N/A,%,Detections strictly within physical lesion boundary
+Stage 3 Detector Localization,Evaluated Test Scans (N),5,scans,"5 held-out test scans (10 total on disk, fewer than 89)"
+Stage 3 Detector Localization,Ground Truth Nodules (N),17,nodules,Annotated nodules in held-out test scans
+Stage 3 Detector Localization,Detection Sensitivity (Recall),64.7%,%,Matched 11/17 nodules within annotated radius at 800 cands/scan
+Stage 3 Detector Localization,Candidates per Scan,800,candidates/scan,Heuristic candidate density operating budget
+Stage 3 Detector Localization,Median Centroid Error,1.65 mm,mm,Physical 3D Euclidean distance to annotated nodule center
+Stage 3 Detector Localization,P90 Centroid Error,5.57 mm,mm,90th-percentile localization error bound
+Stage 3 Detector Localization,Fraction within Annotated Radius,64.7%,%,Detections strictly within physical lesion boundary (r = diam / 2)
 Model Attribution Only,Grad-CAM Attribution Hit Rate,8.9%,%,Attribution peak alignment (MODEL ATTRIBUTION — NOT PHYSICAL BOUNDARY)

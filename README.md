@@ -9,7 +9,7 @@
 
 
 A modular research platform for 3D volumetric thoracic CT candidate analysis.
-Built with 3D Deep Learning (UNet3D, nnUNet, RetinaNet3D, ResNet3D, DenseNet3D, Swin Transformer 3D),
+Built with 3D Deep Learning (UNet3D, nnUNet, ResNet3D, DenseNet3D, Swin Transformer 3D), multi-scale LoG/DoG heuristic candidate detection,
 IBSI-compliant Radiomics, Multimodal Ensemble models, Explainable AI (3D Grad-CAM, Integrated Gradients,
 Attention Rollout), Monte Carlo Dropout uncertainty estimation, and an observability stack
 (Prometheus + Grafana).
@@ -34,7 +34,7 @@ Lung-Cancer/
 │   ├── pipeline/                       # Master ML pipeline layer (11-stage DAG)
 │   │   ├── orchestrator.py             # PipelineOrchestrator DAG coordinating Stages 0–10
 │   │   ├── stages/                     # Individual stage execution runners
-│   │   │   ├── detection.py            # Stage 3: RetinaNet3D candidate generation
+│   │   │   ├── detection.py            # Stage 3: Multi-scale LoG/DoG candidate generation
 │   │   │   ├── classification.py       # Stage 4: ResNet3D / DenseNet3D / Swin3D backbone
 │   │   │   ├── ensemble.py             # Stage 6: Multimodal fusion (DL + Radiomics + Clinical)
 │   │   │   ├── xai.py                  # Stage 7: Grad-CAM, Integrated Gradients, Attention
@@ -59,7 +59,7 @@ Lung-Cancer/
 │   ├── models/                         # 3D deep learning architectures
 │   │   ├── classification/             # ResNet3D-50, ResNet3D-18 Half, DenseNet3D-121, Swin3D
 │   │   ├── segmentation/               # 3D U-Net and nnU-Net wrapper
-│   │   ├── detection/                  # 3D RetinaNet volumetric nodule detector
+│   │   ├── detection/                  # 3D volumetric nodule detector architecture
 │   │   ├── radiomics/                  # PyRadiomics extractor, XGBoost, and Random Forest
 │   │   └── ensemble/                   # Multimodal Ensemble Engine
 │   ├── dicom/                          # DICOM processing & clinical interop
@@ -190,6 +190,24 @@ backend/tests/test_models.py::test_ensemble_forward PASSED
 ```
 
 ---
+
+
+### Stage 3 Candidate Detection Status (Heuristic)
+
+There is no trained deep learning detector checkpoint for Stage 3 in the repository (`checkpoints/retinanet3d_best.pt` does not exist). The platform operates an optimized, rule-based heuristic detector:
+- **Segmentation Constraint**: Restricts candidate search strictly within the segmented lung parenchyma mask.
+- **Multi-Scale Blob Detection**: 3D Difference of Gaussians (DoG) evaluated across scales $\sigma \in [1.2, 2.5, 4.2]\text{ mm}$ on downsampled volumes ($2\times$ subsampling for sub-2s execution latency).
+- **Vessel-Likeness & Morphological Filtering**: Rejects elongated tubular pulmonary blood vessels and pleural sheets using 3D spatial covariance eigenvalues (elongation ratio $\sqrt{\lambda_1 / \lambda_2} > 4.5$ or flatness $> 6.0$).
+- **Size Bounds**: Filters equivalent spherical diameter between $2.5\text{ mm} \le D \le 35.0\text{ mm}$.
+- **Validation Split Benchmark (Tuned on 5 Val Scans, 17 Nodules)**:
+  - 82.4% Recall (14/17 nodules) at 1000 candidates/scan with 1.30 mm median centroid error (P90: 2.38 mm).
+  - 76.5% Recall (13/17 nodules) at 500 candidates/scan with 1.43 mm median centroid error (P90: 2.44 mm).
+  - 58.8% Recall (10/17 nodules) at 300 candidates/scan with 1.53 mm median centroid error (P90: 2.68 mm).
+- **Held-out Test Split Benchmark (5 Test Scans, 17 Nodules)**:
+  - 64.7% Recall (11/17 nodules) at 800 candidates/scan with 1.65 mm median centroid error (P90: 5.57 mm).
+  - 52.9% Recall (9/17 nodules) at 500 candidates/scan with 1.48 mm median centroid error (P90: 6.27 mm).
+  - 41.2% Recall (7/17 nodules) at 300 candidates/scan with 1.48 mm median centroid error (P90: 3.88 mm).
+  - *(Notice: Only 10 LUNA16 scans present on disk across subsets, fewer than the 89 scans of full subset 3 test set; partitioned into 5 validation scans for parameter tuning and 5 held-out test scans for evaluation).*
 
 ## Observability Endpoints
 

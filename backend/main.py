@@ -5,7 +5,7 @@ Unified entry point for the Lung Cancer AI Full-Stack Platform Backend.
 Exposes the FastAPI application with:
 - Clinical DICOM QA validation & intake
 - 3D CT Preprocessing & Hounsfield Unit windowing
-- 3D Nodule Detection (RetinaNet3D) & Localization
+- 3D Nodule Detection (Multi-scale LoG/DoG Heuristic) & Localization
 - 3D Deep Learning Classification (ResNet3D, DenseNet3D, Swin Transformer 3D)
 - Multimodal Ensemble (DL + Radiomics + Clinical)
 - Explainable AI (3D Grad-CAM, Integrated Gradients, Attention Rollout)

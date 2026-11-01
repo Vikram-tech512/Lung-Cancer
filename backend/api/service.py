@@ -899,7 +899,7 @@ def _run_pipeline_background(
             PipelineStage.DICOM_QA: "DICOM Quality Assessment",
             PipelineStage.PREPROCESSING: "3D Resampling & HU Windowing",
             PipelineStage.SEGMENTATION: "Lung & Parenchyma Segmentation (3D U-Net)",
-            PipelineStage.DETECTION: "Nodule Candidate Detection (3D RetinaNet)",
+            PipelineStage.DETECTION: "Nodule Candidate Detection (Multi-scale LoG/DoG Heuristic)",
             PipelineStage.CLASSIFICATION: "Volumetric Classification (3D ResNet-18 Half / 32³ ROI)",
             PipelineStage.RADIOMICS: "Quantitative Radiomics Feature Extraction (IBSI)",
             PipelineStage.ENSEMBLE: "Multimodal Fusion Ensemble",
