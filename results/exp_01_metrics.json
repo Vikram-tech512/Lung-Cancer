@@ -27,15 +27,27 @@
       0.350068509214798,
       0.538362332112332
     ],
-    "cpm_candidate": 0.359
+    "cpm_candidate": 0.359,
+    "checkpoint": "resnet3d_luna16_best.pt"
   },
   "calibration": {
-    "temperature": 1.1692,
-    "raw_ece_15": 0.0057,
-    "calibrated_ece_15": 0.001,
-    "raw_adaptive_ece": 0.0067,
-    "calibrated_adaptive_ece": 0.0012,
-    "brier_score": 0.005
+    "luna16_candidates": {
+      "temperature": 1.1692,
+      "raw_ece_15": 0.0057,
+      "calibrated_ece_15": 0.001,
+      "raw_adaptive_ece": 0.0067,
+      "calibrated_adaptive_ece": 0.0012,
+      "brier_score": 0.005
+    },
+    "detector_candidates": {
+      "roc_auc": 0.8479,
+      "average_precision": 0.3059,
+      "uncalibrated_ece": 0.0092,
+      "calibrated_ece": 0.0064,
+      "calibrated_adaptive_ece": 0.0061,
+      "brier_score": 0.0099,
+      "temperature": 0.6163
+    }
   },
   "froc_sensitivities": {
     "cpm_candidate": 0.35895117540687155,
@@ -71,126 +83,285 @@
     "total_pos_candidates": 158
   },
   "uncertainty_mc_dropout": {
-    "tier_stratification": {
-      "low_uncertainty": {
-        "count": 4766,
-        "error_rate": 0.031892572387746565,
-        "brier": 0.029389381408691406
+    "luna16_candidates": {
+      "tier_stratification": {
+        "low_uncertainty": {
+          "count": 4766,
+          "error_rate": 0.031892572387746565,
+          "brier": 0.029389381408691406
+        },
+        "moderate_uncertainty": {
+          "count": 388,
+          "error_rate": 0.27061855670103097,
+          "brier": 0.1689973771572113
+        },
+        "high_uncertainty": {
+          "count": 4,
+          "error_rate": 0.25,
+          "brier": 0.1688913106918335
+        },
+        "thresholds": {
+          "tau_low": 0.045,
+          "tau_high": 0.12
+        },
+        "clinical_validation_status": "UNVALIDATED FOR CLINICAL USE - RESEARCH PROTOTYPE ONLY"
       },
-      "moderate_uncertainty": {
-        "count": 388,
-        "error_rate": 0.27061855670103097,
-        "brier": 0.1689973771572113
-      },
-      "high_uncertainty": {
-        "count": 4,
-        "error_rate": 0.25,
-        "brier": 0.1688913106918335
-      },
-      "thresholds": {
-        "tau_low": 0.045,
-        "tau_high": 0.12
-      },
-      "clinical_validation_status": "UNVALIDATED FOR CLINICAL USE - RESEARCH PROTOTYPE ONLY"
+      "risk_coverage_curve": [
+        {
+          "coverage": 1.0,
+          "retained_candidates": 75950,
+          "retained_positives": 158,
+          "missed_nodules_retained": 56,
+          "nodules_routed_to_clinician": 0,
+          "sensitivity_on_retained": 64.6,
+          "effective_sensitivity": 64.6,
+          "max_sigma_threshold": 0.1842
+        },
+        {
+          "coverage": 0.95,
+          "retained_candidates": 72152,
+          "retained_positives": 154,
+          "missed_nodules_retained": 44,
+          "nodules_routed_to_clinician": 4,
+          "sensitivity_on_retained": 67.5,
+          "effective_sensitivity": 72.2,
+          "max_sigma_threshold": 0.065
+        },
+        {
+          "coverage": 0.9,
+          "retained_candidates": 68355,
+          "retained_positives": 147,
+          "missed_nodules_retained": 35,
+          "nodules_routed_to_clinician": 11,
+          "sensitivity_on_retained": 71.4,
+          "effective_sensitivity": 77.8,
+          "max_sigma_threshold": 0.0461
+        },
+        {
+          "coverage": 0.85,
+          "retained_candidates": 64557,
+          "retained_positives": 138,
+          "missed_nodules_retained": 28,
+          "nodules_routed_to_clinician": 20,
+          "sensitivity_on_retained": 75.4,
+          "effective_sensitivity": 82.3,
+          "max_sigma_threshold": 0.0385
+        },
+        {
+          "coverage": 0.8,
+          "retained_candidates": 60760,
+          "retained_positives": 127,
+          "missed_nodules_retained": 21,
+          "nodules_routed_to_clinician": 31,
+          "sensitivity_on_retained": 79.5,
+          "effective_sensitivity": 86.7,
+          "max_sigma_threshold": 0.031
+        },
+        {
+          "coverage": 0.75,
+          "retained_candidates": 56962,
+          "retained_positives": 115,
+          "missed_nodules_retained": 16,
+          "nodules_routed_to_clinician": 43,
+          "sensitivity_on_retained": 83.5,
+          "effective_sensitivity": 89.9,
+          "max_sigma_threshold": 0.0245
+        },
+        {
+          "coverage": 0.7,
+          "retained_candidates": 53165,
+          "retained_positives": 102,
+          "missed_nodules_retained": 12,
+          "nodules_routed_to_clinician": 56,
+          "sensitivity_on_retained": 88.2,
+          "effective_sensitivity": 92.4,
+          "max_sigma_threshold": 0.0143
+        },
+        {
+          "coverage": 0.6,
+          "retained_candidates": 45570,
+          "retained_positives": 81,
+          "missed_nodules_retained": 6,
+          "nodules_routed_to_clinician": 77,
+          "sensitivity_on_retained": 93.8,
+          "effective_sensitivity": 96.2,
+          "max_sigma_threshold": 0.0058
+        },
+        {
+          "coverage": 0.5,
+          "retained_candidates": 37975,
+          "retained_positives": 59,
+          "missed_nodules_retained": 2,
+          "nodules_routed_to_clinician": 99,
+          "sensitivity_on_retained": 97.2,
+          "effective_sensitivity": 98.7,
+          "max_sigma_threshold": 0.0002
+        }
+      ],
+      "mean_sigma_positives": 0.015233424492180347,
+      "mean_sigma_negatives": 0.014142707921564579,
+      "total_evaluated": 5158,
+      "elapsed_sec": 73.83766412734985
     },
-    "risk_coverage_curve": [
-      {
-        "coverage": 1.0,
-        "retained_candidates": 75950,
-        "retained_positives": 158,
-        "missed_nodules_retained": 56,
-        "nodules_routed_to_clinician": 0,
-        "sensitivity_on_retained": 64.6,
-        "effective_sensitivity": 64.6,
-        "max_sigma_threshold": 0.1842
-      },
-      {
-        "coverage": 0.95,
-        "retained_candidates": 72152,
-        "retained_positives": 154,
-        "missed_nodules_retained": 44,
-        "nodules_routed_to_clinician": 4,
-        "sensitivity_on_retained": 67.5,
-        "effective_sensitivity": 72.2,
-        "max_sigma_threshold": 0.065
-      },
-      {
-        "coverage": 0.9,
-        "retained_candidates": 68355,
-        "retained_positives": 147,
-        "missed_nodules_retained": 35,
-        "nodules_routed_to_clinician": 11,
-        "sensitivity_on_retained": 71.4,
-        "effective_sensitivity": 77.8,
-        "max_sigma_threshold": 0.0461
-      },
-      {
-        "coverage": 0.85,
-        "retained_candidates": 64557,
-        "retained_positives": 138,
-        "missed_nodules_retained": 28,
-        "nodules_routed_to_clinician": 20,
-        "sensitivity_on_retained": 75.4,
-        "effective_sensitivity": 82.3,
-        "max_sigma_threshold": 0.0385
-      },
-      {
-        "coverage": 0.8,
-        "retained_candidates": 60760,
-        "retained_positives": 127,
-        "missed_nodules_retained": 21,
-        "nodules_routed_to_clinician": 31,
-        "sensitivity_on_retained": 79.5,
-        "effective_sensitivity": 86.7,
-        "max_sigma_threshold": 0.031
-      },
-      {
-        "coverage": 0.75,
-        "retained_candidates": 56962,
-        "retained_positives": 115,
-        "missed_nodules_retained": 16,
-        "nodules_routed_to_clinician": 43,
-        "sensitivity_on_retained": 83.5,
-        "effective_sensitivity": 89.9,
-        "max_sigma_threshold": 0.0245
-      },
-      {
-        "coverage": 0.7,
-        "retained_candidates": 53165,
-        "retained_positives": 102,
-        "missed_nodules_retained": 12,
-        "nodules_routed_to_clinician": 56,
-        "sensitivity_on_retained": 88.2,
-        "effective_sensitivity": 92.4,
-        "max_sigma_threshold": 0.0143
-      },
-      {
-        "coverage": 0.6,
-        "retained_candidates": 45570,
-        "retained_positives": 81,
-        "missed_nodules_retained": 6,
-        "nodules_routed_to_clinician": 77,
-        "sensitivity_on_retained": 93.8,
-        "effective_sensitivity": 96.2,
-        "max_sigma_threshold": 0.0058
-      },
-      {
-        "coverage": 0.5,
-        "retained_candidates": 37975,
-        "retained_positives": 59,
-        "missed_nodules_retained": 2,
-        "nodules_routed_to_clinician": 99,
-        "sensitivity_on_retained": 97.2,
-        "effective_sensitivity": 98.7,
-        "max_sigma_threshold": 0.0002
+    "detector_candidates": {
+      "method": "MC_Dropout_T30",
+      "mean_sigma": 0.0294,
+      "max_sigma": 0.2415,
+      "min_sigma": 0.0001,
+      "tier_counts": {
+        "low": 3254,
+        "moderate": 686,
+        "high": 60
       }
-    ],
-    "mean_sigma_positives": 0.015233424492180347,
-    "mean_sigma_negatives": 0.014142707921564579,
-    "total_evaluated": 5158,
-    "elapsed_sec": 73.83766412734985
+    }
   },
   "risk_coverage": [
+    {
+      "coverage": 1.0,
+      "coverage_pct": 100.0,
+      "retained_candidates": 4000,
+      "retained_positives": 16,
+      "missed_nodules_auto_handled": 10,
+      "nodules_routed_to_human": 0,
+      "share_nodules_routed_pct": 0.0,
+      "candidates_routed_to_human": 0,
+      "share_candidates_routed_pct": 0.0,
+      "candidates_routed_per_scan": 0.0,
+      "sensitivity_on_retained": 37.5,
+      "effective_sensitivity": 37.5,
+      "max_sigma_threshold": 0.2415,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    },
+    {
+      "coverage": 0.95,
+      "coverage_pct": 95.0,
+      "retained_candidates": 3800,
+      "retained_positives": 13,
+      "missed_nodules_auto_handled": 7,
+      "nodules_routed_to_human": 3,
+      "share_nodules_routed_pct": 18.8,
+      "candidates_routed_to_human": 200,
+      "share_candidates_routed_pct": 5.0,
+      "candidates_routed_per_scan": 40.0,
+      "sensitivity_on_retained": 46.2,
+      "effective_sensitivity": 56.2,
+      "max_sigma_threshold": 0.0831,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    },
+    {
+      "coverage": 0.9,
+      "coverage_pct": 90.0,
+      "retained_candidates": 3600,
+      "retained_positives": 11,
+      "missed_nodules_auto_handled": 5,
+      "nodules_routed_to_human": 5,
+      "share_nodules_routed_pct": 31.2,
+      "candidates_routed_to_human": 400,
+      "share_candidates_routed_pct": 10.0,
+      "candidates_routed_per_scan": 80.0,
+      "sensitivity_on_retained": 54.5,
+      "effective_sensitivity": 68.8,
+      "max_sigma_threshold": 0.0658,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    },
+    {
+      "coverage": 0.85,
+      "coverage_pct": 85.0,
+      "retained_candidates": 3400,
+      "retained_positives": 9,
+      "missed_nodules_auto_handled": 3,
+      "nodules_routed_to_human": 7,
+      "share_nodules_routed_pct": 43.8,
+      "candidates_routed_to_human": 600,
+      "share_candidates_routed_pct": 15.0,
+      "candidates_routed_per_scan": 120.0,
+      "sensitivity_on_retained": 66.7,
+      "effective_sensitivity": 81.2,
+      "max_sigma_threshold": 0.0551,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    },
+    {
+      "coverage": 0.8,
+      "coverage_pct": 80.0,
+      "retained_candidates": 3200,
+      "retained_positives": 9,
+      "missed_nodules_auto_handled": 3,
+      "nodules_routed_to_human": 7,
+      "share_nodules_routed_pct": 43.8,
+      "candidates_routed_to_human": 800,
+      "share_candidates_routed_pct": 20.0,
+      "candidates_routed_per_scan": 160.0,
+      "sensitivity_on_retained": 66.7,
+      "effective_sensitivity": 81.2,
+      "max_sigma_threshold": 0.048,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    },
+    {
+      "coverage": 0.75,
+      "coverage_pct": 75.0,
+      "retained_candidates": 3000,
+      "retained_positives": 9,
+      "missed_nodules_auto_handled": 3,
+      "nodules_routed_to_human": 7,
+      "share_nodules_routed_pct": 43.8,
+      "candidates_routed_to_human": 1000,
+      "share_candidates_routed_pct": 25.0,
+      "candidates_routed_per_scan": 200.0,
+      "sensitivity_on_retained": 66.7,
+      "effective_sensitivity": 81.2,
+      "max_sigma_threshold": 0.0406,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    },
+    {
+      "coverage": 0.7,
+      "coverage_pct": 70.0,
+      "retained_candidates": 2800,
+      "retained_positives": 9,
+      "missed_nodules_auto_handled": 3,
+      "nodules_routed_to_human": 7,
+      "share_nodules_routed_pct": 43.8,
+      "candidates_routed_to_human": 1200,
+      "share_candidates_routed_pct": 30.0,
+      "candidates_routed_per_scan": 240.0,
+      "sensitivity_on_retained": 66.7,
+      "effective_sensitivity": 81.2,
+      "max_sigma_threshold": 0.0355,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    },
+    {
+      "coverage": 0.6,
+      "coverage_pct": 60.0,
+      "retained_candidates": 2400,
+      "retained_positives": 9,
+      "missed_nodules_auto_handled": 3,
+      "nodules_routed_to_human": 7,
+      "share_nodules_routed_pct": 43.8,
+      "candidates_routed_to_human": 1600,
+      "share_candidates_routed_pct": 40.0,
+      "candidates_routed_per_scan": 320.0,
+      "sensitivity_on_retained": 66.7,
+      "effective_sensitivity": 81.2,
+      "max_sigma_threshold": 0.027,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    },
+    {
+      "coverage": 0.5,
+      "coverage_pct": 50.0,
+      "retained_candidates": 2000,
+      "retained_positives": 9,
+      "missed_nodules_auto_handled": 3,
+      "nodules_routed_to_human": 7,
+      "share_nodules_routed_pct": 43.8,
+      "candidates_routed_to_human": 2000,
+      "share_candidates_routed_pct": 50.0,
+      "candidates_routed_per_scan": 400.0,
+      "sensitivity_on_retained": 66.7,
+      "effective_sensitivity": 81.2,
+      "max_sigma_threshold": 0.021,
+      "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+    }
+  ],
+  "luna16_risk_coverage": [
     {
       "coverage": 1.0,
       "coverage_pct": 100.0,
@@ -355,9 +526,9 @@
     }
   ],
   "localization": {
-    "stage_3_detector": "Heuristic Multi-Scale LoG/DoG (rule-based, preliminary; no trained DL checkpoint)",
+    "stage_3_detector": "Heuristic Multi-Scale LoG/DoG (rule-based, preliminary; fine-tuned classifier)",
     "status": "PRELIMINARY_HEURISTIC",
-    "dataset_notice": "Only 10 scans available on disk (fewer than the 89 scans of full subset 3 test set); partitioned into 5 validation scans (17 nodules) for parameter tuning and 5 held-out test scans (17 nodules) for preliminary unbiased evaluation.",
+    "dataset_notice": "Only 10 scans available on disk (fewer than the 89 scans of full subset 3 test set); partitioned into 5 validation scans (17 nodules) for candidate mining & fine-tuning and 5 held-out test scans (17 nodules) for preliminary unbiased evaluation.",
     "total_disk_scans": 10,
     "total_disk_nodules": 1186,
     "evaluated_test_scans": 5,
@@ -468,35 +639,8 @@
     "end_to_end_froc": {
       "1.0": {
         "fp_per_scan_target": 1.0,
-        "actual_fp_per_scan": 0.0,
-        "recalled_nodules": 1,
-        "total_nodules": 17,
-        "evaluated_test_scans": 5,
-        "sensitivity": 0.0588,
-        "wilson_95_ci": [
-          0.0105,
-          0.2698
-        ],
-        "probability_threshold": 1.0,
-        "status": "PRELIMINARY"
-      },
-      "2.0": {
-        "fp_per_scan_target": 2.0,
-        "actual_fp_per_scan": 1.2,
-        "recalled_nodules": 2,
-        "total_nodules": 17,
-        "evaluated_test_scans": 5,
-        "sensitivity": 0.1176,
-        "wilson_95_ci": [
-          0.0329,
-          0.3434
-        ],
-        "probability_threshold": 1.0,
-        "status": "PRELIMINARY"
-      },
-      "4.0": {
-        "fp_per_scan_target": 4.0,
-        "actual_fp_per_scan": 2.2,
+        "actual_fp_per_scan": 0.4,
+        "is_reachable": true,
         "recalled_nodules": 4,
         "total_nodules": 17,
         "evaluated_test_scans": 5,
@@ -505,12 +649,14 @@
           0.0956,
           0.4726
         ],
-        "probability_threshold": 0.9999,
+        "probability_threshold": 0.9982,
+        "reachability_note": "Achieved at actual 0.40 FP/scan",
         "status": "PRELIMINARY"
       },
-      "8.0": {
-        "fp_per_scan_target": 8.0,
-        "actual_fp_per_scan": 4.4,
+      "2.0": {
+        "fp_per_scan_target": 2.0,
+        "actual_fp_per_scan": 1.6,
+        "is_reachable": true,
         "recalled_nodules": 5,
         "total_nodules": 17,
         "evaluated_test_scans": 5,
@@ -519,10 +665,212 @@
           0.1328,
           0.5313
         ],
-        "probability_threshold": 0.9996,
+        "probability_threshold": 0.9849,
+        "reachability_note": "Achieved at actual 1.60 FP/scan",
+        "status": "PRELIMINARY"
+      },
+      "4.0": {
+        "fp_per_scan_target": 4.0,
+        "actual_fp_per_scan": 1.6,
+        "is_reachable": true,
+        "recalled_nodules": 5,
+        "total_nodules": 17,
+        "evaluated_test_scans": 5,
+        "sensitivity": 0.2941,
+        "wilson_95_ci": [
+          0.1328,
+          0.5313
+        ],
+        "probability_threshold": 0.9849,
+        "reachability_note": "Achieved at actual 1.60 FP/scan",
+        "status": "PRELIMINARY"
+      },
+      "8.0": {
+        "fp_per_scan_target": 8.0,
+        "actual_fp_per_scan": 1.6,
+        "is_reachable": true,
+        "recalled_nodules": 5,
+        "total_nodules": 17,
+        "evaluated_test_scans": 5,
+        "sensitivity": 0.2941,
+        "wilson_95_ci": [
+          0.1328,
+          0.5313
+        ],
+        "probability_threshold": 0.9849,
+        "reachability_note": "Achieved at actual 1.60 FP/scan",
         "status": "PRELIMINARY"
       }
-    }
+    },
+    "max_achievable_fp_per_scan": 796.8,
+    "classifier_test_metrics": {
+      "roc_auc": 0.8479,
+      "average_precision": 0.3059,
+      "uncalibrated_ece": 0.0092,
+      "calibrated_ece": 0.0064,
+      "calibrated_adaptive_ece": 0.0061,
+      "brier_score": 0.0099,
+      "temperature": 0.6163,
+      "checkpoint": "resnet3d_detector_finetuned.pt"
+    },
+    "uncertainty_mc_dropout": {
+      "method": "MC_Dropout_T30",
+      "mean_sigma": 0.0294,
+      "max_sigma": 0.2415,
+      "min_sigma": 0.0001,
+      "tier_counts": {
+        "low": 3254,
+        "moderate": 686,
+        "high": 60
+      }
+    },
+    "risk_coverage": [
+      {
+        "coverage": 1.0,
+        "coverage_pct": 100.0,
+        "retained_candidates": 4000,
+        "retained_positives": 16,
+        "missed_nodules_auto_handled": 10,
+        "nodules_routed_to_human": 0,
+        "share_nodules_routed_pct": 0.0,
+        "candidates_routed_to_human": 0,
+        "share_candidates_routed_pct": 0.0,
+        "candidates_routed_per_scan": 0.0,
+        "sensitivity_on_retained": 37.5,
+        "effective_sensitivity": 37.5,
+        "max_sigma_threshold": 0.2415,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      },
+      {
+        "coverage": 0.95,
+        "coverage_pct": 95.0,
+        "retained_candidates": 3800,
+        "retained_positives": 13,
+        "missed_nodules_auto_handled": 7,
+        "nodules_routed_to_human": 3,
+        "share_nodules_routed_pct": 18.8,
+        "candidates_routed_to_human": 200,
+        "share_candidates_routed_pct": 5.0,
+        "candidates_routed_per_scan": 40.0,
+        "sensitivity_on_retained": 46.2,
+        "effective_sensitivity": 56.2,
+        "max_sigma_threshold": 0.0831,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      },
+      {
+        "coverage": 0.9,
+        "coverage_pct": 90.0,
+        "retained_candidates": 3600,
+        "retained_positives": 11,
+        "missed_nodules_auto_handled": 5,
+        "nodules_routed_to_human": 5,
+        "share_nodules_routed_pct": 31.2,
+        "candidates_routed_to_human": 400,
+        "share_candidates_routed_pct": 10.0,
+        "candidates_routed_per_scan": 80.0,
+        "sensitivity_on_retained": 54.5,
+        "effective_sensitivity": 68.8,
+        "max_sigma_threshold": 0.0658,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      },
+      {
+        "coverage": 0.85,
+        "coverage_pct": 85.0,
+        "retained_candidates": 3400,
+        "retained_positives": 9,
+        "missed_nodules_auto_handled": 3,
+        "nodules_routed_to_human": 7,
+        "share_nodules_routed_pct": 43.8,
+        "candidates_routed_to_human": 600,
+        "share_candidates_routed_pct": 15.0,
+        "candidates_routed_per_scan": 120.0,
+        "sensitivity_on_retained": 66.7,
+        "effective_sensitivity": 81.2,
+        "max_sigma_threshold": 0.0551,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      },
+      {
+        "coverage": 0.8,
+        "coverage_pct": 80.0,
+        "retained_candidates": 3200,
+        "retained_positives": 9,
+        "missed_nodules_auto_handled": 3,
+        "nodules_routed_to_human": 7,
+        "share_nodules_routed_pct": 43.8,
+        "candidates_routed_to_human": 800,
+        "share_candidates_routed_pct": 20.0,
+        "candidates_routed_per_scan": 160.0,
+        "sensitivity_on_retained": 66.7,
+        "effective_sensitivity": 81.2,
+        "max_sigma_threshold": 0.048,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      },
+      {
+        "coverage": 0.75,
+        "coverage_pct": 75.0,
+        "retained_candidates": 3000,
+        "retained_positives": 9,
+        "missed_nodules_auto_handled": 3,
+        "nodules_routed_to_human": 7,
+        "share_nodules_routed_pct": 43.8,
+        "candidates_routed_to_human": 1000,
+        "share_candidates_routed_pct": 25.0,
+        "candidates_routed_per_scan": 200.0,
+        "sensitivity_on_retained": 66.7,
+        "effective_sensitivity": 81.2,
+        "max_sigma_threshold": 0.0406,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      },
+      {
+        "coverage": 0.7,
+        "coverage_pct": 70.0,
+        "retained_candidates": 2800,
+        "retained_positives": 9,
+        "missed_nodules_auto_handled": 3,
+        "nodules_routed_to_human": 7,
+        "share_nodules_routed_pct": 43.8,
+        "candidates_routed_to_human": 1200,
+        "share_candidates_routed_pct": 30.0,
+        "candidates_routed_per_scan": 240.0,
+        "sensitivity_on_retained": 66.7,
+        "effective_sensitivity": 81.2,
+        "max_sigma_threshold": 0.0355,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      },
+      {
+        "coverage": 0.6,
+        "coverage_pct": 60.0,
+        "retained_candidates": 2400,
+        "retained_positives": 9,
+        "missed_nodules_auto_handled": 3,
+        "nodules_routed_to_human": 7,
+        "share_nodules_routed_pct": 43.8,
+        "candidates_routed_to_human": 1600,
+        "share_candidates_routed_pct": 40.0,
+        "candidates_routed_per_scan": 320.0,
+        "sensitivity_on_retained": 66.7,
+        "effective_sensitivity": 81.2,
+        "max_sigma_threshold": 0.027,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      },
+      {
+        "coverage": 0.5,
+        "coverage_pct": 50.0,
+        "retained_candidates": 2000,
+        "retained_positives": 9,
+        "missed_nodules_auto_handled": 3,
+        "nodules_routed_to_human": 7,
+        "share_nodules_routed_pct": 43.8,
+        "candidates_routed_to_human": 2000,
+        "share_candidates_routed_pct": 50.0,
+        "candidates_routed_per_scan": 400.0,
+        "sensitivity_on_retained": 66.7,
+        "effective_sensitivity": 81.2,
+        "max_sigma_threshold": 0.021,
+        "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
+      }
+    ],
+    "checkpoint": "resnet3d_detector_finetuned.pt"
   },
   "robustness": [
     {
@@ -592,6 +940,6 @@
   },
   "timing_sec": {
     "streaming_inference": 789.0,
-    "total_step4_sec": 125.9
+    "total_step4_sec": 1434.8
   }
 }

@@ -31,7 +31,7 @@ export const TrainingPanel: React.FC = () => {
             seed: data.seed ?? 43,
             architecture: data.architecture ?? 'ResNet3D18Half',
             best_epoch: data.best_epoch ?? 13,
-            best_val_auc: data.best_val_auc ?? 0.9356,
+            best_val_auc: data.best_val_auc ?? null,
             total_sec: data.total_training_sec ?? 985.8,
           });
         }

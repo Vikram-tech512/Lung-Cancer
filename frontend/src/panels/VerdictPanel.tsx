@@ -19,7 +19,7 @@ interface FindingSummary {
   review_status: string;
 }
 
-export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId, studyId = 'CASE-DEMO-LIDC-0087' }) => {
+export const VerdictPanel: React.FC<VerdictPanelProps> = ({ noduleId, studyId = '' }) => {
   const [findings, setFindings] = useState<FindingSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [assignedLungRads, setAssignedLungRads] = useState<string>('Lung-RADS 4A (Suspicious)');

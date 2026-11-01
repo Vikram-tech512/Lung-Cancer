@@ -36,7 +36,7 @@ export const CaseLogPanel: React.FC<{ onSelectCase?: (caseId: string) => void }>
   useEffect(() => {
     Promise.all([
       fetch(`${API_BASE}/cases`).then(r => r.ok ? r.json() : { cases: [] }),
-      fetch(`${API_BASE}/study/CASE-DEMO-LIDC-0087/reviews`).then(r => r.ok ? r.json() : { reviews: [] }),
+      fetch(`${API_BASE}/study/reviews`).then(r => r.ok ? r.json() : { reviews: [] }),
     ])
       .then(([casesData, reviewsData]) => {
         if (casesData && Array.isArray(casesData.cases)) setStudies(casesData.cases);

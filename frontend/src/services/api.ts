@@ -46,7 +46,13 @@ export const api = {
     return fetch(`${API_BASE}/dicom/upload`, {
       method: 'POST',
       body: formData
-    }).then(res => res.json());
+    }).then(async res => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || `Upload failed with status ${res.status}`);
+      }
+      return res.json();
+    });
   },
   getQCReport: (studyId: string) => request<any>(`/dicom/${studyId}/quality`),
 

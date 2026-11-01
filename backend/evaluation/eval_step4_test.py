@@ -841,12 +841,16 @@ def evaluate_stage3_localization(
     test_scans: List[str] = None,
     model: nn.Module = None,
     device: torch.device = None,
+    checkpoints_dir: Path = Path("checkpoints_3d"),
 ) -> Dict[str, Any]:
     """
-    Evaluates Stage 3 heuristic detector directly on test scans available on disk and matches
-    its OWN detections to annotations.csv (does not use LUNA16 candidate positions).
-    All detector metrics are marked preliminary. Computes 95% Wilson score confidence intervals
-    and evaluates end-to-end FROC (detector + classifier) at 1, 2, 4, 8 FP/scan.
+    Evaluates Stage 3 heuristic detector on scans available on disk and matches its OWN
+    detections to annotations.csv (does not use LUNA16 candidate positions).
+    - Validation partition (5 scans): used for candidate extraction, hard-negative mining,
+      fine-tuning ResNet3D18Half, and fitting temperature calibration (no test scans used for tuning!).
+    - Held-out test partition (5 scans, 17 nodules): evaluated for candidate recall, centroid error,
+      fine-tuned classification metrics, calibration, MC Dropout uncertainty, risk-coverage triage,
+      and End-to-End FROC at ACTUAL operating points (actual FP/scan), reporting unreachable targets.
     """
     from backend.pipeline.stages.detection import DetectionStage
     from backend.pipeline.orchestrator import PipelineContext, PipelineStage
@@ -864,8 +868,7 @@ def evaluate_stage3_localization(
     else:
         test_mhd_files = []
 
-    # If fewer than 89 scans on disk or none of subset 3 test scans are on disk,
-    # partition available on-disk scans into 50% validation (for tuning) and 50% held-out test.
+    # Partition available on-disk scans into 50% validation (for tuning) and 50% held-out test.
     if total_disk_scans < 89:
         print(f"\n[STAGE 3 DETECTOR NOTICE] Fewer than 89 scans on disk (found {total_disk_scans} scans in {luna_root}).")
         split_point = total_disk_scans // 2
@@ -878,50 +881,166 @@ def evaluate_stage3_localization(
     val_anns = [a for a in all_anns if a["seriesuid"] in {p.stem for p in val_mhd_files}]
     test_anns = [a for a in all_anns if a["seriesuid"] in {p.stem for p in test_mhd_files}]
 
-    detector = DetectionStage()
+    detector = DetectionStage(max_candidates=800)
+    use_dev = device or torch.device("cpu")
 
-    print(f"[STAGE 3 LOCALIZATION] Evaluating heuristic detector on {len(test_mhd_files)} held-out test scans ({len(test_anns)} ground-truth nodules)...")
+    def _extract_cands(mhd_list, ann_list, desc=""):
+        print(f"  Extracting candidate proposals for {len(mhd_list)} {desc} scans...")
+        cands_out = []
+        for mhd in mhd_list:
+            suid = mhd.stem
+            img = sitk.ReadImage(str(mhd))
+            vol = sitk.GetArrayFromImage(img)
+            spacing = img.GetSpacing()
+            raw_c = detector.detect_candidates(vol, raw_volume=vol, spacing=spacing[::-1])
+            s_anns = [a for a in ann_list if a["seriesuid"] == suid]
 
+            for c in raw_c:
+                cz, cy, cx = c["centroid_zyx"]
+                phys_pt = img.TransformContinuousIndexToPhysicalPoint([cx, cy, cz])
+
+                # Match against ground-truth annotations
+                is_pos = 0
+                matched_idx = -1
+                min_dist = float("inf")
+                for a_idx, a in enumerate(s_anns):
+                    ax, ay, az = float(a["coordX"]), float(a["coordY"]), float(a["coordZ"])
+                    rad = float(a["diameter_mm"]) / 2.0
+                    d = math.sqrt((phys_pt[0] - ax)**2 + (phys_pt[1] - ay)**2 + (phys_pt[2] - az)**2)
+                    if d < min_dist:
+                        min_dist = d
+                    if d <= rad:
+                        is_pos = 1
+                        matched_idx = a_idx
+
+                # Extract 32x32x32 normalized crop
+                z1, z2 = max(0, int(cz) - 16), min(vol.shape[0], int(cz) + 16)
+                y1, y2 = max(0, int(cy) - 16), min(vol.shape[1], int(cy) + 16)
+                x1, x2 = max(0, int(cx) - 16), min(vol.shape[2], int(cx) + 16)
+                crop = np.zeros((32, 32, 32), dtype=np.float32)
+                sub = vol[z1:z2, y1:y2, x1:x2]
+                crop[:sub.shape[0], :sub.shape[1], :sub.shape[2]] = sub
+                crop_norm = np.clip((crop + 1000.0) / 1400.0, 0.0, 1.0)
+
+                cands_out.append({
+                    "seriesuid": suid,
+                    "phys_xyz": phys_pt,
+                    "centroid_zyx": [cz, cy, cx],
+                    "diameter_mm": c.get("diameter_mm", 6.0),
+                    "score": c.get("score", 0.0),
+                    "crop": crop_norm,
+                    "label": is_pos,
+                    "matched_ann_idx": matched_idx,
+                    "min_dist_to_ann": min_dist,
+                })
+        return cands_out
+
+    # 1. Validation Candidates: Mining & Fine-Tuning
+    print("\n[STAGE 3 FINETUNE] Extracting validation candidates & fine-tuning classifier...")
+    val_cands = _extract_cands(val_mhd_files, val_anns, desc="validation")
+    val_pos = [c for c in val_cands if c["label"] == 1]
+    val_neg = [c for c in val_cands if c["label"] == 0]
+    print(f"  Validation candidates extracted: {len(val_cands)} total ({len(val_pos)} positive, {len(val_neg)} negative)")
+
+    # Score validation negatives with initial model for hard-negative mining
+    val_neg_crops = np.stack([c["crop"] for c in val_neg], axis=0)
+    val_neg_tensor = torch.from_numpy(val_neg_crops).unsqueeze(1).float().to(use_dev)
+
+    init_scores = []
+    model.eval()
+    with torch.no_grad():
+        for i in range(0, len(val_neg), 64):
+            batch = val_neg_tensor[i:i+64]
+            out = model(batch)
+            probs = F.softmax(out, dim=1)[:, 1].cpu().numpy()
+            init_scores.extend(probs.tolist())
+
+    for idx, c in enumerate(val_neg):
+        c["initial_prob"] = init_scores[idx]
+
+    val_neg_sorted = sorted(val_neg, key=lambda x: -x["initial_prob"])
+    hard_negatives = val_neg_sorted[:150]
+    easy_negatives = val_neg_sorted[300:450]
+
+    # Prepare fine-tuning dataset with augmented positives and mined hard negatives
+    train_crops = []
+    train_labels = []
+    for p in val_pos:
+        cr = p["crop"]
+        train_crops.append(cr)
+        train_labels.append(1)
+        train_crops.append(np.flip(cr, axis=0).copy())  # z flip
+        train_labels.append(1)
+        train_crops.append(np.flip(cr, axis=1).copy())  # y flip
+        train_labels.append(1)
+        train_crops.append(np.flip(cr, axis=2).copy())  # x flip
+        train_labels.append(1)
+
+    for hn in hard_negatives + easy_negatives:
+        train_crops.append(hn["crop"])
+        train_labels.append(0)
+
+    # Fine-tune classifier
+    model.train()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    criterion = nn.CrossEntropyLoss(weight=torch.tensor([1.0, 3.0]).to(use_dev))
+    X_train = torch.from_numpy(np.stack(train_crops, axis=0)).unsqueeze(1).float().to(use_dev)
+    y_train = torch.tensor(train_labels, dtype=torch.long).to(use_dev)
+
+    print(f"  Fine-tuning classifier on {len(train_crops)} proposals ({sum(train_labels)} pos, {len(train_labels)-sum(train_labels)} neg)...")
+    for epoch in range(5):
+        perm = torch.randperm(len(X_train))
+        epoch_loss = 0.0
+        for i in range(0, len(X_train), 32):
+            b_idx = perm[i:i+32]
+            b_x = X_train[b_idx]
+            b_y = y_train[b_idx]
+            optimizer.zero_grad()
+            out = model(b_x)
+            loss = criterion(out, b_y)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+        print(f"    Epoch {epoch+1}/5 - Loss: {epoch_loss:.4f}")
+
+    # Save fine-tuned checkpoint (dedicated filename; never overwrite resnet3d_luna16_best.pt)
+    finetuned_ckpt = checkpoints_dir / "resnet3d_detector_finetuned.pt"
+    torch.save({
+        "model_state_dict": model.state_dict(),
+        "architecture": "ResNet3D18Half",
+        "description": "Fine-tuned on Stage 3 DoG detector candidates with hard-negative mining",
+    }, finetuned_ckpt)
+    print(f"  Saved fine-tuned checkpoint to {finetuned_ckpt}")
+
+    # Validation Calibration: fit temperature T_det on validation detector candidates
+    model.eval()
+    val_all_crops = np.stack([c["crop"] for c in val_cands], axis=0)
+    val_all_labels = np.array([c["label"] for c in val_cands])
+    val_all_tensor = torch.from_numpy(val_all_crops).unsqueeze(1).float().to(use_dev)
+
+    val_logits_list = []
+    with torch.no_grad():
+        for i in range(0, len(val_cands), 64):
+            batch = val_all_tensor[i:i+64]
+            out = model(batch)
+            val_logits_list.append(out.cpu())
+    val_logits_arr = torch.cat(val_logits_list, dim=0).numpy()
+    T_det = fit_temperature(val_logits_arr, val_all_labels)
+    print(f"  Validation Detector Optimal Temperature: T={T_det:.4f}")
+
+    # 2. Held-Out Test Scans Evaluation (Detector Candidates)
+    print(f"\n[STAGE 3 TEST] Evaluating heuristic detector on {len(test_mhd_files)} held-out test scans ({len(test_anns)} nodules)...")
+    test_cands = _extract_cands(test_mhd_files, test_anns, desc="test")
+    test_pos = [c for c in test_cands if c["label"] == 1]
+    test_neg = [c for c in test_cands if c["label"] == 0]
+    print(f"  Test candidates extracted: {len(test_cands)} total ({len(test_pos)} positive, {len(test_neg)} negative)")
+
+    # Standalone candidate recall vs candidates per scan
     budgets = [50, 100, 200, 300, 500, 800]
-    scan_detections = {}
-    scan_raw_crops = {}
+    scan_cands_map = {}
+    for c in test_cands:
+        scan_cands_map.setdefault(c["seriesuid"], []).append(c)
 
-    for mhd in test_mhd_files:
-        suid = mhd.stem
-        img = sitk.ReadImage(str(mhd))
-        vol = sitk.GetArrayFromImage(img)
-        spacing = img.GetSpacing()
-
-        ctx = PipelineContext(case_id=suid, dicom_dir=Path("."))
-        ctx.set(PipelineStage.PREPROCESSING, {"volume": vol, "spacing": spacing[::-1]})
-        res = detector.run(ctx)
-        candidates = res.get("candidates", [])
-
-        cand_coords = []
-        cand_crops = []
-        for c in candidates:
-            cz, cy, cx = c["centroid_zyx"]
-            phys_pt = img.TransformContinuousIndexToPhysicalPoint([cx, cy, cz])
-            cand_coords.append({
-                "phys_xyz": phys_pt,
-                "centroid_zyx": [cz, cy, cx],
-                "score": c.get("score", 0.0),
-            })
-
-            # Extract 32x32x32 normalized crop for classifier evaluation
-            z1, z2 = max(0, int(cz) - 16), min(vol.shape[0], int(cz) + 16)
-            y1, y2 = max(0, int(cy) - 16), min(vol.shape[1], int(cy) + 16)
-            x1, x2 = max(0, int(cx) - 16), min(vol.shape[2], int(cx) + 16)
-            crop = np.zeros((32, 32, 32), dtype=np.float32)
-            sub = vol[z1:z2, y1:y2, x1:x2]
-            crop[:sub.shape[0], :sub.shape[1], :sub.shape[2]] = sub
-            crop_norm = np.clip((crop + 1000.0) / 1400.0, 0.0, 1.0)
-            cand_crops.append(crop_norm)
-
-        scan_detections[suid] = cand_coords
-        scan_raw_crops[suid] = cand_crops
-
-    # Standalone candidate recall vs candidates per scan with 95% Wilson CI
     recall_curve = []
     n_nodules = len(test_anns)
     for budget in budgets:
@@ -932,13 +1051,13 @@ def evaluate_stage3_localization(
             ax, ay, az = float(ann["coordX"]), float(ann["coordY"]), float(ann["coordZ"])
             radius = float(ann["diameter_mm"]) / 2.0
 
-            cands = scan_detections.get(suid, [])[:budget]
-            if not cands:
+            c_list = scan_cands_map.get(suid, [])[:budget]
+            if not c_list:
                 continue
 
             dists = [
-                float(np.sqrt((c["phys_xyz"][0] - ax)**2 + (c["phys_xyz"][1] - ay)**2 + (c["phys_xyz"][2] - az)**2))
-                for c in cands
+                float(math.sqrt((c["phys_xyz"][0] - ax)**2 + (c["phys_xyz"][1] - ay)**2 + (c["phys_xyz"][2] - az)**2))
+                for c in c_list
             ]
             min_dist = min(dists)
             if min_dist <= radius:
@@ -949,10 +1068,9 @@ def evaluate_stage3_localization(
         ci_l, ci_h = wilson_score_interval(hits, n_nodules)
         med_e = float(np.median(errors)) if errors else 0.0
         p90_e = float(np.percentile(errors, 90)) if errors else 0.0
-        cands_per_scan = float(budget)
         recall_curve.append({
             "candidate_budget": budget,
-            "candidates_per_scan": cands_per_scan,
+            "candidates_per_scan": float(budget),
             "recalled_nodules": hits,
             "total_nodules": n_nodules,
             "evaluated_test_scans": len(test_mhd_files),
@@ -966,94 +1084,184 @@ def evaluate_stage3_localization(
 
     top_op = recall_curve[-1]
 
-    # End-to-End FROC (Detector + Classifier) at 1, 2, 4, 8 FP/scan
+    # Evaluate Fine-Tuned Classifier on Test Candidates
+    test_all_crops = np.stack([c["crop"] for c in test_cands], axis=0)
+    test_all_labels = np.array([c["label"] for c in test_cands])
+    test_all_tensor = torch.from_numpy(test_all_crops).unsqueeze(1).float().to(use_dev)
+
+    test_logits_list = []
+    with torch.no_grad():
+        for i in range(0, len(test_cands), 64):
+            batch = test_all_tensor[i:i+64]
+            out = model(batch)
+            test_logits_list.append(out.cpu())
+    test_logits_tensor = torch.cat(test_logits_list, dim=0)
+    raw_test_probs = F.softmax(test_logits_tensor, dim=1).numpy()
+
+    cal_test_logits = test_logits_tensor / max(T_det, 0.1)
+    cal_test_probs = F.softmax(cal_test_logits, dim=1).numpy()
+    test_p1 = cal_test_probs[:, 1]
+
+    for idx, c in enumerate(test_cands):
+        c["calibrated_prob"] = float(test_p1[idx])
+
+    # Discrimination & Calibration metrics on test detector candidates
+    test_auc = float(roc_auc_score(test_all_labels, test_p1))
+    test_ap = float(average_precision_score(test_all_labels, test_p1))
+
+    conf_raw = raw_test_probs.max(axis=1)
+    correct_raw = (raw_test_probs.argmax(axis=1) == test_all_labels).astype(float)
+    ece_raw = expected_calibration_error(conf_raw, correct_raw, n_bins=15)["ece"]
+
+    conf_cal = cal_test_probs.max(axis=1)
+    correct_cal = (cal_test_probs.argmax(axis=1) == test_all_labels).astype(float)
+    ece_cal = expected_calibration_error(conf_cal, correct_cal, n_bins=15)["ece"]
+    ece_adapt = compute_adaptive_ece(conf_cal, correct_cal, n_bins=15)
+    brier = float(brier_score_loss(test_all_labels, test_p1))
+
+    print(f"  Test Classifier (Detector Candidates): ROC AUC: {test_auc:.4f} | AP: {test_ap:.4f}")
+    print(f"  Calibration (Detector Candidates): Uncal ECE: {ece_raw:.4f} | Cal ECE: {ece_cal:.4f} | Adapt-ECE: {ece_adapt:.4f} | Brier: {brier:.4f}")
+
+    # MC Dropout (T=30) on Test Detector Candidates
+    print("  Running MC Dropout (T=30) on test detector candidates...")
+    model.train()
+    mc_passes = []
+    for _ in range(30):
+        pass_probs = []
+        with torch.no_grad():
+            for i in range(0, len(test_cands), 64):
+                batch = test_all_tensor[i:i+64]
+                out = model(batch)
+                probs = F.softmax(out, dim=1)[:, 1].cpu().numpy()
+                pass_probs.extend(probs.tolist())
+        mc_passes.append(pass_probs)
+    model.eval()
+
+    mc_arr = np.array(mc_passes)
+    mc_std = mc_arr.std(axis=0)
+    for idx, c in enumerate(test_cands):
+        c["mc_std"] = float(mc_std[idx])
+
+    low_tier = int((mc_std < 0.05).sum())
+    mod_tier = int(((mc_std >= 0.05) & (mc_std < 0.12)).sum())
+    high_tier = int((mc_std >= 0.12).sum())
+    print(f"  Uncertainty Tiers (Test Candidates): Low: {low_tier}, Moderate: {mod_tier}, High: {high_tier} (Mean sigma: {mc_std.mean():.4f})")
+
+    # Risk-Coverage Selective Triage Curve on Detector Candidates
+    total_det_cands = len(test_cands)
+    total_det_pos = int(np.sum(test_all_labels == 1))
+    det_scans_n = len(test_mhd_files)
+
+    sorted_indices_by_uncert = np.argsort(mc_std)  # lowest uncertainty retained first
+    det_risk_coverage = []
+    coverage_levels = [1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.60, 0.50]
+
+    for cov in coverage_levels:
+        k = int(np.ceil(cov * total_det_cands))
+        retained_idx = set(sorted_indices_by_uncert[:k])
+        retained_c = len(retained_idx)
+        retained_p = int(sum(1 for i in retained_idx if test_all_labels[i] == 1))
+        routed_c = total_det_cands - retained_c
+        routed_n = total_det_pos - retained_p
+
+        max_sigma_at_cov = float(mc_std[sorted_indices_by_uncert[k - 1]]) if k > 0 else 0.0
+        # Auto-handled missed nodules (in retained set but predicted < 0.5)
+        missed = int(sum(1 for i in retained_idx if test_all_labels[i] == 1 and test_p1[i] < 0.5))
+        retained_tp = retained_p - missed
+        sens_retained = round((retained_tp / retained_p) * 100.0, 1) if retained_p > 0 else 100.0
+        effective_sens = round(((retained_tp + routed_n) / total_det_pos) * 100.0, 1) if total_det_pos > 0 else 100.0
+
+        det_risk_coverage.append({
+            "coverage": cov,
+            "coverage_pct": round(cov * 100.0, 1),
+            "retained_candidates": retained_c,
+            "retained_positives": retained_p,
+            "missed_nodules_auto_handled": missed,
+            "nodules_routed_to_human": routed_n,
+            "share_nodules_routed_pct": round((routed_n / total_det_pos) * 100.0, 1) if total_det_pos > 0 else 0.0,
+            "candidates_routed_to_human": routed_c,
+            "share_candidates_routed_pct": round((routed_c / total_det_cands) * 100.0, 1),
+            "candidates_routed_per_scan": round(routed_c / det_scans_n, 1),
+            "sensitivity_on_retained": sens_retained,
+            "effective_sensitivity": effective_sens,
+            "max_sigma_threshold": round(max_sigma_at_cov, 4),
+            "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule.",
+        })
+
+    # End-to-End FROC at Actual Operating Points
+    print("  Evaluating End-to-End FROC across actual operating points...")
+    scan_cands_grouped = {}
+    for c in test_cands:
+        scan_cands_grouped.setdefault(c["seriesuid"], []).append(c)
+
+    all_p_values = sorted(list(set(c["calibrated_prob"] for c in test_cands)), reverse=True)
+    froc_eval_points = []
+    for p_thresh in all_p_values:
+        total_tp = 0
+        total_fp = 0
+        for suid, s_cands in scan_cands_grouped.items():
+            s_anns = [a for a in test_anns if a["seriesuid"] == suid]
+            passed = [c for c in s_cands if c["calibrated_prob"] >= p_thresh]
+            hit_anns = set()
+            for c in passed:
+                if c["label"] == 1:
+                    hit_anns.add(c["matched_ann_idx"])
+                else:
+                    total_fp += 1
+            total_tp += len(hit_anns)
+
+        fp_per_scan = total_fp / len(test_mhd_files)
+        sens = total_tp / n_nodules
+        froc_eval_points.append({
+            "fp_per_scan": fp_per_scan,
+            "sens": sens,
+            "tp": total_tp,
+            "fp": total_fp,
+            "thresh": p_thresh,
+        })
+
+    max_achievable_fp_scan = froc_eval_points[-1]["fp_per_scan"]
     end_to_end_froc = {}
-    if model is not None:
-        model.eval()
-        use_dev = device or torch.device("cpu")
-        scan_scored_cands = {}
+    fp_targets = [1.0, 2.0, 4.0, 8.0]
 
-        for suid, coords in scan_detections.items():
-            crops = scan_raw_crops.get(suid, [])
-            if crops:
-                batch_t = torch.from_numpy(np.stack(crops, axis=0)).unsqueeze(1).float().to(use_dev)
-                with torch.no_grad():
-                    logits = model(batch_t)
-                    probs = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
-            else:
-                probs = np.array([])
-
-            scored = []
-            for i, c in enumerate(coords):
-                scored.append({
-                    "phys_xyz": c["phys_xyz"],
-                    "prob": float(probs[i]) if i < len(probs) else 0.0,
-                })
-            scored.sort(key=lambda x: -x["prob"])
-            scan_scored_cands[suid] = scored
-
-        all_probs = sorted(list(set(c["prob"] for cands in scan_scored_cands.values() for c in cands)), reverse=True)
-        froc_eval_points = []
-        for p_thresh in all_probs:
-            total_tp = 0
-            total_fp = 0
-            for mhd in test_mhd_files:
-                suid = mhd.stem
-                s_anns = [a for a in test_anns if a["seriesuid"] == suid]
-                cands = [c for c in scan_scored_cands[suid] if c["prob"] >= p_thresh]
-                hit_anns = set()
-                for c in cands:
-                    px, py, pz = c["phys_xyz"]
-                    is_hit = False
-                    for a_idx, ann in enumerate(s_anns):
-                        ax, ay, az = float(ann["coordX"]), float(ann["coordY"]), float(ann["coordZ"])
-                        rad = float(ann["diameter_mm"]) / 2.0
-                        dist = math.sqrt((px - ax)**2 + (py - ay)**2 + (pz - az)**2)
-                        if dist <= rad:
-                            hit_anns.add(a_idx)
-                            is_hit = True
-                            break
-                    if not is_hit:
-                        total_fp += 1
-                total_tp += len(hit_anns)
-            fp_per_scan = total_fp / len(test_mhd_files)
-            sens = total_tp / n_nodules
-            froc_eval_points.append({
-                "fp_per_scan": fp_per_scan,
-                "sens": sens,
-                "tp": total_tp,
-                "fp": total_fp,
-                "thresh": p_thresh,
-            })
-
-        fp_targets = [1.0, 2.0, 4.0, 8.0]
-        for target in fp_targets:
-            valid = [pt for pt in froc_eval_points if pt["fp_per_scan"] <= target]
-            best_pt = max(valid, key=lambda x: x["sens"]) if valid else min(froc_eval_points, key=lambda x: x["fp_per_scan"])
+    for target in fp_targets:
+        valid = [pt for pt in froc_eval_points if pt["fp_per_scan"] <= target]
+        if valid:
+            best_pt = max(valid, key=lambda x: (x["sens"], -x["fp_per_scan"]))
+            actual_fp = best_pt["fp_per_scan"]
             tp = best_pt["tp"]
             sens = tp / n_nodules
             ci_l, ci_h = wilson_score_interval(tp, n_nodules)
+            is_reachable = not (actual_fp < target and target > max_achievable_fp_scan)
+            reach_note = (
+                f"Achieved at actual {actual_fp:.2f} FP/scan"
+                if is_reachable
+                else f"Target {target:.1f} FP/scan is unreachable; maximum achievable is {max_achievable_fp_scan:.2f} FP/scan"
+            )
             end_to_end_froc[str(target)] = {
                 "fp_per_scan_target": target,
-                "actual_fp_per_scan": round(best_pt["fp_per_scan"], 2),
+                "actual_fp_per_scan": round(actual_fp, 2),
+                "is_reachable": is_reachable,
                 "recalled_nodules": tp,
                 "total_nodules": n_nodules,
                 "evaluated_test_scans": len(test_mhd_files),
                 "sensitivity": round(sens, 4),
                 "wilson_95_ci": [round(ci_l, 4), round(ci_h, 4)],
                 "probability_threshold": round(best_pt["thresh"], 4),
+                "reachability_note": reach_note,
                 "status": "PRELIMINARY",
             }
-            print(f"  End-to-End FROC @ {target:.1f} FP/scan: Sensitivity = {tp}/{n_nodules} ({sens*100:.1f}%, 95% Wilson CI: [{ci_l*100:.1f}%, {ci_h*100:.1f}%]) | Actual FP/scan: {best_pt['fp_per_scan']:.2f}")
+            print(f"    Target {target:.1f} FP/scan: {reach_note} -> Sensitivity = {tp}/{n_nodules} ({sens*100:.1f}%, 95% Wilson CI: [{ci_l*100:.1f}%, {ci_h*100:.1f}%]) | Prob Thresh: {best_pt['thresh']:.4f}")
 
     disk_scans_note = (
         f"Only {total_disk_scans} scans available on disk (fewer than the 89 scans of full subset 3 test set); "
-        f"partitioned into {len(val_mhd_files)} validation scans ({len(val_anns)} nodules) for parameter tuning "
+        f"partitioned into {len(val_mhd_files)} validation scans ({len(val_anns)} nodules) for candidate mining & fine-tuning "
         f"and {len(test_mhd_files)} held-out test scans ({len(test_anns)} nodules) for preliminary unbiased evaluation."
     )
 
     return {
-        "stage_3_detector": "Heuristic Multi-Scale LoG/DoG (rule-based, preliminary; no trained DL checkpoint)",
+        "checkpoint": "resnet3d_detector_finetuned.pt",
+        "stage_3_detector": "Heuristic Multi-Scale LoG/DoG (rule-based, preliminary; fine-tuned classifier)",
         "status": "PRELIMINARY_HEURISTIC",
         "dataset_notice": disk_scans_note,
         "total_disk_scans": total_disk_scans,
@@ -1070,7 +1278,26 @@ def evaluate_stage3_localization(
         "within_radius_pct": round(top_op["recall"] * 100.0, 1),
         "recall_vs_candidates_per_scan": recall_curve,
         "end_to_end_froc": end_to_end_froc,
+        "max_achievable_fp_per_scan": round(max_achievable_fp_scan, 2),
+        "classifier_test_metrics": {
+            "roc_auc": round(test_auc, 4),
+            "average_precision": round(test_ap, 4),
+            "uncalibrated_ece": round(ece_raw, 4),
+            "calibrated_ece": round(ece_cal, 4),
+            "calibrated_adaptive_ece": round(ece_adapt, 4),
+            "brier_score": round(brier, 4),
+            "temperature": round(T_det, 4),
+        },
+        "uncertainty_mc_dropout": {
+            "method": "MC_Dropout_T30",
+            "mean_sigma": round(float(mc_std.mean()), 4),
+            "max_sigma": round(float(mc_std.max()), 4),
+            "min_sigma": round(float(mc_std.min()), 4),
+            "tier_counts": {"low": low_tier, "moderate": mod_tier, "high": high_tier},
+        },
+        "risk_coverage": det_risk_coverage,
     }
+
 
 def build_risk_coverage_curve(
     total_candidates: int = 75950,
@@ -1078,7 +1305,7 @@ def build_risk_coverage_curve(
     total_scans: int = 89,
 ) -> List[Dict[str, Any]]:
     """
-    Selective Prediction Risk-Coverage curve evaluated over all 75,950 test candidates.
+    Selective Prediction Risk-Coverage curve evaluated over all 75,950 test candidates (LUNA16 pre-extracted).
     Per threshold, reports:
       - share of nodules routed to human
       - share of candidates routed to human
@@ -1138,6 +1365,7 @@ def build_risk_coverage_curve(
         })
     return curve
 
+
 def run_step4_evaluation(
     luna_root: Path = Path(os.environ.get("LUNA16_ROOT", "data/LUNA16")),
     manifest_path: Path = Path("results/split_manifest.json"),
@@ -1146,7 +1374,7 @@ def run_step4_evaluation(
 ):
     t_start_all = time.time()
     print("=================================================================")
-    print(" STEP 4 - Full Test Evaluation on LUNA16 Subset 3 (Natural Dist)")
+    print(" STEP 4 - Full Test Evaluation on LUNA16 (Candidate & Detector)  ")
     print("=================================================================")
 
     # 1. Detect best checkpoint across seeds by Val AUC only
@@ -1167,7 +1395,7 @@ def run_step4_evaluation(
         except Exception:
             pass
 
-    print(f"[MODEL SELECTION] Selected best checkpoint across seeds:")
+    print(f"[MODEL SELECTION] Selected baseline checkpoint across seeds:")
     print(f"  Seed: {best_seed} | Val AUC: {best_val_auc:.4f} | Checkpoint: {best_ckpt_path}")
 
     device = torch.device("cpu")
@@ -1197,7 +1425,7 @@ def run_step4_evaluation(
                 "diameter_mm": float(r["diameter_mm"]),
             })
 
-    # a. Stream all 75,950 test candidates
+    # a. Stream all 75,950 test candidates (Original LUNA16 candidates evaluation)
     test_stream = stream_candidates_for_scans(
         luna_root=luna_root,
         target_scans=test_scans,
@@ -1216,18 +1444,14 @@ def run_step4_evaluation(
 
     # b. Calibration: Prior Shift & Temperature Scaling
     print("\n[CALIBRATION] Computing prior-shift correction and temperature scaling...")
-    # Prior probabilities
-    pi_train = 308.0 / 1848.0 # 1:5 ratio from training set
-    pi_test = float(np.sum(labels == 1)) / len(labels) # Natural test prevalence (~0.00208)
+    pi_train = 308.0 / 1848.0
+    pi_test = float(np.sum(labels == 1)) / len(labels)
 
-    # Shift logits
     cal_logits = apply_prior_shift(raw_logits, pi_train=pi_train, pi_eval=pi_test)
-    # Fit temperature on natural distribution (or prior shifted test/val)
     T = fit_temperature(cal_logits, labels)
     cal_logits_scaled = cal_logits / max(T, 0.1)
     cal_probs = torch.softmax(torch.from_numpy(cal_logits_scaled), dim=-1).numpy()
 
-    # Metrics before vs after calibration
     conf_raw = raw_probs.max(axis=1)
     correct_raw = (raw_probs.argmax(axis=1) == labels).astype(float)
     ece_15_raw = expected_calibration_error(conf_raw, correct_raw, n_bins=15)["ece"]
@@ -1276,10 +1500,9 @@ def run_step4_evaluation(
     print(f"  Test ROC AUC: {test_auc:.4f} (95% CI: [{boot_res['auc_ci_95'][0]:.4f}, {boot_res['auc_ci_95'][1]:.4f}])")
     print(f"  Test AP (PR AUC): {test_ap:.4f} (95% CI: [{boot_res['ap_ci_95'][0]:.4f}, {boot_res['ap_ci_95'][1]:.4f}])")
     print(f"  CPM (Nodule-level): {froc_res['cpm_nodule']:.4f} (95% CI: [{boot_res['cpm_nodule_ci_95'][0]:.4f}, {boot_res['cpm_nodule_ci_95'][1]:.4f}])")
-    print(f"  CPM (Candidate-level): {froc_res['cpm_candidate']:.4f}")
 
     # d. MC Dropout (T=30)
-    print("\n[MC DROPOUT] Running T=30 MC Dropout uncertainty evaluation...")
+    print("\n[MC DROPOUT] Running T=30 MC Dropout uncertainty evaluation on LUNA16 candidates...")
     mc_res = evaluate_mc_dropout(
         model=model,
         luna_root=luna_root,
@@ -1315,33 +1538,60 @@ def run_step4_evaluation(
         device=device,
     )
 
-    # h. Write CSVs and update models_registry.json
+    # g. Stage 3 Detector Evaluation on Scans with Fine-Tuning & Actual Operating Points FROC
+    loc_res = evaluate_stage3_localization(
+        luna_root=luna_root,
+        annotations_csv=ann_csv,
+        test_scans=test_scans,
+        model=model,
+        device=device,
+        checkpoints_dir=checkpoints_dir,
+    )
+
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    # Table 1: Primary Test Metrics
+    # Remove stale contradictory file if exists
+    stale_t1 = results_dir / "table1_discrimination_and_calibration.csv"
+    if stale_t1.exists():
+        stale_t1.unlink()
+
+    # Table 1: Primary Test Metrics (Partitioned into LUNA16 Candidates vs Detector Candidates)
     table1_path = results_dir / "table1_test_metrics.csv"
+    orig_ckpt_label = best_ckpt_path.name
+    ft_ckpt_label = "resnet3d_detector_finetuned.pt"
     table1_rows = [
-        {"Metric": "ROC AUC", "Value": f"{test_auc:.4f}", "95% CI": f"[{boot_res['auc_ci_95'][0]:.4f}, {boot_res['auc_ci_95'][1]:.4f}]", "Evaluation Level": "Candidate-level"},
-        {"Metric": "Average Precision (PR AUC)", "Value": f"{test_ap:.4f}", "95% CI": f"[{boot_res['ap_ci_95'][0]:.4f}, {boot_res['ap_ci_95'][1]:.4f}]", "Evaluation Level": "Candidate-level"},
-        {"Metric": "CPM (FROC Score)", "Value": f"{froc_res['cpm_nodule']:.4f}", "95% CI": f"[{boot_res['cpm_nodule_ci_95'][0]:.4f}, {boot_res['cpm_nodule_ci_95'][1]:.4f}]", "Evaluation Level": "Nodule-level (annotations.csv)"},
-        {"Metric": "CPM (Candidate-level)", "Value": f"{froc_res['cpm_candidate']:.4f}", "95% CI": f"[{boot_res['cpm_cand_ci_95'][0]:.4f}, {boot_res['cpm_cand_ci_95'][1]:.4f}]", "Evaluation Level": "Candidate-level"},
-        {"Metric": "Sensitivity @ 0.125 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['0.125']:.4f}", "95% CI": "-", "Evaluation Level": "Nodule-level"},
-        {"Metric": "Sensitivity @ 0.25 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['0.25']:.4f}", "95% CI": "-", "Evaluation Level": "Nodule-level"},
-        {"Metric": "Sensitivity @ 0.5 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['0.5']:.4f}", "95% CI": "-", "Evaluation Level": "Nodule-level"},
-        {"Metric": "Sensitivity @ 1.0 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['1.0']:.4f}", "95% CI": "-", "Evaluation Level": "Nodule-level"},
-        {"Metric": "Sensitivity @ 2.0 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['2.0']:.4f}", "95% CI": "-", "Evaluation Level": "Nodule-level"},
-        {"Metric": "Sensitivity @ 4.0 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['4.0']:.4f}", "95% CI": "-", "Evaluation Level": "Nodule-level"},
-        {"Metric": "Sensitivity @ 8.0 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['8.0']:.4f}", "95% CI": "-", "Evaluation Level": "Nodule-level"},
-        {"Metric": "ECE-15 (Uncalibrated)", "Value": f"{ece_15_raw:.4f}", "95% CI": "-", "Evaluation Level": "Calibration (Natural Dist)"},
-        {"Metric": "ECE-15 (Calibrated, Prior Shift + T)", "Value": f"{ece_15_cal:.4f}", "95% CI": "-", "Evaluation Level": f"Calibration (T={T:.3f})"},
-        {"Metric": "Adaptive ECE (Calibrated)", "Value": f"{ece_adapt_cal:.4f}", "95% CI": "-", "Evaluation Level": "Quantile Binning (15 bins)"},
-        {"Metric": "Brier Score (Calibrated)", "Value": f"{brier_cal:.4f}", "95% CI": "-", "Evaluation Level": "Probabilistic Loss"},
-        {"Metric": "Grad-CAM Pointing Game Hit Rate", "Value": f"{gradcam_res['pointing_game_hit_rate']*100:.1f}%", "95% CI": "-", "Evaluation Level": "Explainability (Attribution peak)"},
-        {"Metric": "Grad-CAM Proxy Sphere Dice", "Value": f"{gradcam_res['mean_proxy_sphere_dice']:.4f}", "95% CI": "-", "Evaluation Level": "Explainability (Proxy sphere)"},
+        # Section A: Original LUNA16 Candidates
+        {"Metric": "ROC AUC", "Value": f"{test_auc:.4f}", "95% CI": f"[{boot_res['auc_ci_95'][0]:.4f}, {boot_res['auc_ci_95'][1]:.4f}]", "Evaluation Level": "LUNA16 Pre-extracted Candidates (N=75,950)", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Average Precision (PR AUC)", "Value": f"{test_ap:.4f}", "95% CI": f"[{boot_res['ap_ci_95'][0]:.4f}, {boot_res['ap_ci_95'][1]:.4f}]", "Evaluation Level": "LUNA16 Pre-extracted Candidates (N=75,950)", "Checkpoint": orig_ckpt_label},
+        {"Metric": "CPM (FROC Score)", "Value": f"{froc_res['cpm_nodule']:.4f}", "95% CI": f"[{boot_res['cpm_nodule_ci_95'][0]:.4f}, {boot_res['cpm_nodule_ci_95'][1]:.4f}]", "Evaluation Level": "LUNA16 Nodule-level (annotations.csv)", "Checkpoint": orig_ckpt_label},
+        {"Metric": "CPM (Candidate-level)", "Value": f"{froc_res['cpm_candidate']:.4f}", "95% CI": f"[{boot_res['cpm_cand_ci_95'][0]:.4f}, {boot_res['cpm_cand_ci_95'][1]:.4f}]", "Evaluation Level": "LUNA16 Candidate-level", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Sensitivity @ 0.125 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['0.125']:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Candidates", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Sensitivity @ 0.25 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['0.25']:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Candidates", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Sensitivity @ 0.5 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['0.5']:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Candidates", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Sensitivity @ 1.0 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['1.0']:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Candidates", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Sensitivity @ 2.0 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['2.0']:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Candidates", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Sensitivity @ 4.0 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['4.0']:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Candidates", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Sensitivity @ 8.0 FP/scan", "Value": f"{froc_res['sens_at_fp_nodule']['8.0']:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Candidates", "Checkpoint": orig_ckpt_label},
+        {"Metric": "ECE-15 (Uncalibrated)", "Value": f"{ece_15_raw:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Calibration (Natural Dist)", "Checkpoint": orig_ckpt_label},
+        {"Metric": "ECE-15 (Calibrated, Prior Shift + T)", "Value": f"{ece_15_cal:.4f}", "95% CI": "-", "Evaluation Level": f"LUNA16 Calibration (T={T:.3f})", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Adaptive ECE (Calibrated)", "Value": f"{ece_adapt_cal:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Quantile Binning (15 bins)", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Brier Score (Calibrated)", "Value": f"{brier_cal:.4f}", "95% CI": "-", "Evaluation Level": "LUNA16 Probabilistic Loss", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Grad-CAM Pointing Game Hit Rate", "Value": f"{gradcam_res['pointing_game_hit_rate']*100:.1f}%", "95% CI": "-", "Evaluation Level": "Explainability (Attribution peak)", "Checkpoint": orig_ckpt_label},
+        {"Metric": "Grad-CAM Proxy Sphere Dice", "Value": f"{gradcam_res['mean_proxy_sphere_dice']:.4f}", "95% CI": "-", "Evaluation Level": "Explainability (Proxy sphere)", "Checkpoint": orig_ckpt_label},
+
+        # Section B: Stage 3 Detector Candidates
+        {"Metric": "Preliminary Detection Sensitivity (Recall)", "Value": f"{loc_res['detection_sensitivity']*100:.1f}%", "95% CI": f"[{loc_res['detection_sensitivity_wilson_95_ci'][0]*100:.1f}%, {loc_res['detection_sensitivity_wilson_95_ci'][1]*100:.1f}%]", "Evaluation Level": f"Stage 3 Detector (N={loc_res['evaluated_test_scans']} scans, {loc_res['total_test_nodules']} nodules)", "Checkpoint": ft_ckpt_label},
+        {"Metric": "Preliminary Median Centroid Error", "Value": f"{loc_res['median_centroid_error_mm']:.2f} mm" if loc_res['median_centroid_error_mm'] is not None else "N/A", "95% CI": "-", "Evaluation Level": "Stage 3 Detector", "Checkpoint": ft_ckpt_label},
+        {"Metric": "Preliminary P90 Centroid Error", "Value": f"{loc_res['p90_centroid_error_mm']:.2f} mm" if loc_res['p90_centroid_error_mm'] is not None else "N/A", "95% CI": "-", "Evaluation Level": "Stage 3 Detector", "Checkpoint": ft_ckpt_label},
+        {"Metric": "Fraction within Annotated Radius", "Value": f"{loc_res['within_radius_pct']:.1f}%", "95% CI": "-", "Evaluation Level": "Stage 3 Detector", "Checkpoint": ft_ckpt_label},
+        {"Metric": "Fine-Tuned Classifier ROC AUC", "Value": f"{loc_res['classifier_test_metrics']['roc_auc']:.4f}", "95% CI": "-", "Evaluation Level": "Detector Candidates (Preliminary)", "Checkpoint": ft_ckpt_label},
+        {"Metric": "Fine-Tuned Classifier Average Precision", "Value": f"{loc_res['classifier_test_metrics']['average_precision']:.4f}", "95% CI": "-", "Evaluation Level": "Detector Candidates (Preliminary)", "Checkpoint": ft_ckpt_label},
+        {"Metric": "Calibrated ECE-15 (Detector Candidates)", "Value": f"{loc_res['classifier_test_metrics']['calibrated_ece']:.4f}", "95% CI": "-", "Evaluation Level": f"Detector Candidates (T={loc_res['classifier_test_metrics']['temperature']:.3f})", "Checkpoint": ft_ckpt_label},
+        {"Metric": "Brier Score (Detector Candidates)", "Value": f"{loc_res['classifier_test_metrics']['brier_score']:.4f}", "95% CI": "-", "Evaluation Level": "Detector Candidates (Preliminary)", "Checkpoint": ft_ckpt_label},
     ]
 
     with open(table1_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["Metric", "Value", "95% CI", "Evaluation Level"])
+        writer = csv.DictWriter(f, fieldnames=["Metric", "Value", "95% CI", "Evaluation Level", "Checkpoint"])
         writer.writeheader()
         writer.writerows(table1_rows)
 
@@ -1352,7 +1602,7 @@ def run_step4_evaluation(
         writer.writeheader()
         writer.writerows(robust_res)
 
-    # Table 3: FROC Details
+    # Table 3: FROC Details (LUNA16 Candidates)
     table3_path = results_dir / "table3_froc_cpm.csv"
     table3_rows = []
     for fp_t in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]:
@@ -1368,13 +1618,7 @@ def run_step4_evaluation(
         writer.writeheader()
         writer.writerows(table3_rows)
 
-    # Remove stale contradictory file if exists
-    stale_t1 = results_dir / "table1_discrimination_and_calibration.csv"
-    if stale_t1.exists():
-        stale_t1.unlink()
-
-    # Stage 3 Localization Evaluation against annotations.csv
-    loc_res = evaluate_stage3_localization(luna_root, ann_csv, test_scans, model=model, device=device)
+    # Table 3 (Localization & End-to-End FROC): Reporting Actual Operating Points & Unreachable Targets
     table3_loc_path = results_dir / "table3_xai_localization.csv"
     with open(table3_loc_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["evaluation_type", "metric_name", "metric_value", "unit", "interpretation"])
@@ -1430,16 +1674,25 @@ def run_step4_evaluation(
             "interpretation": "Detections strictly within physical lesion boundary (r = diam / 2)",
         })
 
-        # End-to-End FROC (Detector + Classifier) rows
+        # End-to-End FROC (Detector + Fine-Tuned Classifier) at ACTUAL Operating Points
         for fp_k, froc_v in loc_res.get("end_to_end_froc", {}).items():
             f_ci = f"[{froc_v['wilson_95_ci'][0]*100:.1f}%, {froc_v['wilson_95_ci'][1]*100:.1f}%]"
-            writer.writerow({
-                "evaluation_type": "End-to-End FROC (Detector + Classifier)",
-                "metric_name": f"Sensitivity @ {fp_k} FP/scan",
-                "metric_value": f"{froc_v['sensitivity']*100:.1f}% (95% Wilson CI: {f_ci})",
-                "unit": "%",
-                "interpretation": f"Matched {froc_v['recalled_nodules']}/{froc_v['total_nodules']} nodules (N={froc_v['evaluated_test_scans']} scans, actual FP/scan: {froc_v['actual_fp_per_scan']})",
-            })
+            if froc_v.get("is_reachable", True):
+                writer.writerow({
+                    "evaluation_type": "End-to-End FROC (Detector + Classifier)",
+                    "metric_name": f"Sensitivity @ actual {froc_v['actual_fp_per_scan']:.2f} FP/scan (Target {fp_k})",
+                    "metric_value": f"{froc_v['sensitivity']*100:.1f}% (95% Wilson CI: {f_ci})",
+                    "unit": "%",
+                    "interpretation": f"Matched {froc_v['recalled_nodules']}/{froc_v['total_nodules']} nodules at actual {froc_v['actual_fp_per_scan']:.2f} FP/scan (N={froc_v['evaluated_test_scans']} scans, prob thresh: {froc_v['probability_threshold']})",
+                })
+            else:
+                writer.writerow({
+                    "evaluation_type": "End-to-End FROC (Detector + Classifier)",
+                    "metric_name": f"Sensitivity @ Target {fp_k} FP/scan (UNREACHABLE)",
+                    "metric_value": f"{froc_v['sensitivity']*100:.1f}% (closest actual: {froc_v['actual_fp_per_scan']:.2f} FP/scan)",
+                    "unit": "%",
+                    "interpretation": froc_v.get("reachability_note", f"Target {fp_k} FP/scan is unreachable; maximum achievable is {froc_v['actual_fp_per_scan']:.2f} FP/scan"),
+                })
 
         writer.writerow({
             "evaluation_type": "Model Attribution Only",
@@ -1449,35 +1702,51 @@ def run_step4_evaluation(
             "interpretation": "Attribution peak alignment (MODEL ATTRIBUTION — NOT PHYSICAL BOUNDARY)",
         })
 
-    # Risk-Coverage Curve across all 75,950 candidates
-    risk_coverage_curve = build_risk_coverage_curve(
+    # Risk-Coverage Curves
+    luna_risk_coverage = build_risk_coverage_curve(
         total_candidates=len(labels),
         total_positives=int(np.sum(labels == 1)),
         total_scans=len(test_scans),
     )
+    det_risk_coverage = loc_res.get("risk_coverage", [])
 
-    # Table 4: Uncertainty Stratification & Risk-Coverage Triage
+    # Table 4: Uncertainty Stratification & Risk-Coverage Triage (Both curves)
     table4_path = results_dir / "table4_uncertainty_stratification.csv"
     with open(table4_path, "w", newline="", encoding="utf-8") as f:
         fieldnames = [
-            "coverage", "retained_candidates", "nodules_routed_to_human", "share_nodules_routed_pct",
+            "evaluation_level", "coverage", "retained_candidates", "nodules_routed_to_human", "share_nodules_routed_pct",
             "candidates_routed_to_human", "share_candidates_routed_pct", "candidates_routed_per_scan",
             "missed_nodules_auto_handled", "sensitivity_on_retained", "effective_sensitivity",
             "max_sigma_threshold", "interpretation_note"
         ]
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(risk_coverage_curve)
+        for row in det_risk_coverage:
+            r = dict(row)
+            r["evaluation_level"] = "Stage 3 Detector Candidates (Preliminary)"
+            writer.writerow(r)
+        for row in luna_risk_coverage:
+            r = dict(row)
+            r["evaluation_level"] = "LUNA16 Pre-extracted Candidates (N=75,950)"
+            writer.writerow(r)
 
     # Risk-coverage dedicated JSON
     with open(results_dir / "risk_coverage_metrics.json", "w", encoding="utf-8") as f:
         json.dump({
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "dataset": "LUNA16 Test Split (Subset 3)",
-            "total_candidates": len(labels),
-            "total_positives": int(np.sum(labels == 1)),
-            "total_scans": len(test_scans),
-            "curve": risk_coverage_curve,
+            "dataset": "LUNA16 Test Split",
+            "detector_candidates": {
+                "total_candidates": loc_res["evaluated_test_scans"] * int(loc_res["candidates_per_scan"]),
+                "total_positives": loc_res["total_test_nodules"],
+                "total_scans": loc_res["evaluated_test_scans"],
+                "curve": det_risk_coverage,
+            },
+            "luna16_candidates": {
+                "total_candidates": len(labels),
+                "total_positives": int(np.sum(labels == 1)),
+                "total_scans": len(test_scans),
+                "curve": luna_risk_coverage,
+            },
             "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule."
         }, f, indent=2)
 
@@ -1505,16 +1774,23 @@ def run_step4_evaluation(
             "cpm_candidate": round(froc_res["cpm_candidate"], 4),
         },
         "calibration": {
-            "temperature": round(T, 4),
-            "raw_ece_15": round(ece_15_raw, 4),
-            "calibrated_ece_15": round(ece_15_cal, 4),
-            "raw_adaptive_ece": round(ece_adapt_raw, 4),
-            "calibrated_adaptive_ece": round(ece_adapt_cal, 4),
-            "brier_score": round(brier_cal, 4),
+            "luna16_candidates": {
+                "temperature": round(T, 4),
+                "raw_ece_15": round(ece_15_raw, 4),
+                "calibrated_ece_15": round(ece_15_cal, 4),
+                "raw_adaptive_ece": round(ece_adapt_raw, 4),
+                "calibrated_adaptive_ece": round(ece_adapt_cal, 4),
+                "brier_score": round(brier_cal, 4),
+            },
+            "detector_candidates": loc_res["classifier_test_metrics"],
         },
         "froc_sensitivities": froc_res,
-        "uncertainty_mc_dropout": mc_res,
-        "risk_coverage": risk_coverage_curve,
+        "uncertainty_mc_dropout": {
+            "luna16_candidates": mc_res,
+            "detector_candidates": loc_res["uncertainty_mc_dropout"],
+        },
+        "risk_coverage": det_risk_coverage,
+        "luna16_risk_coverage": luna_risk_coverage,
         "localization": loc_res,
         "robustness": robust_res,
         "gradcam_explainability": gradcam_res,
@@ -1557,6 +1833,7 @@ def run_step4_evaluation(
     print(f"  Written to {table1_path}")
     print(f"  Written to {table2_path}")
     print(f"  Written to {table3_path}")
+    print(f"  Written to {table3_loc_path}")
     print(f"  Written to {table4_path}")
     print(f"  Written to {metrics_json_path}")
     print(f"  Updated {registry_path}")

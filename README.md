@@ -205,14 +205,17 @@ There is no trained deep learning detector checkpoint for Stage 3 in the reposit
   - **300 cands/scan**: 41.2% Recall (7/17 nodules; 95% Wilson CI: [21.6%, 64.0%]) | Median Error: 1.48 mm | P90: 3.88 mm.
   - **200 cands/scan**: 29.4% Recall (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]) | Median Error: 1.47 mm | P90: 3.44 mm.
   - *(Notice: Only 10 LUNA16 scans present on disk across subsets, fewer than the 89 scans of full subset 3 test set; partitioned into 5 validation scans for parameter tuning and 5 held-out test scans for preliminary evaluation. Tuning-split numbers are not reported as performance).*
-- **Preliminary End-to-End FROC (Detector + ResNet3D-18 Classifier on Held-Out Test Scans, $N=5$ scans, $N=17$ nodules)**:
-  - **1.0 FP/scan**: 5.9% Sensitivity (1/17 nodules; 95% Wilson CI: [1.0%, 27.0%]; actual FP/scan: 0.00; threshold: 1.0000).
-  - **2.0 FP/scan**: 11.8% Sensitivity (2/17 nodules; 95% Wilson CI: [3.3%, 34.3%]; actual FP/scan: 1.20; threshold: 1.0000).
-  - **4.0 FP/scan**: 23.5% Sensitivity (4/17 nodules; 95% Wilson CI: [9.6%, 47.3%]; actual FP/scan: 2.20; threshold: 0.9999).
-  - **8.0 FP/scan**: 29.4% Sensitivity (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]; actual FP/scan: 4.40; threshold: 0.9996).
-- **Latency & Compute Benchmarks (Measured on Real Full-Size CT Series, 197 Slices)**:
-  - Stage 3 Heuristic Detector: 1332.9 ms (cold), 1288.5 ms (warm).
-  - Fast Triage Pipeline Total: 1512.2 ms (cold, 1.51s), 1342.1 ms (warm, 1.34s) — within the < 15.0s budget.
+- **Preliminary End-to-End FROC (Detector + ResNet3D-18 Fine-Tuned Classifier on Held-Out Test Scans, $N=5$ scans, $N=17$ nodules)**:
+  - **1.0 FP/scan Target**: Achieved at actual 0.40 FP/scan — 23.5% Sensitivity (4/17 nodules; 95% Wilson CI: [9.6%, 47.3%]; probability threshold: 0.9982).
+  - **2.0 FP/scan Target**: Achieved at actual 1.60 FP/scan — 29.4% Sensitivity (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]; probability threshold: 0.9849).
+  - **4.0 FP/scan Target**: Closest actual is 1.60 FP/scan — 29.4% Sensitivity (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]; probability threshold: 0.9849).
+  - **8.0 FP/scan Target**: **Unreachable** (maximum achievable false positive rate is 1.60 FP/scan with current candidate pool; closest operating point is actual 1.60 FP/scan).
+- **Latency & Compute Benchmarks (Measured on Real Full-Size CT Series, 197 Slices via `benchmark_continuous_reporting.py`)**:
+  - Stage 3 Heuristic Candidate Detector: 1108.5 ms (cold), 1100.2 ms (warm median).
+  - Fast Triage Pipeline Total: 1255.1 ms (cold, 1.26s), 1303.9 ms (warm median, 1.30s), 1758.0 ms (warm P95, 1.76s) — within the < 15.0s budget (100% SLA compliance).
+  - Full Pipeline Mode Total: 2122.6 ms (2.12s).
+  - Peak Memory RSS: 839.3 MB (Budget: < 10,000 MB).
+  - Estimated Compute Cost: $0.000017 per fast triage scan ($0.048/CPU-hr basis).
 
 ## Observability Endpoints
 
@@ -282,7 +285,7 @@ To support clinical radiologist workflows on standard laptop CPUs (16 GB RAM) as
    - Results are cached in-memory and rendered as an interactive, alpha-blended heatmap overlay on real CT slices.
 
 4. **Bounded Concurrency & Job Queue**:
-   - `JobQueueManager` runs a bounded worker pool (default: 1 active scan, max 2 concurrent) to guarantee memory RSS stays well below the 10 GB budget (measured peak RSS: 969.9 MB).
+   - `JobQueueManager` runs a bounded worker pool (default: 1 active scan, max 2 concurrent) to guarantee memory RSS stays well below the 10 GB budget (measured peak RSS: 835.6 MB).
    - `POST /api/v2/jobs` returns a job ticket with queue position immediately.
    - `GET /api/v2/jobs/{job_id}/stream` streams real-time Server-Sent Events (SSE) detailing stage progress (Stage 0 through 10).
 
@@ -295,7 +298,7 @@ Every study execution is instrumented via `ScanMeteringTracker` (`backend/monito
 - **CPU / GPU Utilization**: Total CPU seconds and device resource allocation.
 - **Peak Memory RSS**: Tracked before and after inference to ensure safety limits.
 - **Voxel & Crop Accounting**: Exact input volume voxels and candidate 3D patches processed.
-- **Cost Estimation**: Computed using configurable hourly rates (default: $0.048/CPU-hr; measured ~$0.000024 per fast triage scan).
+- **Cost Estimation**: Computed using configurable hourly rates (default: $0.048/CPU-hr; measured ~$0.000113 per fast triage scan).
 - **Truthful LLM Accounting**: If no external LLM is invoked for report generation, the system explicitly records `tokens_used: 0` and `"no LLM tokens used"` rather than placeholder metrics.
 - Exposed in the UI **Usage Drawer**, in `GET /api/v2/study/{study_id}/metering`, and integrated into Prometheus `/metrics`.
 

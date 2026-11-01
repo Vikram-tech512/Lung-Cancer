@@ -54,11 +54,13 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
   onSelectStudy
 }) => {
   // Navigation & Studies State
-  const [activeStudyId, setActiveStudyId] = useState<string>(initialStudyId || 'CASE-DEMO-LIDC-0087');
+  const [activeStudyId, setActiveStudyId] = useState<string>(initialStudyId || '');
   const [studies, setStudies] = useState<CaseItem[]>([]);
   const [searchFilter, setSearchFilter] = useState<string>('');
   const [inferenceMode, setInferenceMode] = useState<'fast_triage' | 'full'>('fast_triage');
   const [uploading, setUploading] = useState<boolean>(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [benchmarkData, setBenchmarkData] = useState<any>(null);
   const [jobProgress, setJobProgress] = useState<number | null>(null);
   const [currentStageName, setCurrentStageName] = useState<string>('');
 
@@ -105,13 +107,24 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageObjRef = useRef<HTMLImageElement | null>(null);
 
-  // 1. Fetch available studies
+  // 1. Fetch available studies and held-out benchmark
   useEffect(() => {
     fetch(`${API_BASE}/cases`)
       .then(res => res.ok ? res.json() : { cases: [] })
       .then(data => {
         if (data && Array.isArray(data.cases)) {
           setStudies(data.cases);
+          if (!activeStudyId && data.cases.length > 0) {
+            setActiveStudyId(data.cases[0].study_id);
+          }
+        }
+      })
+      .catch(() => {});
+
+    api.getBenchmark()
+      .then(data => {
+        if (data && data.status === 'available') {
+          setBenchmarkData(data);
         }
       })
       .catch(() => {});
@@ -126,6 +139,12 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
 
   // 2. Fetch Study Data, Nodules, Report, and Usage
   const loadStudyDetails = useCallback((sId: string) => {
+    if (!sId) {
+      setFindings([]);
+      setUsageData(null);
+      setLongitudinalData(null);
+      return;
+    }
     // Fetch nodules
     fetch(`${API_BASE}/nodules/${encodeURIComponent(sId)}`)
       .then(res => res.ok ? res.json() : null)
@@ -543,11 +562,12 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
     }
   };
 
-  // 11. Multi-study / DICOM File Upload Handler
+  // 11. Multi-study / DICOM & MetaImage File Upload Handler
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadError(null);
     const formData = new FormData();
     formData.append('file', file);
 
@@ -556,11 +576,16 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
       if (res && res.study_id) {
         setActiveStudyId(res.study_id);
         onSelectStudy?.(res.study_id);
+        fetch(`${API_BASE}/cases`)
+          .then(r => r.ok ? r.json() : { cases: [] })
+          .then(d => { if (d && d.cases) setStudies(d.cases); })
+          .catch(() => {});
         // Automatically enqueue fast triage for uploaded study
         handleTriggerRun('fast_triage');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Upload error:', err);
+      setUploadError(err.message || 'Upload failed. Ensure archive contains DICOM (.dcm), MetaImage (.mhd/.raw), or images.');
     } finally {
       setUploading(false);
     }
@@ -666,9 +691,30 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
             color: '#60a5fa'
           }}>
             <Upload size={13} />
-            <span>{uploading ? 'Ingesting DICOM…' : 'Upload DICOM Study (.zip)'}</span>
-            <input type="file" accept=".zip,.dcm" onChange={handleFileUpload} style={{ display: 'none' }} />
+            <span>{uploading ? 'Ingesting CT Study…' : 'Upload Study Archive (.zip, .dcm)'}</span>
+            <input type="file" accept=".zip,.dcm,.mhd" onChange={handleFileUpload} style={{ display: 'none' }} />
           </label>
+          {uploadError && (
+            <div style={{
+              marginTop: '4px',
+              marginBottom: '6px',
+              padding: '6px 8px',
+              background: '#450a0a',
+              border: '1px solid #dc2626',
+              borderRadius: '3px',
+              color: '#fca5a5',
+              fontSize: '11px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <AlertTriangle size={14} color="#ef4444" style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1 }}>{uploadError}</span>
+              <button onClick={() => setUploadError(null)} style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: 0 }}>
+                <X size={12} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Study Rows */}
@@ -1067,7 +1113,7 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
                 const wx = finding.world_xyz_mm ? finding.world_xyz_mm[0] : (cx * (pixelSpacing[1] || 0.703) - 180.0);
                 const wy = finding.world_xyz_mm ? finding.world_xyz_mm[1] : (cy * (pixelSpacing[0] || 0.703) - 180.0);
                 const wz = finding.world_xyz_mm ? finding.world_xyz_mm[2] : (cz * sliceThickness - 200.0);
-                const sigmaVal = finding.epistemic_uncertainty ?? (finding.uncertainty_tier === 'High' ? 0.088 : (finding.uncertainty_tier === 'Moderate' ? 0.045 : 0.018));
+                const sigmaVal = finding.epistemic_uncertainty ?? null;
 
                 return (
                   <div
@@ -1201,7 +1247,7 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
           )}
         </div>
 
-        {/* Localisation Quality Honest Reporting */}
+        {/* Localisation Quality Honest Reporting (Dynamic from /api/v2/benchmark) */}
         <div style={{
           padding: '10px',
           borderTop: '1px solid var(--border, #1e293b)',
@@ -1209,9 +1255,46 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
           fontSize: '11px',
           color: '#94a3b8'
         }}>
-          <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '4px' }}>Localisation Quality (Held-Out Evaluation)</div>
-          <div>FROC Sensitivity: <strong style={{ color: '#38bdf8' }}>82.4%</strong> at 1.0 FP/scan [76.1% - 88.2%]</div>
-          <div>Centre-Distance Error: <strong style={{ color: '#38bdf8' }}>1.42 mm</strong> [1.10 - 1.84 mm]</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <span style={{ fontWeight: 600, color: '#f1f5f9' }}>Localisation Quality</span>
+            <Badge variant="warning">Preliminary</Badge>
+          </div>
+          {benchmarkData?.localization ? (
+            <>
+              <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px' }}>
+                Held-out evaluation (N={benchmarkData.localization.evaluated_test_scans ?? 5} scans, N={benchmarkData.localization.total_test_nodules ?? 17} nodules)
+              </div>
+              <div style={{ marginBottom: '2px' }}>
+                Recall: <strong style={{ color: '#38bdf8' }}>{((benchmarkData.localization.detection_sensitivity ?? 0) * 100).toFixed(1)}%</strong>
+                {benchmarkData.localization.detection_sensitivity_wilson_95_ci && (
+                  <span> [{(benchmarkData.localization.detection_sensitivity_wilson_95_ci[0] * 100).toFixed(1)}% - {(benchmarkData.localization.detection_sensitivity_wilson_95_ci[1] * 100).toFixed(1)}%]</span>
+                )}
+                <span style={{ fontSize: '10px', color: '#64748b' }}> (@ {Math.round(benchmarkData.localization.candidates_per_scan ?? 800)} c/scan)</span>
+              </div>
+              <div style={{ marginBottom: '2px' }}>
+                Centroid Error: <strong style={{ color: '#38bdf8' }}>{benchmarkData.localization.median_centroid_error_mm != null ? `${benchmarkData.localization.median_centroid_error_mm.toFixed(2)} mm` : '—'}</strong>
+                {benchmarkData.localization.p90_centroid_error_mm != null && (
+                  <span style={{ fontSize: '10px', color: '#64748b' }}> (P90: {benchmarkData.localization.p90_centroid_error_mm.toFixed(2)} mm)</span>
+                )}
+              </div>
+              {benchmarkData.localization.end_to_end_froc && (
+                <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #1e293b' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#cbd5e1', marginBottom: '2px' }}>End-to-End FROC (Actual Operating Points):</div>
+                  {Object.entries(benchmarkData.localization.end_to_end_froc).map(([target, pt]: [string, any]) => (
+                    <div key={target} style={{ fontSize: '10px', color: '#94a3b8' }}>
+                      {pt.is_reachable ? (
+                        <span>Target {target} FP: <strong style={{ color: '#38bdf8' }}>{(pt.sensitivity * 100).toFixed(1)}%</strong> @ {pt.actual_fp_per_scan.toFixed(2)} FP/scan [{pt.wilson_95_ci ? `${(pt.wilson_95_ci[0]*100).toFixed(1)}%-${(pt.wilson_95_ci[1]*100).toFixed(1)}%` : ''}]</span>
+                      ) : (
+                        <span style={{ color: '#f59e0b' }}>Target {target} FP: Unreachable (max actual: {pt.actual_fp_per_scan.toFixed(2)} FP/scan)</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ color: '#64748b', fontSize: '10px' }}>Loading held-out benchmark from /api/v2/benchmark…</div>
+          )}
           <div style={{ marginTop: '4px', fontSize: '10px', color: '#64748b' }}>AI-generated suggestion, requires clinician review.</div>
         </div>
       </aside>
@@ -1346,7 +1429,7 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
             <div style={{ background: '#090d16', padding: '8px', borderRadius: '3px' }}>
               <div style={{ color: '#94a3b8' }}>End-to-End Latency:</div>
               <div style={{ fontSize: '14px', fontWeight: 700, color: usageData?.exceeded_time_budget ? '#f87171' : '#38bdf8' }}>
-                {usageData?.total_wall_time_s ? `${usageData.total_wall_time_s}s` : '1.42s'}
+                {usageData?.total_wall_time_s ? `${usageData.total_wall_time_s}s` : '—'}
               </div>
               <div style={{ fontSize: '10px', color: '#64748b' }}>Budget: 15.0s max</div>
             </div>
@@ -1354,15 +1437,15 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
             <div style={{ background: '#090d16', padding: '8px', borderRadius: '3px' }}>
               <div style={{ color: '#94a3b8' }}>CPU &amp; Memory:</div>
               <div style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
-                {usageData?.total_cpu_seconds ? `${usageData.total_cpu_seconds}s CPU` : '2.85s CPU'}
+                {usageData?.total_cpu_seconds ? `${usageData.total_cpu_seconds}s CPU` : '—'}
               </div>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>Peak RAM: {usageData?.peak_memory_mb || 420.0} MB</div>
+              <div style={{ fontSize: '10px', color: '#64748b' }}>Peak RAM: {usageData?.peak_memory_mb || '—'} MB</div>
             </div>
 
             <div style={{ background: '#090d16', padding: '8px', borderRadius: '3px' }}>
               <div style={{ color: '#94a3b8' }}>Input Volume:</div>
               <div style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
-                {usageData?.input_voxels ? `${(usageData.input_voxels / 1e6).toFixed(1)}M voxels` : '48.2M voxels'}
+                {usageData?.input_voxels ? `${(usageData.input_voxels / 1e6).toFixed(1)}M voxels` : '—'}
               </div>
               <div style={{ fontSize: '10px', color: '#64748b' }}>{usageData?.candidate_crops_processed || findings.length} candidate crops</div>
             </div>
@@ -1370,7 +1453,7 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
             <div style={{ background: '#090d16', padding: '8px', borderRadius: '3px' }}>
               <div style={{ color: '#94a3b8' }}>Estimated Compute Cost:</div>
               <div style={{ fontSize: '14px', fontWeight: 700, color: '#10b981' }}>
-                ${usageData?.compute_cost_usd !== undefined ? usageData.compute_cost_usd.toFixed(5) : '0.00004'}
+                ${usageData?.compute_cost_usd !== undefined ? `$${usageData.compute_cost_usd.toFixed(5)}` : '—'}
               </div>
               <div style={{ fontSize: '10px', color: '#64748b' }}>{usageData?.cost_basis || '$0.048/CPU-hr'}</div>
             </div>
@@ -1388,40 +1471,38 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
         {/* Tab 3: Longitudinal Prior Comparison */}
         {activeBottomTab === 'longitudinal' && (
           <div style={{ padding: '10px 16px', overflowY: 'auto', display: 'flex', gap: '16px', fontSize: '11px' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '6px' }}>Prior Studies for Patient</div>
-              <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ color: '#94a3b8', borderBottom: '1px solid #1e293b' }}>
-                    <th style={{ padding: '4px' }}>Date</th>
-                    <th style={{ padding: '4px' }}>Study ID</th>
-                    <th style={{ padding: '4px' }}>Slice Count</th>
-                    <th style={{ padding: '4px' }}>Lung-RADS</th>
-                    <th style={{ padding: '4px' }}>Volume Change</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style={{ borderBottom: '1px solid #1e293b' }}>
-                    <td style={{ padding: '4px' }}>2025-09-15</td>
-                    <td style={{ padding: '4px', fontFamily: 'monospace' }}>CASE-PRIOR-0087</td>
-                    <td style={{ padding: '4px' }}>180</td>
-                    <td style={{ padding: '4px' }}>Lung-RADS 3</td>
-                    <td style={{ padding: '4px', color: '#94a3b8' }}>Baseline</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '4px' }}>Current (2026-03-12)</td>
-                    <td style={{ padding: '4px', fontFamily: 'monospace', color: '#38bdf8' }}>{activeStudyId}</td>
-                    <td style={{ padding: '4px' }}>{totalSlices}</td>
-                    <td style={{ padding: '4px' }}>Lung-RADS 4A</td>
-                    <td style={{ padding: '4px', color: '#f87171', fontWeight: 600 }}>+18.4% (VDT: 185 days)</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div style={{ width: '220px', borderLeft: '1px solid #1e293b', paddingLeft: '16px', color: '#cbd5e1' }}>
-              <div style={{ fontWeight: 600, color: '#f59e0b', marginBottom: '4px' }}>Growth Rate Alert</div>
-              <div>Volume Doubling Time: <strong>185 days</strong> (&lt; 400d indicates growth). Recommend diagnostic workup.</div>
-            </div>
+            {longitudinalData?.prior_studies && longitudinalData.prior_studies.length > 0 ? (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: '#f1f5f9', marginBottom: '6px' }}>Prior Studies for Patient</div>
+                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ color: '#94a3b8', borderBottom: '1px solid #1e293b' }}>
+                      <th style={{ padding: '4px' }}>Date</th>
+                      <th style={{ padding: '4px' }}>Study ID</th>
+                      <th style={{ padding: '4px' }}>Slice Count</th>
+                      <th style={{ padding: '4px' }}>Lung-RADS</th>
+                      <th style={{ padding: '4px' }}>Volume Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {longitudinalData.prior_studies.map((ps: any, idx: number) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
+                        <td style={{ padding: '4px' }}>{ps.date || '—'}</td>
+                        <td style={{ padding: '4px', fontFamily: 'monospace' }}>{ps.study_id}</td>
+                        <td style={{ padding: '4px' }}>{ps.slice_count || '—'}</td>
+                        <td style={{ padding: '4px' }}>{ps.lung_rads || '—'}</td>
+                        <td style={{ padding: '4px' }}>{ps.volume_change || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ padding: '12px 0', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Info size={16} color="#64748b" />
+                <span>No prior longitudinal CT studies loaded for this patient. Prior comparison and volume doubling time tracking require at least two longitudinal scans.</span>
+              </div>
+            )}
           </div>
         )}
       </footer>

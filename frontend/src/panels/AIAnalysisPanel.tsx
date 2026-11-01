@@ -43,7 +43,7 @@ function computeWilsonCI(k: number, n: number): [number, number] {
   return [Math.max(0, center - margin), Math.min(1, center + margin)];
 }
 
-export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = 'CASE-DEMO-LIDC-0087' }) => {
+export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = '' }) => {
   const [benchmarkMetrics, setBenchmarkMetrics] = useState<any>(null);
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = 'CAS
                     cursor: 'pointer',
                   }}
                 >
-                  Fast Triage Mode (&lt; 2s)
+                  Fast Triage Mode (1.3s warm, &lt; 15s budget)
                 </button>
                 <button
                   onClick={() => setInferenceMode('full')}

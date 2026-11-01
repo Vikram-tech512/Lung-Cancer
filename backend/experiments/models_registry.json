@@ -47,7 +47,24 @@
       "checkpoint_path": "checkpoints_3d/resnet3d_luna16_best.pt",
       "patient_split_hash": "335343f6f1139c7cf6c808416131f630e6542dda3f344902b6d6f7840afcd109",
       "notes": "Trained on official LUNA16 subsets 0, 1 (178 scans, 1,848 crops at 32^3 1mm isotropic). Val AUC 0.9227 on subset 2 (89 scans). Research Use Only.",
-      "updated_at": "2026-11-01 06:09:08 UTC"
+      "updated_at": "2026-11-01 09:22:13 UTC"
+    },
+    {
+      "model_name": "3D ResNet-18 Half (Detector Fine-Tuned)",
+      "version": "v1.2.1-det-ft",
+      "stage": "EXPERIMENTAL",
+      "architecture": "ResNet3D18Half",
+      "input_dimension": "(1, 32, 32, 32)",
+      "metrics": {
+        "val_auc": 0.8841,
+        "test_auc": 0.8479,
+        "test_ap": 0.3059,
+        "ece_calibrated": 0.0064,
+        "brier_score": 0.0099
+      },
+      "created_at": "2026-11-01 14:32:00",
+      "checkpoint_path": "checkpoints_3d/resnet3d_detector_finetuned.pt",
+      "notes": "Fine-tuned on Stage 3 DoG candidate detector output with hard-negative mining on validation partition (5 scans). Evaluated on 5 held-out test scans (17 nodules)."
     }
   ],
   "3D ResNet-50": [

@@ -39,16 +39,16 @@ export const AboutModelScreen: React.FC = () => {
 
   const discrimination = metricsData?.discrimination || {
     auc: 0.6471,
-    auc_95_ci: [0.2632, 0.9412],
+    auc_95_ci: null,
     accuracy_raw: 0.15,
     sensitivity_raw: 1.0,
     specificity_raw: 0.0
   };
 
   const calibration = metricsData?.calibration || {
-    optimal_temperature: 3.3978,
-    ece_uncalibrated: 0.7771,
-    ece_calibrated: 0.5320
+    optimal_temperature: null,
+    ece_uncalibrated: null,
+    ece_calibrated: null
   };
 
   const uncPasses = metricsData?.uncertainty_mc_dropout?.passes || 30;

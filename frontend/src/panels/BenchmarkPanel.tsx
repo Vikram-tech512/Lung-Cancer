@@ -171,9 +171,17 @@ export const BenchmarkPanel: React.FC = () => {
                   <Badge variant="success">Within Budget</Badge>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', fontSize: '12px' }}>
                   <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Median Fast Triage Time</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Cold Fast Triage Time</div>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent)', marginTop: '2px' }}>
+                      {cr.fast_triage_mode?.cold_wall_time_s != null ? `${cr.fast_triage_mode.cold_wall_time_s}s` : 'No data'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Initial unprimed scan</div>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Warm Median Time</div>
                     <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent)', marginTop: '2px' }}>
                       {cr.fast_triage_mode?.median_wall_time_s != null ? `${cr.fast_triage_mode.median_wall_time_s}s` : 'No data'}
                     </div>
@@ -191,7 +199,7 @@ export const BenchmarkPanel: React.FC = () => {
                   <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Peak Memory RSS</div>
                     <div style={{ fontSize: '18px', fontWeight: 700, marginTop: '2px' }}>
-                      {cr.fast_triage_mode?.median_peak_ram_mb != null ? `${cr.fast_triage_mode.median_peak_ram_mb} MB` : 'No data'}
+                      {cr.fast_triage_mode?.p95_peak_ram_mb != null ? `${cr.fast_triage_mode.p95_peak_ram_mb} MB` : (cr.fast_triage_mode?.median_peak_ram_mb != null ? `${cr.fast_triage_mode.median_peak_ram_mb} MB` : 'No data')}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>RAM Budget: &lt; 10,000 MB</div>
                   </div>
@@ -287,26 +295,35 @@ export const BenchmarkPanel: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {[
-                        { target: '1.0', actual: '0.00', sens: '5.9%', ci: '[1.0%, 27.0%]', thresh: '1.0000', hit: '1/17' },
-                        { target: '2.0', actual: '1.20', sens: '11.8%', ci: '[3.3%, 34.3%]', thresh: '1.0000', hit: '2/17' },
-                        { target: '4.0', actual: '2.20', sens: '23.5%', ci: '[9.6%, 47.3%]', thresh: '0.9999', hit: '4/17' },
-                        { target: '8.0', actual: '4.40', sens: '29.4%', ci: '[13.3%, 53.1%]', thresh: '0.9996', hit: '5/17' },
-                      ].map((row, rIdx) => {
-                        const frocData = loc?.end_to_end_froc?.[row.target];
-                        const actFp = frocData ? frocData.actual_fp_per_scan.toFixed(2) : row.actual;
-                        const sensStr = frocData ? `${(frocData.sensitivity * 100).toFixed(1)}% (${frocData.recalled_nodules}/${frocData.total_nodules})` : `${row.sens} (${row.hit})`;
-                        const ciStr = frocData ? `[${(frocData.wilson_95_ci[0] * 100).toFixed(1)}%, ${(frocData.wilson_95_ci[1] * 100).toFixed(1)}%]` : row.ci;
-                        const pThresh = frocData ? frocData.probability_threshold.toFixed(4) : row.thresh;
+                      {['1.0', '2.0', '4.0', '8.0'].map((targetKey, rIdx) => {
+                        const frocData = loc?.end_to_end_froc?.[targetKey];
+                        const actFp = frocData?.actual_fp_per_scan != null ? frocData.actual_fp_per_scan.toFixed(2) : '—';
+                        const sensStr = frocData?.sensitivity != null ? `${(frocData.sensitivity * 100).toFixed(1)}% (${frocData.recalled_nodules}/${frocData.total_nodules})` : 'No data';
+                        const ciStr = frocData?.wilson_95_ci ? `[${(frocData.wilson_95_ci[0] * 100).toFixed(1)}%, ${(frocData.wilson_95_ci[1] * 100).toFixed(1)}%]` : '—';
+                        const pThresh = frocData?.probability_threshold != null ? frocData.probability_threshold.toFixed(4) : '—';
+                        const isReachable = frocData ? (frocData.is_reachable ?? true) : true;
                         return (
                           <tr key={rIdx} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '6px 8px', fontWeight: 600 }}>{row.target} FP/scan</td>
-                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{actFp}</td>
+                            <td style={{ padding: '6px 8px', fontWeight: 600 }}>
+                              {targetKey} FP/scan
+                              {!isReachable && (
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
+                                  Target unreachable (max: {actFp})
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>
+                              <strong>{actFp}</strong>
+                            </td>
                             <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--accent)' }}>{sensStr}</td>
                             <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{ciStr}</td>
                             <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{pThresh}</td>
                             <td style={{ padding: '6px 8px' }}>
-                              <Badge variant="warning">Preliminary</Badge>
+                              {isReachable ? (
+                                <Badge variant="warning">Preliminary</Badge>
+                              ) : (
+                                <Badge variant="neutral">Target Unreachable</Badge>
+                              )}
                             </td>
                           </tr>
                         );

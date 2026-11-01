@@ -98,7 +98,7 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
       }
       if (met && met.metrics && met.metrics.discrimination) {
         const disc = met.metrics.discrimination;
-        const aucCi = disc.auc_95_ci || [0.2632, 0.9412];
+        const aucCi = disc.auc_95_ci || null;
         const spec = disc.specificity_raw !== undefined ? disc.specificity_raw : 0.0;
         const crossesPointFive = (aucCi[0] <= 0.5 && aucCi[1] >= 0.5) || aucCi[0] < 0.5;
         const lowSpec = spec < 0.5;
@@ -137,7 +137,7 @@ export const StudyViewerScreen: React.FC<StudyViewerScreenProps> = ({
         if (data.nodules && data.nodules.length > 0) {
           const mapped: FindingItem[] = data.nodules.map((n: any, idx: number) => {
             const diam = n.diameter_mm || 11.4;
-            const prob = n.raw_probability || (diam > 15 ? 0.742 : (diam > 10 ? 0.485 : 0.221));
+            const prob = n.raw_probability || null;
             // Uncertainty tier from predictive entropy or variance
             const tier: 'Low' | 'Moderate' | 'High' = n.uncertainty_tier || (prob > 0.70 ? 'Moderate' : 'Low');
             return {

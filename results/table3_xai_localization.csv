@@ -1,13 +1,13 @@
-evaluation_type,metric_name,metric_value,unit,interpretation
-Stage 3 Detector (Preliminary),Evaluated Test Scans (N),5,scans,"5 held-out test scans (10 total on disk, fewer than 89)"
-Stage 3 Detector (Preliminary),Ground Truth Nodules (N),17,nodules,Annotated nodules in held-out test scans
-Stage 3 Detector (Preliminary),Detection Sensitivity (Recall),"64.7% (95% Wilson CI: [41.3%, 82.7%])",%,Matched 11/17 nodules within annotated radius at 800 cands/scan (N=5 scans)
-Stage 3 Detector (Preliminary),Candidates per Scan,800,candidates/scan,Operating candidate budget
-Stage 3 Detector (Preliminary),Median Centroid Error,1.65 mm,mm,Physical 3D Euclidean distance to annotated nodule center
-Stage 3 Detector (Preliminary),P90 Centroid Error,5.57 mm,mm,90th-percentile localization error bound
-Stage 3 Detector (Preliminary),Fraction within Annotated Radius,64.7%,%,Detections strictly within physical lesion boundary (r = diam / 2)
-End-to-End FROC (Detector + Classifier),Sensitivity @ 1.0 FP/scan,"5.9% (95% Wilson CI: [1.1%, 27.0%])",%,"Matched 1/17 nodules (N=5 scans, actual FP/scan: 0.0)"
-End-to-End FROC (Detector + Classifier),Sensitivity @ 2.0 FP/scan,"11.8% (95% Wilson CI: [3.3%, 34.3%])",%,"Matched 2/17 nodules (N=5 scans, actual FP/scan: 1.2)"
-End-to-End FROC (Detector + Classifier),Sensitivity @ 4.0 FP/scan,"23.5% (95% Wilson CI: [9.6%, 47.3%])",%,"Matched 4/17 nodules (N=5 scans, actual FP/scan: 2.2)"
-End-to-End FROC (Detector + Classifier),Sensitivity @ 8.0 FP/scan,"29.4% (95% Wilson CI: [13.3%, 53.1%])",%,"Matched 5/17 nodules (N=5 scans, actual FP/scan: 4.4)"
-Model Attribution Only,Grad-CAM Attribution Hit Rate,8.9%,%,Attribution peak alignment (MODEL ATTRIBUTION — NOT PHYSICAL BOUNDARY)
+evaluation_type,metric_name,metric_value,unit,interpretation,checkpoint
+Stage 3 Detector (Preliminary),Evaluated Test Scans (N),5,scans,"5 held-out test scans (10 total on disk, fewer than 89)",resnet3d_detector_finetuned.pt
+Stage 3 Detector (Preliminary),Ground Truth Nodules (N),17,nodules,Annotated nodules in held-out test scans,resnet3d_detector_finetuned.pt
+Stage 3 Detector (Preliminary),Detection Sensitivity (Recall),"64.7% (95% Wilson CI: [41.3%, 82.7%])",%,Matched 11/17 nodules within annotated radius at 800 cands/scan (N=5 scans),resnet3d_detector_finetuned.pt
+Stage 3 Detector (Preliminary),Candidates per Scan,800,candidates/scan,Operating candidate budget,resnet3d_detector_finetuned.pt
+Stage 3 Detector (Preliminary),Median Centroid Error,1.65 mm,mm,Physical 3D Euclidean distance to annotated nodule center,resnet3d_detector_finetuned.pt
+Stage 3 Detector (Preliminary),P90 Centroid Error,5.57 mm,mm,90th-percentile localization error bound,resnet3d_detector_finetuned.pt
+Stage 3 Detector (Preliminary),Fraction within Annotated Radius,64.7%,%,Detections strictly within physical lesion boundary (r = diam / 2),resnet3d_detector_finetuned.pt
+End-to-End FROC (Detector + Classifier),Sensitivity @ actual 0.40 FP/scan (Target 1.0),"23.5% (95% Wilson CI: [9.6%, 47.3%])",%,"Matched 4/17 nodules at actual 0.40 FP/scan (N=5 scans, prob thresh: 0.9982)",resnet3d_detector_finetuned.pt
+End-to-End FROC (Detector + Classifier),Sensitivity @ actual 1.60 FP/scan (Target 2.0),"29.4% (95% Wilson CI: [13.3%, 53.1%])",%,"Matched 5/17 nodules at actual 1.60 FP/scan (N=5 scans, prob thresh: 0.9849)",resnet3d_detector_finetuned.pt
+End-to-End FROC (Detector + Classifier),Sensitivity @ actual 1.60 FP/scan (Target 4.0),"29.4% (95% Wilson CI: [13.3%, 53.1%])",%,"Matched 5/17 nodules at actual 1.60 FP/scan (N=5 scans, prob thresh: 0.9849)",resnet3d_detector_finetuned.pt
+End-to-End FROC (Detector + Classifier),Sensitivity @ actual 1.60 FP/scan (Target 8.0),"29.4% (95% Wilson CI: [13.3%, 53.1%])",%,"Matched 5/17 nodules at actual 1.60 FP/scan (N=5 scans, prob thresh: 0.9849)",resnet3d_detector_finetuned.pt
+Model Attribution Only,Grad-CAM Attribution Hit Rate,8.9%,%,Attribution peak alignment (MODEL ATTRIBUTION — NOT PHYSICAL BOUNDARY),resnet3d_luna16_best.pt

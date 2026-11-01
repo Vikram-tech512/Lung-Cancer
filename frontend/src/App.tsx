@@ -16,6 +16,7 @@ import { BenchmarkPanel } from './panels/BenchmarkPanel';
 import { ExperimentsPanel } from './panels/ExperimentsPanel';
 import { TrainingPanel } from './panels/TrainingPanel';
 import { RegistryPanel } from './panels/RegistryPanel';
+import { API_BASE } from './services/api';
 
 export type PanelId =
   | 'intake'
@@ -56,11 +57,11 @@ const NAV_ITEMS: NavItem[] = [
 
 export const App: React.FC = () => {
   const [activePanel, setActivePanel] = useState<PanelId>('viewer');
-  const [currentStudyId, setCurrentStudyId] = useState<string>('CASE-DEMO-LIDC-0087');
+  const [currentStudyId, setCurrentStudyId] = useState<string>('');
   const [currentNoduleId, setCurrentNoduleId] = useState<string>('Not available');
   const [patientId, setPatientId] = useState<string>('Not available');
   const [studyDate, setStudyDate] = useState<string>('Not available');
-  const [isSyntheticStudy, setIsSyntheticStudy] = useState<boolean>(true);
+  const [isSyntheticStudy, setIsSyntheticStudy] = useState<boolean>(false);
   const [backendReady, setBackendReady] = useState<boolean | null>(null);
   const [modelVersion, setModelVersion] = useState<string>('Not available');
 
@@ -85,6 +86,16 @@ export const App: React.FC = () => {
 
     checkReady();
     timerId = setInterval(checkReady, 15000);
+    // Fetch available studies on initial load
+    fetch(`${API_BASE}/cases`)
+      .then(r => r.ok ? r.json() : { cases: [] })
+      .then(d => {
+        if (d && Array.isArray(d.cases) && d.cases.length > 0) {
+          setCurrentStudyId(d.cases[0].study_id);
+          setIsSyntheticStudy(!!d.cases[0].is_synthetic);
+        }
+      })
+      .catch(() => {});
     return () => {
       if (timerId) clearInterval(timerId);
     };

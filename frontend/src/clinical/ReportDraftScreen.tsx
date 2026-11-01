@@ -57,7 +57,7 @@ export const ReportDraftScreen: React.FC<ReportDraftScreenProps> = ({
       }
       if (met && met.metrics && met.metrics.discrimination) {
         const disc = met.metrics.discrimination;
-        const aucCi = disc.auc_95_ci || [0.2632, 0.9412];
+        const aucCi = disc.auc_95_ci || null;
         const spec = disc.specificity_raw !== undefined ? disc.specificity_raw : 0.0;
         const crossesPointFive = (aucCi[0] <= 0.5 && aucCi[1] >= 0.5) || aucCi[0] < 0.5;
         const lowSpec = spec < 0.5;

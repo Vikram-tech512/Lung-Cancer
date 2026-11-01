@@ -27,7 +27,7 @@ interface NoduleMorphology {
   uncertainty_tier?: string;
 }
 
-export const MorphometryPanel: React.FC<MorphometryPanelProps> = ({ noduleId, studyId = 'CASE-DEMO-LIDC-0087' }) => {
+export const MorphometryPanel: React.FC<MorphometryPanelProps> = ({ noduleId, studyId = '' }) => {
   const [nodules, setNodules] = useState<NoduleMorphology[]>([]);
   const [selectedId, setSelectedId] = useState<string>(noduleId || '');
   const [loading, setLoading] = useState<boolean>(true);

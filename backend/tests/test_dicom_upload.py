@@ -87,3 +87,35 @@ def test_upload_genuine_dicom_zip_success(client):
     assert stored["deidentification_audit"]["stage_status"] == "PASS"
     assert stored["patient_id"].startswith("ANON-")
     assert stored["nodules"] == []
+
+
+def test_upload_mhd_raw_archive_success(client):
+    """Uploading a zip containing a .mhd/.raw pair must successfully ingest and register the volume."""
+    subset0 = Path("data/LUNA16/subset0")
+    mhd_files = list(subset0.glob("*.mhd"))
+    if not mhd_files:
+        pytest.skip("No LUNA16 .mhd files found on disk.")
+
+    mhd_path = mhd_files[0]
+    raw_path = mhd_path.with_suffix(".raw")
+    if not raw_path.exists():
+        pytest.skip(f"Accompanying raw file {raw_path} not found.")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(mhd_path, arcname=mhd_path.name)
+        zf.write(raw_path, arcname=raw_path.name)
+    buf.seek(0)
+
+    files = {"file": ("luna16_sample.zip", buf.getvalue(), "application/zip")}
+    res = client.post("/api/v2/dicom/upload", files=files)
+    assert res.status_code == 200
+    data = res.json()
+    assert "study_id" in data
+    study_id = data["study_id"]
+    assert study_id in STUDY_STORE
+    stored = STUDY_STORE[study_id]
+    assert stored["is_synthetic"] is False
+    assert stored["modality"] == "CT"
+    assert stored["slice_count"] > 0
+    assert stored["mhd_file"] is not None

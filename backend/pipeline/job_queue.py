@@ -278,20 +278,40 @@ class JobQueueManager:
 
         candidates: List[Dict[str, Any]] = []
 
-        # Check existing recorded nodules or run 3D blob finder in lung cavity
-        existing_nodules = study_meta.get("nodules", [])
-        if existing_nodules:
-            for n in existing_nodules:
-                candidates.append({
-                    "nodule_id": n["nodule_id"],
-                    "center_zyx": n.get("center_zyx", [92, 200, 200]),
-                    "diameter_mm": float(n.get("diameter_mm", 12.0)),
-                    "volume_mm3": float(n.get("volume_mm3", 900.0)),
-                    "lobe": n.get("lobe", "Right Upper Lobe (RUL)"),
-                    "source": "detector",
-                })
-        else:
-            # Connected component blob search on downsampled lung cavity in soft-tissue range (-200 to +200 HU)
+        # Run heuristic multi-scale DoG candidate detector
+        from backend.pipeline.stages.detection import DetectionStage
+        detector = DetectionStage(max_candidates=100)
+        detected_cands = detector.detect_candidates(
+            volume=raw_vol,
+            raw_volume=raw_vol,
+            spacing=tuple(volume_obj.spacing_mm),
+            lung_mask=lung_mask,
+        )
+
+        for idx, dc in enumerate(detected_cands):
+            cz, cy, cx = dc["centroid_zyx"]
+            diam_mm = float(dc.get("diameter_mm", 6.0))
+            cand_id = f"CAND-{idx + 1:02d}"
+            bbox = dc.get("bbox_zyx", [cz - 4, cy - 4, cx - 4, cz + 4, cy + 4, cx + 4])
+            bbox_voxel = [
+                [int(max(0, bbox[0])), int(min(volume_obj.shape[0] - 1, bbox[3]))],
+                [int(max(0, bbox[1])), int(min(volume_obj.shape[1] - 1, bbox[4]))],
+                [int(max(0, bbox[2])), int(min(volume_obj.shape[2] - 1, bbox[5]))],
+            ]
+            candidates.append({
+                "nodule_id": cand_id,
+                "center_zyx": [int(round(cz)), int(round(cy)), int(round(cx))],
+                "centroid_zyx": [cz, cy, cx],
+                "diameter_mm": round(diam_mm, 1),
+                "volume_mm3": round((4.0 / 3.0) * np.pi * ((diam_mm / 2.0) ** 3), 1),
+                "score": float(dc.get("score", 0.0)),
+                "lobe": self._estimate_lobe(int(cz), int(cy), int(cx), volume_obj.shape[0]),
+                "source": "heuristic_log_dog",
+                "bbox_voxel": bbox_voxel,
+            })
+
+        if not candidates:
+            # Fallback for synthetic/low-slice volumes (< 15 slices) where DoG filter is constrained
             from scipy import ndimage
             down_z = max(1, volume_obj.shape[0] // 64)
             sub_vol = raw_vol[z_min:z_max:down_z, y_min:y_max:2, x_min:x_max:2]
@@ -305,7 +325,6 @@ class JobQueueManager:
                 bz_min, by_min, bx_min = coords.min(axis=0)
                 bz_max, by_max, bx_max = coords.max(axis=0)
 
-                # Map back to full coordinates
                 orig_z = int(z_min + ((bz_min + bz_max) / 2.0) * down_z)
                 orig_y = int(y_min + ((by_min + by_max) / 2.0) * 2)
                 orig_x = int(x_min + ((bx_min + bx_max) / 2.0) * 2)
@@ -332,6 +351,17 @@ class JobQueueManager:
                         "source": "detector",
                         "bbox_voxel": bbox_voxel,
                     })
+
+        if not candidates and study_meta.get("nodules"):
+            for n in study_meta["nodules"]:
+                candidates.append({
+                    "nodule_id": n.get("nodule_id", "CAND-01"),
+                    "center_zyx": n.get("center_zyx", [92, 200, 200]),
+                    "diameter_mm": float(n.get("diameter_mm", 12.0)),
+                    "volume_mm3": float(n.get("volume_mm3", 900.0)),
+                    "lobe": n.get("lobe", "Right Upper Lobe (RUL)"),
+                    "source": "manual_annotation",
+                })
 
         dt = meter.end_stage("detection")
         self._set_stage_status(job, 3, "COMPLETED", dt)

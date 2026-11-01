@@ -114,15 +114,20 @@ def run_benchmark(n_runs: int = 5) -> Dict[str, Any]:
     triage_stage_times: Dict[str, List[float]] = {}
     peak_mems = []
 
-    # 1. Warm-up run
-    print("\n[1/3] Warming up inference engine & preloading weights...")
-    warm_job = job_queue.enqueue_sync(test_studies[0], mode="fast_triage")
-    while warm_job.status in ("QUEUED", "PROCESSING"):
-        time.sleep(0.05)
-    print("  Warm-up complete. Model cached and warm.")
+    # 1. Cold Run
+    print("\n[1/3] Benchmarking Cold Run (unprimed pipeline, cold Stage 3 detector)...")
+    t0_cold = time.perf_counter()
+    cold_job = job_queue.enqueue_sync(test_studies[0], mode="fast_triage")
+    while cold_job.status in ("QUEUED", "PROCESSING"):
+        time.sleep(0.02)
+    cold_elapsed_ms = (time.perf_counter() - t0_cold) * 1000.0
+    cold_usage = cold_job.usage_summary or {}
+    cold_stages = cold_usage.get("stage_timings_ms", {})
+    cold_ram = cold_usage.get("peak_memory_mb", 0.0)
+    print(f"  Cold Run complete: {cold_elapsed_ms:.1f} ms ({cold_elapsed_ms/1000.0:.2f} s) | Peak RAM: {cold_ram:.1f} MB")
 
-    # 2. Benchmarking Fast Triage Mode
-    print(f"\n[2/3] Benchmarking Fast Triage Mode across {n_runs} runs on real full-size scans...")
+    # 2. Warm Runs
+    print(f"\n[2/3] Benchmarking Warm Fast Triage Mode across {n_runs} runs on real full-size scans...")
     for run_idx in range(n_runs):
         study_id = test_studies[run_idx % len(test_studies)]
         t0 = time.perf_counter()
@@ -143,7 +148,7 @@ def run_benchmark(n_runs: int = 5) -> Dict[str, Any]:
                 triage_stage_times[st_name] = []
             triage_stage_times[st_name].append(st_ms)
 
-        print(f"  Run {run_idx + 1:02d} [{study_id}] -> {elapsed_ms:.1f} ms | Peak RAM: {usage.get('peak_memory_mb', 0):.1f} MB")
+        print(f"  Warm Run {run_idx + 1:02d} [{study_id}] -> {elapsed_ms:.1f} ms | Peak RAM: {usage.get('peak_memory_mb', 0):.1f} MB")
 
     # 3. Full Mode Benchmark (Executes Radiomics, Ensemble, and MC Dropout)
     print("\n[3/3] Benchmarking Full Mode (with authentic Radiomics, Ensemble & MC Dropout)...")
@@ -196,6 +201,9 @@ def run_benchmark(n_runs: int = 5) -> Dict[str, Any]:
         },
         "fast_triage_mode": {
             "runs": len(triage_scan_times),
+            "cold_wall_time_ms": round(cold_elapsed_ms, 2),
+            "cold_wall_time_s": round(cold_elapsed_ms / 1000.0, 3),
+            "cold_stage_timings_ms": cold_stages,
             "median_wall_time_ms": round(median_scan_ms, 2),
             "median_wall_time_s": round(median_scan_ms / 1000.0, 3),
             "p95_wall_time_ms": round(p95_scan_ms, 2),
@@ -231,7 +239,8 @@ def run_benchmark(n_runs: int = 5) -> Dict[str, Any]:
     print("  BENCHMARK SUMMARY RESULTS")
     print("-" * 75)
     print(f"  Volume Shape:            {vol_sample.shape} ({vol_sample.volume_hu.size:,} voxels)")
-    print(f"  Fast Triage Median Time: {median_scan_ms:.1f} ms ({median_scan_ms/1000.0:.2f} s)")
+    print(f"  Fast Triage Cold Time:   {cold_elapsed_ms:.1f} ms ({cold_elapsed_ms/1000.0:.2f} s)")
+    print(f"  Fast Triage Warm Median: {median_scan_ms:.1f} ms ({median_scan_ms/1000.0:.2f} s)")
     print(f"  Fast Triage 95th %-tile: {p95_scan_ms:.1f} ms ({p95_scan_ms/1000.0:.2f} s)")
     print(f"  Budget Status:           {'Within Budget' if is_within_budget else 'Exceeds Budget'} (Budget: < {time_budget_s} s)")
     print(f"  Full Mode Wall Time:     {full_elapsed_ms:.1f} ms ({full_elapsed_ms/1000.0:.2f} s)")
