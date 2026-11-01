@@ -27,27 +27,48 @@ Repository = "https://github.com/Vikram-tech512/Lung-Cancer"
 # Tool configurations
 # ---------------------------------------------------------------------------
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["backend*"]
-exclude = [
-    "deploy*",
-    "frontend*",
-    "segmentation*",
-    "checkpoints*",
-    "checkpoints_3d*",
-    "experiments*",
-    "experiments_log*",
-    "EXECUTION_RESULTS*",
-    "lung_cancer_segmentation*",
-    "data*",
-    "results*",
-    "logs*",
-    "paper*",
-    "scripts*",
-    "tests*",
+[tool.setuptools]
+packages = [
+    "backend",
+    "backend.api",
+    "backend.auth",
+    "backend.core",
+    "backend.database",
+    "backend.datasets",
+    "backend.dicom",
+    "backend.evaluation",
+    "backend.experiments",
+    "backend.explainability",
+    "backend.models",
+    "backend.models.classification",
+    "backend.models.classification.densenet3d",
+    "backend.models.classification.hybrid_vit",
+    "backend.models.classification.resnet3d",
+    "backend.models.classification.swin3d",
+    "backend.models.detection",
+    "backend.models.detection.detector3d",
+    "backend.models.ensemble",
+    "backend.models.radiomics",
+    "backend.models.segmentation",
+    "backend.models.segmentation.nnunet",
+    "backend.models.segmentation.unet3d",
+    "backend.monitoring",
+    "backend.pipeline",
+    "backend.pipeline.data",
+    "backend.pipeline.evaluate",
+    "backend.pipeline.radiomics",
+    "backend.pipeline.stages",
+    "backend.pipeline.train",
+    "backend.preprocessing",
+    "backend.reports",
+    "backend.robustness",
+    "backend.segmentation",
+    "backend.storage",
+    "backend.tests",
+    "backend.training",
+    "backend.uncertainty",
+    "backend.websocket",
 ]
-namespaces = false
 
 [tool.pytest.ini_options]
 testpaths    = ["backend/tests"]
