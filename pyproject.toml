@@ -8,7 +8,7 @@ version         = "2.0.0"
 description     = "Clinical-grade full-stack AI platform for volumetric thoracic CT analysis"
 readme          = "README.md"
 requires-python = ">=3.11"
-license         = {text = "MIT"}
+license         = "MIT"
 authors         = [{name = "Lung Cancer AI Research Team"}]
 keywords        = ["medical-imaging", "deep-learning", "lung-cancer", "CT", "radiomics", "XAI"]
 classifiers     = [
@@ -28,7 +28,26 @@ Repository = "https://github.com/Vikram-tech512/Lung-Cancer"
 # ---------------------------------------------------------------------------
 
 [tool.setuptools.packages.find]
+where = ["."]
 include = ["backend*"]
+exclude = [
+    "deploy*",
+    "frontend*",
+    "segmentation*",
+    "checkpoints*",
+    "checkpoints_3d*",
+    "experiments*",
+    "experiments_log*",
+    "EXECUTION_RESULTS*",
+    "lung_cancer_segmentation*",
+    "data*",
+    "results*",
+    "logs*",
+    "paper*",
+    "scripts*",
+    "tests*",
+]
+namespaces = false
 
 [tool.pytest.ini_options]
 testpaths    = ["backend/tests"]
