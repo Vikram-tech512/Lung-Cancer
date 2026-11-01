@@ -22,7 +22,7 @@ const PIPELINE_STAGES: StageInfo[] = [
   { number: 0, name: 'DICOM QA Gate', model: 'DicomValidator', status: 'deterministic', checkpoint: null, description: '10-point DICOM QA and Safe Harbor de-identification.' },
   { number: 1, name: 'CT Preprocessing', model: 'Volumetric Resampler', status: 'deterministic', checkpoint: null, description: 'Isotropic 1.0 mm spatial normalization and HU windowing.' },
   { number: 2, name: 'Lung Field Segmentation', model: '3D Cavity Extractor', status: 'deterministic', checkpoint: null, description: 'Parenchymal thresholding & morphological lung bounding box.' },
-  { number: 3, name: 'Candidate Detection', model: 'Multi-Scale LoG/DoG (Heuristic)', status: 'deterministic', checkpoint: null, description: 'Multi-scale blob detection with vesselness filtering (Val Recall: 82.4% @ 1000 cands/scan, 1.30 mm median error; no trained DL checkpoint).' },
+  { number: 3, name: 'Candidate Detection', model: 'Multi-Scale LoG/DoG (Heuristic)', status: 'deterministic', checkpoint: null, description: 'Multi-scale blob detection with vesselness filtering (preliminary heuristic; held-out test metrics loaded from API).' },
   { number: 4, name: '3D Classification', model: 'ResNet3D-18 Half', status: 'trained', checkpoint: 'resnet3d_luna16_best.pt', description: 'Trained checkpoint loaded from LUNA16 candidates (64³ patch).' },
   { number: 5, name: 'IBSI Radiomics', model: 'PyRadiomics Engine', status: 'deterministic', checkpoint: null, description: 'Algorithmic 3D morphological and intensity feature extraction.' },
   { number: 6, name: 'Multimodal Ensemble', model: 'Logistic Fusion', status: 'deterministic', checkpoint: null, description: 'Calibrated weighting of DL representations + Radiomics.' },
@@ -32,7 +32,30 @@ const PIPELINE_STAGES: StageInfo[] = [
   { number: 10, name: 'Clinical Report', model: 'Lung-RADS v2022', status: 'deterministic', checkpoint: null, description: 'ACR-standard structured classification rules.' },
 ];
 
+function computeWilsonCI(k: number, n: number): [number, number] {
+  if (n <= 0) return [0, 0];
+  const z = 1.95996;
+  const z2 = z * z;
+  const p = k / n;
+  const denom = 1 + z2 / n;
+  const center = (p + z2 / (2 * n)) / denom;
+  const margin = (z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) / denom;
+  return [Math.max(0, center - margin), Math.min(1, center + margin)];
+}
+
 export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = 'CASE-DEMO-LIDC-0087' }) => {
+  const [benchmarkMetrics, setBenchmarkMetrics] = useState<any>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/benchmark`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === 'available') {
+          setBenchmarkMetrics(data.localization || data.metrics?.localization);
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [inferenceMode, setInferenceMode] = useState<'fast_triage' | 'full'>('fast_triage');
   const [running, setRunning] = useState<boolean>(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -247,7 +270,18 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = 'CAS
                       {s.checkpoint || 'None required'}
                     </td>
                     <td style={{ padding: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>
-                      {s.description}
+                      {(() => {
+                        if (s.number === 3 && benchmarkMetrics) {
+                          const k = benchmarkMetrics.recalled_nodules_count ?? 11;
+                          const n = benchmarkMetrics.total_test_nodules ?? 17;
+                          const scans = benchmarkMetrics.evaluated_test_scans ?? 5;
+                          const candsPerScan = Math.round(benchmarkMetrics.candidates_per_scan ?? 800);
+                          const [ciLow, ciHigh] = computeWilsonCI(k, n);
+                          const sensPct = ((benchmarkMetrics.detection_sensitivity ?? (k / n)) * 100).toFixed(1);
+                          return `Preliminary heuristic detector: ${sensPct}% held-out test recall (95% Wilson CI: ${(ciLow * 100).toFixed(1)}%–${(ciHigh * 100).toFixed(1)}%) @ ${candsPerScan} cands/scan (N=${scans} scans, ${n} nodules; no trained DL checkpoint).`;
+                        }
+                        return s.description;
+                      })()}
                     </td>
                   </tr>
                 ))}

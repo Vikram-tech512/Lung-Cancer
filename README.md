@@ -192,22 +192,27 @@ backend/tests/test_models.py::test_ensemble_forward PASSED
 ---
 
 
-### Stage 3 Candidate Detection Status (Heuristic)
+### Stage 3 Candidate Detection Status (Preliminary Heuristic Benchmark)
 
 There is no trained deep learning detector checkpoint for Stage 3 in the repository (`checkpoints/retinanet3d_best.pt` does not exist). The platform operates an optimized, rule-based heuristic detector:
 - **Segmentation Constraint**: Restricts candidate search strictly within the segmented lung parenchyma mask.
 - **Multi-Scale Blob Detection**: 3D Difference of Gaussians (DoG) evaluated across scales $\sigma \in [1.2, 2.5, 4.2]\text{ mm}$ on downsampled volumes ($2\times$ subsampling for sub-2s execution latency).
 - **Vessel-Likeness & Morphological Filtering**: Rejects elongated tubular pulmonary blood vessels and pleural sheets using 3D spatial covariance eigenvalues (elongation ratio $\sqrt{\lambda_1 / \lambda_2} > 4.5$ or flatness $> 6.0$).
 - **Size Bounds**: Filters equivalent spherical diameter between $2.5\text{ mm} \le D \le 35.0\text{ mm}$.
-- **Validation Split Benchmark (Tuned on 5 Val Scans, 17 Nodules)**:
-  - 82.4% Recall (14/17 nodules) at 1000 candidates/scan with 1.30 mm median centroid error (P90: 2.38 mm).
-  - 76.5% Recall (13/17 nodules) at 500 candidates/scan with 1.43 mm median centroid error (P90: 2.44 mm).
-  - 58.8% Recall (10/17 nodules) at 300 candidates/scan with 1.53 mm median centroid error (P90: 2.68 mm).
-- **Held-out Test Split Benchmark (5 Test Scans, 17 Nodules)**:
-  - 64.7% Recall (11/17 nodules) at 800 candidates/scan with 1.65 mm median centroid error (P90: 5.57 mm).
-  - 52.9% Recall (9/17 nodules) at 500 candidates/scan with 1.48 mm median centroid error (P90: 6.27 mm).
-  - 41.2% Recall (7/17 nodules) at 300 candidates/scan with 1.48 mm median centroid error (P90: 3.88 mm).
-  - *(Notice: Only 10 LUNA16 scans present on disk across subsets, fewer than the 89 scans of full subset 3 test set; partitioned into 5 validation scans for parameter tuning and 5 held-out test scans for evaluation).*
+- **Preliminary Held-out Test Split Benchmark ($N=5$ Scans, $N=17$ Nodules)**:
+  - **800 cands/scan**: 64.7% Recall (11/17 nodules; 95% Wilson CI: [41.3%, 82.7%]) | Median Error: 1.65 mm | P90: 5.57 mm.
+  - **500 cands/scan**: 52.9% Recall (9/17 nodules; 95% Wilson CI: [31.0%, 73.8%]) | Median Error: 1.48 mm | P90: 6.27 mm.
+  - **300 cands/scan**: 41.2% Recall (7/17 nodules; 95% Wilson CI: [21.6%, 64.0%]) | Median Error: 1.48 mm | P90: 3.88 mm.
+  - **200 cands/scan**: 29.4% Recall (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]) | Median Error: 1.47 mm | P90: 3.44 mm.
+  - *(Notice: Only 10 LUNA16 scans present on disk across subsets, fewer than the 89 scans of full subset 3 test set; partitioned into 5 validation scans for parameter tuning and 5 held-out test scans for preliminary evaluation. Tuning-split numbers are not reported as performance).*
+- **Preliminary End-to-End FROC (Detector + ResNet3D-18 Classifier on Held-Out Test Scans, $N=5$ scans, $N=17$ nodules)**:
+  - **1.0 FP/scan**: 5.9% Sensitivity (1/17 nodules; 95% Wilson CI: [1.0%, 27.0%]; actual FP/scan: 0.00; threshold: 1.0000).
+  - **2.0 FP/scan**: 11.8% Sensitivity (2/17 nodules; 95% Wilson CI: [3.3%, 34.3%]; actual FP/scan: 1.20; threshold: 1.0000).
+  - **4.0 FP/scan**: 23.5% Sensitivity (4/17 nodules; 95% Wilson CI: [9.6%, 47.3%]; actual FP/scan: 2.20; threshold: 0.9999).
+  - **8.0 FP/scan**: 29.4% Sensitivity (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]; actual FP/scan: 4.40; threshold: 0.9996).
+- **Latency & Compute Benchmarks (Measured on Real Full-Size CT Series, 197 Slices)**:
+  - Stage 3 Heuristic Detector: 1332.9 ms (cold), 1288.5 ms (warm).
+  - Fast Triage Pipeline Total: 1512.2 ms (cold, 1.51s), 1342.1 ms (warm, 1.34s) — within the < 15.0s budget.
 
 ## Observability Endpoints
 
@@ -263,7 +268,7 @@ print(report.to_dict())
 To support clinical radiologist workflows on standard laptop CPUs (16 GB RAM) as well as GPU workstations, the pipeline features two operational inference modes managed by an asynchronous bounded job queue (`JobQueueManager`):
 
 1. **Fast Triage Mode (Default)**:
-   - Optimized for sub-2-second turnaround (measured median ~1.81s on CPU).
+   - Optimized for sub-2-second turnaround (measured median ~1.34s warm, 1.51s cold on CPU).
    - Stages executed: DICOM QA, Resampling & Lung Bounding-Box Cropping, Candidate Generation (reduced resolution), Fast 3D Backbone (ResNet3D-18 Half) on top-K candidate crops (32³), Calibrated Probabilities, and Draft Lung-RADS Classification.
    - Eliminates heavy bottlenecks: skips full-volume Swin3D/DenseNet, Radiomics extraction, and pre-computed XAI.
    - Immediate draft report returned to the radiologist without blocking subsequent study uploads.

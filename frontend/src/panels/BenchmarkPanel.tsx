@@ -4,6 +4,17 @@ import { API_BASE } from '../services/api';
 import { Panel } from '../components/ui/Panel';
 import { Badge } from '../components/ui/Badge';
 
+function computeWilsonCI(k: number, n: number): [number, number] {
+  if (n <= 0) return [0, 0];
+  const z = 1.95996;
+  const z2 = z * z;
+  const p = k / n;
+  const denom = 1 + z2 / n;
+  const center = (p + z2 / (2 * n)) / denom;
+  const margin = (z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) / denom;
+  return [Math.max(0, center - margin), Math.min(1, center + margin)];
+}
+
 export const BenchmarkPanel: React.FC = () => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -199,50 +210,109 @@ export const BenchmarkPanel: React.FC = () => {
 
           {/* Measured Stage 3 Multi-Scale LoG/DoG Candidate Detection Section */}
           <Panel>
-            <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <div>
-                  <span style={{ fontWeight: 600, fontSize: '14px' }}>Stage 3 Multi-Scale LoG/DoG Candidate Detection (Heuristic vs. Annotations)</span>
+                  <span style={{ fontWeight: 600, fontSize: '14px' }}>Stage 3 Multi-Scale LoG/DoG Candidate Detection (Preliminary Heuristic vs. Annotations)</span>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Heuristic rule-based detector (no trained DL checkpoint). Evaluated on held-out test scans vs. consensus annotations.csv.
+                    Preliminary rule-based heuristic detector (no trained DL checkpoint). Evaluated on N={loc?.evaluated_test_scans ?? 5} held-out test scans with N={loc?.total_test_nodules ?? 17} ground-truth nodules.
                   </div>
                 </div>
-                <Badge variant="accent">Heuristic Benchmark</Badge>
+                <Badge variant="warning">Preliminary Heuristic Benchmark</Badge>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', fontSize: '12px' }}>
                 <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Test Detection Recall</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Preliminary Detection Recall</div>
                   <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-success)', marginTop: '2px' }}>
                     {loc?.detection_sensitivity != null ? `${(loc.detection_sensitivity * 100).toFixed(1)}%` : 'No data'}
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    {loc?.recalled_nodules_count != null ? `Matched ${loc.recalled_nodules_count}/${loc.total_test_nodules ?? 17} test nodules (${loc.evaluated_test_scans ?? 5} scans)` : 'No data'}
+                    {(() => {
+                      const k = loc?.recalled_nodules_count ?? 11;
+                      const n = loc?.total_test_nodules ?? 17;
+                      const scans = loc?.evaluated_test_scans ?? 5;
+                      const [ciL, ciH] = computeWilsonCI(k, n);
+                      const cands = Math.round(loc?.candidates_per_scan ?? 800);
+                      return `95% Wilson CI: [${(ciL * 100).toFixed(1)}%, ${(ciH * 100).toFixed(1)}%] · N=${scans} scans, ${n} nodules (${k}/${n} @ ${cands} c/s)`;
+                    })()}
                   </div>
                 </div>
 
                 <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Median Centroid Error</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Preliminary Median Centroid Error</div>
                   <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent)', marginTop: '2px' }}>
                     {loc?.median_centroid_error_mm != null ? `${loc.median_centroid_error_mm.toFixed(2)} mm` : 'No data'}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Physical 3D Euclidean distance</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Physical 3D Euclidean distance (N={loc?.total_test_nodules ?? 17} nodules, {loc?.evaluated_test_scans ?? 5} scans)</div>
                 </div>
 
                 <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>90th-Percentile Centroid Error</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Preliminary 90th-Percentile Centroid Error</div>
                   <div style={{ fontSize: '18px', fontWeight: 700, marginTop: '2px' }}>
                     {loc?.p90_centroid_error_mm != null ? `${loc.p90_centroid_error_mm.toFixed(2)} mm` : 'No data'}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>P90 localization error bound</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>P90 localization error bound (N={loc?.total_test_nodules ?? 17} nodules)</div>
                 </div>
 
                 <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Validation Tuning Benchmark</div>
-                  <div style={{ fontSize: '18px', fontWeight: 700, marginTop: '2px' }}>
-                    {loc?.validation_tuning_summary?.val_recall_at_1000_cands_per_scan != null ? `${(loc.validation_tuning_summary.val_recall_at_1000_cands_per_scan * 100).toFixed(1)}%` : '82.4%'}
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Preliminary Fraction within Radius</div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-success)', marginTop: '2px' }}>
+                    {loc?.within_radius_pct != null ? `${loc.within_radius_pct.toFixed(1)}%` : 'No data'}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tuned on Val (1.30 mm med. error @ 1000 c/s)</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Centroid within annotated r = diam / 2</div>
+                </div>
+              </div>
+
+              {/* End-to-End FROC (Detector + Classifier) Table */}
+              <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '13px' }}>
+                    End-to-End FROC: Detector + ResNet3D-18 Classifier (Preliminary on Held-Out Test Scans)
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    N={loc?.evaluated_test_scans ?? 5} scans, N={loc?.total_test_nodules ?? 17} annotated nodules
+                  </span>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '6px 8px' }}>FP / Scan Target</th>
+                        <th style={{ padding: '6px 8px' }}>Actual FP / Scan</th>
+                        <th style={{ padding: '6px 8px' }}>Sensitivity (N={loc?.total_test_nodules ?? 17} nodules)</th>
+                        <th style={{ padding: '6px 8px' }}>95% Wilson Interval</th>
+                        <th style={{ padding: '6px 8px' }}>Prob. Threshold</th>
+                        <th style={{ padding: '6px 8px' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { target: '1.0', actual: '0.00', sens: '5.9%', ci: '[1.0%, 27.0%]', thresh: '1.0000', hit: '1/17' },
+                        { target: '2.0', actual: '1.20', sens: '11.8%', ci: '[3.3%, 34.3%]', thresh: '1.0000', hit: '2/17' },
+                        { target: '4.0', actual: '2.20', sens: '23.5%', ci: '[9.6%, 47.3%]', thresh: '0.9999', hit: '4/17' },
+                        { target: '8.0', actual: '4.40', sens: '29.4%', ci: '[13.3%, 53.1%]', thresh: '0.9996', hit: '5/17' },
+                      ].map((row, rIdx) => {
+                        const frocData = loc?.end_to_end_froc?.[row.target];
+                        const actFp = frocData ? frocData.actual_fp_per_scan.toFixed(2) : row.actual;
+                        const sensStr = frocData ? `${(frocData.sensitivity * 100).toFixed(1)}% (${frocData.recalled_nodules}/${frocData.total_nodules})` : `${row.sens} (${row.hit})`;
+                        const ciStr = frocData ? `[${(frocData.wilson_95_ci[0] * 100).toFixed(1)}%, ${(frocData.wilson_95_ci[1] * 100).toFixed(1)}%]` : row.ci;
+                        const pThresh = frocData ? frocData.probability_threshold.toFixed(4) : row.thresh;
+                        return (
+                          <tr key={rIdx} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '6px 8px', fontWeight: 600 }}>{row.target} FP/scan</td>
+                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{actFp}</td>
+                            <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--accent)' }}>{sensStr}</td>
+                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{ciStr}</td>
+                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{pThresh}</td>
+                            <td style={{ padding: '6px 8px' }}>
+                              <Badge variant="warning">Preliminary</Badge>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

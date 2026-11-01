@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import json
 import os
 import sys
@@ -823,15 +824,29 @@ def evaluate_gradcam(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def wilson_score_interval(k: int, n: int, z: float = 1.95996) -> Tuple[float, float]:
+    """Computes exact two-sided 95% Wilson score confidence interval for a binomial proportion."""
+    if n <= 0:
+        return (0.0, 0.0)
+    p = k / n
+    denom = 1.0 + (z**2) / n
+    center = (p + (z**2) / (2.0 * n)) / denom
+    margin = (z * math.sqrt((p * (1.0 - p) + (z**2) / (4.0 * n)) / n)) / denom
+    return (max(0.0, center - margin), min(1.0, center + margin))
+
+
 def evaluate_stage3_localization(
     luna_root: Path,
     annotations_csv: Path,
     test_scans: List[str] = None,
+    model: nn.Module = None,
+    device: torch.device = None,
 ) -> Dict[str, Any]:
     """
     Evaluates Stage 3 heuristic detector directly on test scans available on disk and matches
     its OWN detections to annotations.csv (does not use LUNA16 candidate positions).
-    Tuning is strictly performed on validation scans; test scans are held-out.
+    All detector metrics are marked preliminary. Computes 95% Wilson score confidence intervals
+    and evaluates end-to-end FROC (detector + classifier) at 1, 2, 4, 8 FP/scan.
     """
     from backend.pipeline.stages.detection import DetectionStage
     from backend.pipeline.orchestrator import PipelineContext, PipelineStage
@@ -856,7 +871,7 @@ def evaluate_stage3_localization(
         split_point = total_disk_scans // 2
         val_mhd_files = all_disk_mhd[:split_point]
         test_mhd_files = all_disk_mhd[split_point:]
-        print(f"  Partitioned into {len(val_mhd_files)} validation scans (tuning) and {len(test_mhd_files)} held-out test scans (evaluation).")
+        print(f"  Partitioned into {len(val_mhd_files)} validation scans (tuning) and {len(test_mhd_files)} held-out test scans (preliminary evaluation).")
     else:
         val_mhd_files = [p for p in all_disk_mhd if p not in test_mhd_files]
 
@@ -867,9 +882,9 @@ def evaluate_stage3_localization(
 
     print(f"[STAGE 3 LOCALIZATION] Evaluating heuristic detector on {len(test_mhd_files)} held-out test scans ({len(test_anns)} ground-truth nodules)...")
 
-    # Evaluate across candidate budgets to measure recall vs candidates per scan
     budgets = [50, 100, 200, 300, 500, 800]
     scan_detections = {}
+    scan_raw_crops = {}
 
     for mhd in test_mhd_files:
         suid = mhd.stem
@@ -882,18 +897,33 @@ def evaluate_stage3_localization(
         res = detector.run(ctx)
         candidates = res.get("candidates", [])
 
-        # Transform voxel centroids to physical coordinates (x, y, z)
         cand_coords = []
+        cand_crops = []
         for c in candidates:
             cz, cy, cx = c["centroid_zyx"]
             phys_pt = img.TransformContinuousIndexToPhysicalPoint([cx, cy, cz])
             cand_coords.append({
                 "phys_xyz": phys_pt,
+                "centroid_zyx": [cz, cy, cx],
                 "score": c.get("score", 0.0),
             })
-        scan_detections[suid] = cand_coords
 
+            # Extract 32x32x32 normalized crop for classifier evaluation
+            z1, z2 = max(0, int(cz) - 16), min(vol.shape[0], int(cz) + 16)
+            y1, y2 = max(0, int(cy) - 16), min(vol.shape[1], int(cy) + 16)
+            x1, x2 = max(0, int(cx) - 16), min(vol.shape[2], int(cx) + 16)
+            crop = np.zeros((32, 32, 32), dtype=np.float32)
+            sub = vol[z1:z2, y1:y2, x1:x2]
+            crop[:sub.shape[0], :sub.shape[1], :sub.shape[2]] = sub
+            crop_norm = np.clip((crop + 1000.0) / 1400.0, 0.0, 1.0)
+            cand_crops.append(crop_norm)
+
+        scan_detections[suid] = cand_coords
+        scan_raw_crops[suid] = cand_crops
+
+    # Standalone candidate recall vs candidates per scan with 95% Wilson CI
     recall_curve = []
+    n_nodules = len(test_anns)
     for budget in budgets:
         hits = 0
         errors = []
@@ -906,7 +936,6 @@ def evaluate_stage3_localization(
             if not cands:
                 continue
 
-            # Minimum distance to any candidate in budget
             dists = [
                 float(np.sqrt((c["phys_xyz"][0] - ax)**2 + (c["phys_xyz"][1] - ay)**2 + (c["phys_xyz"][2] - az)**2))
                 for c in cands
@@ -916,7 +945,8 @@ def evaluate_stage3_localization(
                 hits += 1
                 errors.append(min_dist)
 
-        rec = hits / len(test_anns) if test_anns else 0.0
+        rec = hits / n_nodules if n_nodules else 0.0
+        ci_l, ci_h = wilson_score_interval(hits, n_nodules)
         med_e = float(np.median(errors)) if errors else 0.0
         p90_e = float(np.percentile(errors, 90)) if errors else 0.0
         cands_per_scan = float(budget)
@@ -924,24 +954,107 @@ def evaluate_stage3_localization(
             "candidate_budget": budget,
             "candidates_per_scan": cands_per_scan,
             "recalled_nodules": hits,
-            "total_nodules": len(test_anns),
+            "total_nodules": n_nodules,
+            "evaluated_test_scans": len(test_mhd_files),
             "recall": round(rec, 4),
+            "wilson_95_ci": [round(ci_l, 4), round(ci_h, 4)],
             "median_centroid_error_mm": round(med_e, 2),
             "p90_centroid_error_mm": round(p90_e, 2),
+            "status": "PRELIMINARY",
         })
-        print(f"  Budget {budget:3d} cands/scan: Recall = {hits:2d}/{len(test_anns)} ({rec*100:5.1f}%) | Median Error = {med_e:4.2f} mm | P90 = {p90_e:4.2f} mm")
+        print(f"  Budget {budget:3d} cands/scan: Preliminary Recall = {hits:2d}/{n_nodules} ({rec*100:5.1f}%, 95% CI: [{ci_l*100:.1f}%, {ci_h*100:.1f}%]) | Median Error = {med_e:4.2f} mm | P90 = {p90_e:4.2f} mm")
 
     top_op = recall_curve[-1]
+
+    # End-to-End FROC (Detector + Classifier) at 1, 2, 4, 8 FP/scan
+    end_to_end_froc = {}
+    if model is not None:
+        model.eval()
+        use_dev = device or torch.device("cpu")
+        scan_scored_cands = {}
+
+        for suid, coords in scan_detections.items():
+            crops = scan_raw_crops.get(suid, [])
+            if crops:
+                batch_t = torch.from_numpy(np.stack(crops, axis=0)).unsqueeze(1).float().to(use_dev)
+                with torch.no_grad():
+                    logits = model(batch_t)
+                    probs = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
+            else:
+                probs = np.array([])
+
+            scored = []
+            for i, c in enumerate(coords):
+                scored.append({
+                    "phys_xyz": c["phys_xyz"],
+                    "prob": float(probs[i]) if i < len(probs) else 0.0,
+                })
+            scored.sort(key=lambda x: -x["prob"])
+            scan_scored_cands[suid] = scored
+
+        all_probs = sorted(list(set(c["prob"] for cands in scan_scored_cands.values() for c in cands)), reverse=True)
+        froc_eval_points = []
+        for p_thresh in all_probs:
+            total_tp = 0
+            total_fp = 0
+            for mhd in test_mhd_files:
+                suid = mhd.stem
+                s_anns = [a for a in test_anns if a["seriesuid"] == suid]
+                cands = [c for c in scan_scored_cands[suid] if c["prob"] >= p_thresh]
+                hit_anns = set()
+                for c in cands:
+                    px, py, pz = c["phys_xyz"]
+                    is_hit = False
+                    for a_idx, ann in enumerate(s_anns):
+                        ax, ay, az = float(ann["coordX"]), float(ann["coordY"]), float(ann["coordZ"])
+                        rad = float(ann["diameter_mm"]) / 2.0
+                        dist = math.sqrt((px - ax)**2 + (py - ay)**2 + (pz - az)**2)
+                        if dist <= rad:
+                            hit_anns.add(a_idx)
+                            is_hit = True
+                            break
+                    if not is_hit:
+                        total_fp += 1
+                total_tp += len(hit_anns)
+            fp_per_scan = total_fp / len(test_mhd_files)
+            sens = total_tp / n_nodules
+            froc_eval_points.append({
+                "fp_per_scan": fp_per_scan,
+                "sens": sens,
+                "tp": total_tp,
+                "fp": total_fp,
+                "thresh": p_thresh,
+            })
+
+        fp_targets = [1.0, 2.0, 4.0, 8.0]
+        for target in fp_targets:
+            valid = [pt for pt in froc_eval_points if pt["fp_per_scan"] <= target]
+            best_pt = max(valid, key=lambda x: x["sens"]) if valid else min(froc_eval_points, key=lambda x: x["fp_per_scan"])
+            tp = best_pt["tp"]
+            sens = tp / n_nodules
+            ci_l, ci_h = wilson_score_interval(tp, n_nodules)
+            end_to_end_froc[str(target)] = {
+                "fp_per_scan_target": target,
+                "actual_fp_per_scan": round(best_pt["fp_per_scan"], 2),
+                "recalled_nodules": tp,
+                "total_nodules": n_nodules,
+                "evaluated_test_scans": len(test_mhd_files),
+                "sensitivity": round(sens, 4),
+                "wilson_95_ci": [round(ci_l, 4), round(ci_h, 4)],
+                "probability_threshold": round(best_pt["thresh"], 4),
+                "status": "PRELIMINARY",
+            }
+            print(f"  End-to-End FROC @ {target:.1f} FP/scan: Sensitivity = {tp}/{n_nodules} ({sens*100:.1f}%, 95% Wilson CI: [{ci_l*100:.1f}%, {ci_h*100:.1f}%]) | Actual FP/scan: {best_pt['fp_per_scan']:.2f}")
 
     disk_scans_note = (
         f"Only {total_disk_scans} scans available on disk (fewer than the 89 scans of full subset 3 test set); "
         f"partitioned into {len(val_mhd_files)} validation scans ({len(val_anns)} nodules) for parameter tuning "
-        f"and {len(test_mhd_files)} held-out test scans ({len(test_anns)} nodules) for unbiased evaluation."
+        f"and {len(test_mhd_files)} held-out test scans ({len(test_anns)} nodules) for preliminary unbiased evaluation."
     )
 
     return {
-        "stage_3_detector": "Heuristic Multi-Scale LoG/DoG (rule-based, no trained DL checkpoint)",
-        "status": "HEURISTIC_RULE_BASED",
+        "stage_3_detector": "Heuristic Multi-Scale LoG/DoG (rule-based, preliminary; no trained DL checkpoint)",
+        "status": "PRELIMINARY_HEURISTIC",
         "dataset_notice": disk_scans_note,
         "total_disk_scans": total_disk_scans,
         "total_disk_nodules": len(all_anns),
@@ -949,19 +1062,14 @@ def evaluate_stage3_localization(
         "total_test_nodules": len(test_anns),
         "recalled_nodules_count": top_op["recalled_nodules"],
         "detection_sensitivity": top_op["recall"],
+        "detection_sensitivity_wilson_95_ci": top_op["wilson_95_ci"],
         "candidates_per_scan": top_op["candidates_per_scan"],
         "median_centroid_error_mm": top_op["median_centroid_error_mm"],
         "p90_centroid_error_mm": top_op["p90_centroid_error_mm"],
         "within_radius_fraction": top_op["recall"],
         "within_radius_pct": round(top_op["recall"] * 100.0, 1),
         "recall_vs_candidates_per_scan": recall_curve,
-        "validation_tuning_summary": {
-            "validation_scans": len(val_mhd_files),
-            "validation_nodules": len(val_anns),
-            "val_recall_at_1000_cands_per_scan": 0.8235,
-            "val_median_centroid_error_mm": 1.30,
-            "val_p90_centroid_error_mm": 2.38,
-        },
+        "end_to_end_froc": end_to_end_froc,
     }
 
 def build_risk_coverage_curve(
@@ -1266,60 +1374,73 @@ def run_step4_evaluation(
         stale_t1.unlink()
 
     # Stage 3 Localization Evaluation against annotations.csv
-    loc_res = evaluate_stage3_localization(luna_root, ann_csv, test_scans)
+    loc_res = evaluate_stage3_localization(luna_root, ann_csv, test_scans, model=model, device=device)
     table3_loc_path = results_dir / "table3_xai_localization.csv"
     with open(table3_loc_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["evaluation_type", "metric_name", "metric_value", "unit", "interpretation"])
         writer.writeheader()
         writer.writerow({
-            "evaluation_type": "Stage 3 Detector Localization",
+            "evaluation_type": "Stage 3 Detector (Preliminary)",
             "metric_name": "Evaluated Test Scans (N)",
             "metric_value": str(loc_res["evaluated_test_scans"]),
             "unit": "scans",
             "interpretation": f"{loc_res['evaluated_test_scans']} held-out test scans ({loc_res['total_disk_scans']} total on disk, fewer than 89)",
         })
         writer.writerow({
-            "evaluation_type": "Stage 3 Detector Localization",
+            "evaluation_type": "Stage 3 Detector (Preliminary)",
             "metric_name": "Ground Truth Nodules (N)",
             "metric_value": str(loc_res["total_test_nodules"]),
             "unit": "nodules",
             "interpretation": "Annotated nodules in held-out test scans",
         })
+        ci_str = f"[{loc_res['detection_sensitivity_wilson_95_ci'][0]*100:.1f}%, {loc_res['detection_sensitivity_wilson_95_ci'][1]*100:.1f}%]"
         writer.writerow({
-            "evaluation_type": "Stage 3 Detector Localization",
+            "evaluation_type": "Stage 3 Detector (Preliminary)",
             "metric_name": "Detection Sensitivity (Recall)",
-            "metric_value": f"{loc_res['detection_sensitivity']*100:.1f}%",
+            "metric_value": f"{loc_res['detection_sensitivity']*100:.1f}% (95% Wilson CI: {ci_str})",
             "unit": "%",
-            "interpretation": f"Matched {loc_res['recalled_nodules_count']}/{loc_res['total_test_nodules']} nodules within annotated radius at {int(loc_res['candidates_per_scan'])} cands/scan",
+            "interpretation": f"Matched {loc_res['recalled_nodules_count']}/{loc_res['total_test_nodules']} nodules within annotated radius at {int(loc_res['candidates_per_scan'])} cands/scan (N={loc_res['evaluated_test_scans']} scans)",
         })
         writer.writerow({
-            "evaluation_type": "Stage 3 Detector Localization",
+            "evaluation_type": "Stage 3 Detector (Preliminary)",
             "metric_name": "Candidates per Scan",
             "metric_value": str(int(loc_res["candidates_per_scan"])),
             "unit": "candidates/scan",
-            "interpretation": "Heuristic candidate density operating budget",
+            "interpretation": "Operating candidate budget",
         })
         writer.writerow({
-            "evaluation_type": "Stage 3 Detector Localization",
+            "evaluation_type": "Stage 3 Detector (Preliminary)",
             "metric_name": "Median Centroid Error",
             "metric_value": f"{loc_res['median_centroid_error_mm']:.2f} mm" if loc_res["median_centroid_error_mm"] is not None else "N/A",
             "unit": "mm",
             "interpretation": "Physical 3D Euclidean distance to annotated nodule center",
         })
         writer.writerow({
-            "evaluation_type": "Stage 3 Detector Localization",
+            "evaluation_type": "Stage 3 Detector (Preliminary)",
             "metric_name": "P90 Centroid Error",
             "metric_value": f"{loc_res['p90_centroid_error_mm']:.2f} mm" if loc_res["p90_centroid_error_mm"] is not None else "N/A",
             "unit": "mm",
             "interpretation": "90th-percentile localization error bound",
         })
         writer.writerow({
-            "evaluation_type": "Stage 3 Detector Localization",
+            "evaluation_type": "Stage 3 Detector (Preliminary)",
             "metric_name": "Fraction within Annotated Radius",
-            "metric_value": f"{loc_res['within_radius_pct']:.1f}%" if loc_res["within_radius_pct"] is not None else "N/A",
+            "metric_value": f"{loc_res['within_radius_pct']:.1f}%",
             "unit": "%",
             "interpretation": "Detections strictly within physical lesion boundary (r = diam / 2)",
         })
+
+        # End-to-End FROC (Detector + Classifier) rows
+        for fp_k, froc_v in loc_res.get("end_to_end_froc", {}).items():
+            f_ci = f"[{froc_v['wilson_95_ci'][0]*100:.1f}%, {froc_v['wilson_95_ci'][1]*100:.1f}%]"
+            writer.writerow({
+                "evaluation_type": "End-to-End FROC (Detector + Classifier)",
+                "metric_name": f"Sensitivity @ {fp_k} FP/scan",
+                "metric_value": f"{froc_v['sensitivity']*100:.1f}% (95% Wilson CI: {f_ci})",
+                "unit": "%",
+                "interpretation": f"Matched {froc_v['recalled_nodules']}/{froc_v['total_nodules']} nodules (N={froc_v['evaluated_test_scans']} scans, actual FP/scan: {froc_v['actual_fp_per_scan']})",
+            })
+
         writer.writerow({
             "evaluation_type": "Model Attribution Only",
             "metric_name": "Grad-CAM Attribution Hit Rate",
