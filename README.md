@@ -161,6 +161,38 @@ make run-all          # master platform validation suite
 
 ---
 
+### Run Locally and Expose Over HTTPS with Cloudflared
+
+You can run the platform locally and expose it over HTTPS using `cloudflared`:
+
+1. **Start local services**:
+   ```bash
+   # Start backend API (port 8000)
+   python -m backend.main --reload
+
+   # In a separate terminal, start frontend client (port 5173 or 3000)
+   cd frontend && npm run dev
+   ```
+
+2. **Launch Cloudflare Tunnel**:
+   ```bash
+   # Expose local API server over a quick tunnel
+   cloudflared tunnel --url http://localhost:8000
+   ```
+   `cloudflared` outputs an ephemeral HTTPS URL (e.g. `https://<random-subdomain>.trycloudflare.com`).
+
+3. **Configure CORS & Remote Checkpoints in `.env`**:
+   Add the assigned tunnel origin to `CORS_ORIGINS` in your `.env` file:
+   ```bash
+   CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://<random-subdomain>.trycloudflare.com
+   ```
+   *(Optional)* If model weights are missing from `checkpoints_3d`, specify `WEIGHTS_URL_ORIGINAL` and `WEIGHTS_URL_FINETUNED` in `.env` so the backend auto-downloads and verifies them on startup.
+
+> [!WARNING]
+> **Public Upload Security Notice**: When tunneling with `cloudflared`, all endpoints and DICOM study uploads are publicly accessible on the internet unless protected by Cloudflare Access / Zero Trust authentication. Do not upload confidential Patient Health Information (PHI) over unauthenticated tunnels.
+
+---
+
 ## Testing
 
 ```bash
@@ -210,12 +242,13 @@ There is no trained deep learning detector checkpoint for Stage 3 in the reposit
   - **2.0 FP/scan Target**: Achieved at actual 1.60 FP/scan — 29.4% Sensitivity (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]; probability threshold: 0.9849).
   - **4.0 FP/scan Target**: Closest actual is 1.60 FP/scan — 29.4% Sensitivity (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]; probability threshold: 0.9849).
   - **8.0 FP/scan Target**: **Unreachable** (maximum achievable false positive rate is 1.60 FP/scan with current candidate pool; closest operating point is actual 1.60 FP/scan).
-- **Latency & Compute Benchmarks (Measured on Real Full-Size CT Series, 197 Slices via `benchmark_continuous_reporting.py`)**:
-  - Stage 3 Heuristic Candidate Detector: 1108.5 ms (cold), 1100.2 ms (warm median).
-  - Fast Triage Pipeline Total: 1085.9 ms (cold, 1.09s), 1263.3 ms (warm median, 1.26s), 1777.0 ms (warm P95, 1.78s) — within the < 15.0s budget (100% SLA compliance).
-  - Full Pipeline Mode Total: 2186.5 ms (2.19s).
-  - Peak Memory RSS: 840.6 MB (Budget: < 10,000 MB).
-  - Estimated Compute Cost: $0.000017 per fast triage scan ($0.048/CPU-hr basis).
+- **Latency & Compute Benchmarks (Measured on Real Full-Size CT Series, 197 Slices via `benchmark_continuous_reporting.json`)**:
+  - Stage 3 Heuristic Candidate Detector: 1196.4 ms (cold), 1108.6 ms (warm median).
+  - Fast Triage Pipeline Total: 1.33 s (cold, 1329.6 ms), 1.23 s (warm median, 1227.1 ms), 1.73 s (warm P95, 1729.9 ms) -- within the < 15.0s budget (100% SLA compliance).
+  - Full Pipeline Mode Total: 2.34 s (2336.0 ms).
+  - Peak Memory RSS: 841.1 MB (Budget: < 10,000 MB).
+  - Estimated Compute Cost: $0.000016 per fast triage scan ($0.048/CPU-hr basis).
+  - Candidate Volume Distinction: Fast triage classifies the top-20 prioritized candidates (`top_k = 20`, requiring 13.4 ms classifier time) to maintain real-time clinical responsiveness (< 15.0s budget), whereas standalone Stage 3 evaluation benchmarks recall across budgets of up to 800 candidates/scan to characterize the detector ceiling.
 
 ## Observability Endpoints
 
@@ -271,7 +304,8 @@ print(report.to_dict())
 To support clinical radiologist workflows on standard laptop CPUs (16 GB RAM) as well as GPU workstations, the pipeline features two operational inference modes managed by an asynchronous bounded job queue (`JobQueueManager`):
 
 1. **Fast Triage Mode (Default)**:
-   - Latency measured via results/benchmark_continuous_reporting.json: 1.26s warm median (1.09s cold, 1.78s warm P95) on CPU, within the 15.0s clinical budget (full mode: 2.19s).
+   - Latency measured via results/benchmark_continuous_reporting.json: 1.23s warm median (1.33s cold, 1.73s warm P95) on CPU, within the 15.0s clinical budget (full mode: 2.34s). Single cost figure: $0.000016 per fast triage scan ($0.048/CPU-hr basis).
+   - Candidate Volume: Evaluates top-20 candidate crops (`top_k = 20`) prioritized by morphological score from the heuristic detector pool (distinct from the standalone detector benchmark which evaluates up to 800 candidates/scan).
    - Stages executed: DICOM QA, Resampling & Lung Bounding-Box Cropping, Candidate Generation (reduced resolution), Fast 3D Backbone (ResNet3D-18 Half) on top-K candidate crops (32³), Calibrated Probabilities, and Draft Lung-RADS Classification.
    - Eliminates heavy bottlenecks: skips full-volume Swin3D/DenseNet, Radiomics extraction, and pre-computed XAI.
    - Immediate draft report returned to the radiologist without blocking subsequent study uploads.

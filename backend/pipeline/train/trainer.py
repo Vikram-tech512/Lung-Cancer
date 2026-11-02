@@ -80,7 +80,7 @@ class Trainer:
         epochs: int = 100,
         batch_accum: int = 1,
         patience: Optional[int] = 15,
-        checkpoint_dir: Path = Path("checkpoints"),
+        checkpoint_dir: Path = Path("checkpoints_3d"),
         use_amp: bool = True,
         clip_grad: Optional[float] = 1.0,
         task: str = "classification",

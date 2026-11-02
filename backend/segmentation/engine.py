@@ -59,7 +59,7 @@ class InferenceEngine:
         self.models["hybrid"] = HybridViT(num_classes=3, embed_dim=256, depth=6, heads=8, mlp_dim=512).to(self.device).eval()
 
         # Try loading saved checkpoints if present
-        ckpt_dir = Path("checkpoints")
+        ckpt_dir = Path(os.getenv("CHECKPOINT_DIR", "checkpoints_3d"))
         for arch in ["cnn", "vit", "hybrid"]:
             ckpt = ckpt_dir / f"best_{arch}.pt"
             if ckpt.exists():

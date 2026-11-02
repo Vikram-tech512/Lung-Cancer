@@ -17,6 +17,7 @@ Provides clinical-grade RESTful API endpoints for:
 from __future__ import annotations
 import os
 import io
+import urllib.request
 import time
 import uuid
 import json
@@ -437,22 +438,90 @@ def _seed_demo_case():
 # Real studies are ingested via /api/v2/dicom/upload or loaded from dataset directories.
 
 
+def _download_checkpoint_if_configured(ckpt_path: Path, url_env_var: str) -> bool:
+    """
+    Downloads a missing model weight checkpoint from a configured URL.
+    Never overwrites an existing file.
+    Validates file size (Content-Length matching and minimum 1MB threshold).
+    Returns True if file exists or was successfully downloaded.
+    """
+    if ckpt_path.is_file():
+        # Never download over a file that exists
+        return True
+
+    url = os.getenv(url_env_var, "").strip()
+    if not url:
+        return False
+
+    filename = ckpt_path.name
+    ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = ckpt_path.parent / f"{filename}.tmp_download"
+    logger.info(f"[STARTUP] Checkpoint '{filename}' missing; downloading from {url_env_var} ({url})...")
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "LungCancerResearchPlatform/2.0"}
+        )
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            content_length_header = resp.headers.get("Content-Length")
+            expected_size = int(content_length_header) if content_length_header and content_length_header.isdigit() else None
+
+            bytes_downloaded = 0
+            with open(tmp_path, "wb") as f_out:
+                while True:
+                    chunk = resp.read(1024 * 1024)  # 1 MB chunks
+                    if not chunk:
+                        break
+                    f_out.write(chunk)
+                    bytes_downloaded += len(chunk)
+
+        # Size checks
+        if expected_size is not None and bytes_downloaded != expected_size:
+            raise ValueError(
+                f"Downloaded size ({bytes_downloaded} bytes) did not match Content-Length header ({expected_size} bytes)"
+            )
+        if bytes_downloaded < 1024 * 1024:
+            raise ValueError(
+                f"Downloaded size ({bytes_downloaded} bytes) is suspiciously small (< 1 MB); aborting"
+            )
+
+        # Atomic rename after verification
+        tmp_path.replace(ckpt_path)
+        logger.info(f"[STARTUP] Successfully downloaded '{filename}' ({bytes_downloaded} bytes) to {ckpt_path.resolve()}")
+        return True
+
+    except Exception as exc:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+        logger.error(f"[STARTUP ERROR] Failed downloading '{filename}' from {url_env_var} ({url}): {exc}")
+        return False
+
+
 @app.on_event("startup")
 def verify_checkpoints_on_startup():
     """Verifies that model weight checkpoints exist in checkpoints_3d at service boot; emits warning if missing."""
     ckpt_dir = Path(os.getenv("CHECKPOINT_DIR", "checkpoints_3d"))
-    required_weights = [
-        "resnet3d_luna16_best.pt",
-        "resnet3d_detector_finetuned.pt",
-    ]
-    missing = [w for w in required_weights if not (ckpt_dir / w).is_file()]
+    weights_mapping = {
+        "resnet3d_luna16_best.pt": "WEIGHTS_URL_ORIGINAL",
+        "resnet3d_detector_finetuned.pt": "WEIGHTS_URL_FINETUNED",
+    }
+    for filename, env_var in weights_mapping.items():
+        target_path = ckpt_dir / filename
+        if not target_path.is_file():
+            _download_checkpoint_if_configured(target_path, env_var)
+
+    missing = [w for w in weights_mapping.keys() if not (ckpt_dir / w).is_file()]
     if missing:
         logger.warning(
             f"[STARTUP WARNING] Missing required model weights in {ckpt_dir.resolve()}: {missing}. "
             f"Classifier inference will operate with limited or uncalibrated weights."
         )
     else:
-        logger.info(f"[STARTUP] Checkpoints directory verified: {ckpt_dir.resolve()} (all required weights found: {required_weights})")
+        logger.info(f"[STARTUP] Checkpoints directory verified: {ckpt_dir.resolve()} (all required weights found: {list(weights_mapping.keys())})")
 
 # --- Endpoints ---
 

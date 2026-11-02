@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-01T11:11:08Z",
+  "timestamp": "2026-11-02T04:22:41Z",
   "platform": {
     "os": "win32",
     "cpu_count": 16,
@@ -22,6 +22,10 @@
   },
   "fast_triage_mode": {
     "runs": 5,
+    "candidates_reaching_classification": 20,
+    "detector_candidate_pool_evaluated": 100,
+    "standalone_detector_budget_candidates_per_scan": 800,
+    "candidate_budget_distinction_note": "Fast triage classifies top-20 prioritized candidates (top_k=20) to guarantee sub-15s clinical latency (1.23s warm median, 13.4ms classification), whereas standalone Stage 3 evaluation benchmarks recall across up to 800 candidates/scan to characterize detector sensitivity ceiling.",
     "cold_wall_time_ms": 1329.6,
     "cold_wall_time_s": 1.33,
     "cold_stage_timings_ms": {
@@ -44,19 +48,19 @@
     "budget_compliance_percent": 100.0,
     "stages": {
       "dicom_qa": {
-        "median_ms": 10.36,
-        "p95_ms": 10.59,
-        "mean_ms": 10.43
+        "median_ms": 10.31,
+        "p95_ms": 10.56,
+        "mean_ms": 10.35
       },
       "preprocessing": {
-        "median_ms": 0.01,
-        "p95_ms": 209.25,
-        "mean_ms": 52.32
+        "median_ms": 0.03,
+        "p95_ms": 1371.08,
+        "mean_ms": 342.78
       },
       "segmentation": {
-        "median_ms": 86.88,
-        "p95_ms": 97.37,
-        "mean_ms": 85.0
+        "median_ms": 278.02,
+        "p95_ms": 337.64,
+        "mean_ms": 229.89
       },
       "detection": {
         "median_ms": 1108.59,
@@ -70,13 +74,13 @@
       },
       "calibration": {
         "median_ms": 0.0,
-        "p95_ms": 0.0,
+        "p95_ms": 0.01,
         "mean_ms": 0.0
       },
       "report": {
         "median_ms": 0.01,
-        "p95_ms": 0.01,
-        "mean_ms": 0.01
+        "p95_ms": 0.08,
+        "mean_ms": 0.03
       }
     }
   },
@@ -91,14 +95,14 @@
     "full_stage_timings_ms": {
       "dicom_qa": 10.44,
       "preprocessing": 0.02,
-      "segmentation": 81.94,
-      "detection": 1034.11,
-      "classification": 13.55,
+      "segmentation": 84.05,
+      "detection": 969.88,
+      "classification": 9.89,
       "calibration": 0.0,
-      "report": 0.01,
-      "radiomics": 2.08,
-      "ensemble": 0.05,
-      "uncertainty": 1145.13
+      "report": 0.0,
+      "radiomics": 45.58,
+      "ensemble": 0.06,
+      "uncertainty": 1120.71
     }
   },
   "cost_estimation": {

@@ -47,7 +47,7 @@ class CheckpointManager:
 
     def __init__(
         self,
-        checkpoint_dir: Path = Path("checkpoints"),
+        checkpoint_dir: Path = Path("checkpoints_3d"),
         model_name: str = "model",
         keep_last_n: int = 3,
     ) -> None:

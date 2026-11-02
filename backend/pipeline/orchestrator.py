@@ -135,7 +135,7 @@ class PipelineOrchestrator:
 
     def __init__(
         self,
-        checkpoint_dir: Path = Path("checkpoints"),
+        checkpoint_dir: Path = Path("checkpoints_3d"),
         device: str = "cpu",
         enabled_stages: Optional[List[PipelineStage]] = None,
         skip_on_error: bool = True,
@@ -163,7 +163,7 @@ class PipelineOrchestrator:
         import os
         cfg = config or {}
         return cls(
-            checkpoint_dir=Path(cfg.get("checkpoint_dir", os.getenv("CHECKPOINT_DIR", "checkpoints"))),
+            checkpoint_dir=Path(cfg.get("checkpoint_dir", os.getenv("CHECKPOINT_DIR", "checkpoints_3d"))),
             device=cfg.get("device", os.getenv("TORCH_DEVICE", "cpu")),
             skip_on_error=cfg.get("skip_on_error", True),
         )

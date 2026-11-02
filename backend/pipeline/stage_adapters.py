@@ -163,7 +163,7 @@ class SegmentationInference:
     Returns both lung_mask and nodule_mask.
     """
 
-    def __init__(self, checkpoint_dir: Path = Path("checkpoints"), device: str = "cpu"):
+    def __init__(self, checkpoint_dir: Path = Path("checkpoints_3d"), device: str = "cpu"):
         self.checkpoint_dir = checkpoint_dir
         self.device = device
 
