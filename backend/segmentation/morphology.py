@@ -278,3 +278,186 @@ def analyze_nodule_morphology(
             "mask_overlay_base64": mask_b64
         }
     }
+
+
+"""
+3D Region-Growing Nodule Segmentation Module.
+
+Implements spacing-aware 3D region growing from physical seed coordinates (X, Y, Z in mm)
+on volumetric CT scans (Hounsfield Units).
+Computes equivalent spherical diameter and flags empty or oversized/leaked regions.
+"""
+
+from typing import Dict, Any, Tuple, Optional, List
+import numpy as np
+from collections import deque
+
+
+def physical_to_voxel(
+    coord_xyz_mm: Tuple[float, float, float],
+    origin_xyz_mm: Tuple[float, float, float],
+    spacing_zyx_mm: Tuple[float, float, float],
+) -> Tuple[int, int, int]:
+    """
+    Convert physical coordinates (X, Y, Z in mm) to voxel indices (Z, Y, X).
+    spacing_zyx_mm is (spacing_z, spacing_y, spacing_x).
+    """
+    cx, cy, cz = coord_xyz_mm
+    ox, oy, oz = origin_xyz_mm
+    sz, sy, sx = spacing_zyx_mm
+
+    vx = int(round((cx - ox) / sx))
+    vy = int(round((cy - oy) / sy))
+    vz = int(round((cz - oz) / sz))
+    return vz, vy, vx
+
+
+def region_grow_3d(
+    volume_hu: np.ndarray,
+    seed_zyx: Tuple[int, int, int],
+    spacing_zyx_mm: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    hu_min: float = -600.0,
+    hu_max: float = 200.0,
+    intensity_tol_hu: float = 250.0,
+    max_radius_mm: float = 20.0,
+    max_diameter_mm: float = 30.0,
+) -> Dict[str, Any]:
+    """
+    Perform 3D region growing from seed_zyx within volume_hu.
+
+    Args:
+        volume_hu: 3D numpy array of CT Hounsfield Units (Z, Y, X).
+        seed_zyx: Voxel seed coordinate (z, y, x).
+        spacing_zyx_mm: Voxel spacing in mm (sz, sy, sx).
+        hu_min: Lower HU threshold for parenchymal / nodular tissue.
+        hu_max: Upper HU threshold to exclude calcifications/bones.
+        intensity_tol_hu: Maximum absolute HU deviation from seed voxel.
+        max_radius_mm: Maximum physical Euclidean distance from seed to stop leakage.
+        max_diameter_mm: Threshold above which a segmented region is flagged as oversized.
+
+    Returns:
+        Dict containing:
+            - voxel_count: int
+            - volume_mm3: float
+            - equivalent_diameter_mm: float
+            - is_empty: bool
+            - is_oversized: bool
+            - mask: 3D bool array of segmented region (cropped bbox or full)
+    """
+    sz, sy, sx = spacing_zyx_mm
+    voxel_vol_mm3 = sz * sy * sx
+    nz, ny, nx = volume_hu.shape
+    vz, vy, vx = seed_zyx
+
+    # Check bounds
+    if vz < 0 or vz >= nz or vy < 0 or vy >= ny or vx < 0 or vx >= nx:
+        return {
+            "voxel_count": 0,
+            "volume_mm3": 0.0,
+            "equivalent_diameter_mm": 0.0,
+            "is_empty": True,
+            "is_oversized": False,
+            "reason": "Seed out of volume bounds",
+        }
+
+    seed_val = float(volume_hu[vz, vy, vx])
+
+    # Check if seed itself is within plausible nodule density
+    if seed_val < hu_min or seed_val > hu_max:
+        return {
+            "voxel_count": 0,
+            "volume_mm3": 0.0,
+            "equivalent_diameter_mm": 0.0,
+            "is_empty": True,
+            "is_oversized": False,
+            "reason": f"Seed HU {seed_val:.1f} outside range [{hu_min}, {hu_max}]",
+        }
+
+    # Bounding box in voxels for efficiency
+    max_rz = int(np.ceil(max_radius_mm / sz))
+    max_ry = int(np.ceil(max_radius_mm / sy))
+    max_rx = int(np.ceil(max_radius_mm / sx))
+
+    z_min = max(0, vz - max_rz)
+    z_max = min(nz, vz + max_rz + 1)
+    y_min = max(0, vy - max_ry)
+    y_max = min(ny, vy + max_ry + 1)
+    x_min = max(0, vx - max_rx)
+    x_max = min(nx, vx + max_rx + 1)
+
+    visited = np.zeros((z_max - z_min, y_max - y_min, x_max - x_min), dtype=bool)
+    segmented = np.zeros_like(visited)
+
+    queue = deque()
+    # local coordinates
+    lz = vz - z_min
+    ly = vy - y_min
+    lx = vx - x_min
+
+    queue.append((lz, ly, lx))
+    visited[lz, ly, lx] = True
+    segmented[lz, ly, lx] = True
+
+    # 6-connectivity 3D neighborhood
+    neighbors = [
+        (-1, 0, 0), (1, 0, 0),
+        (0, -1, 0), (0, 1, 0),
+        (0, 0, -1), (0, 0, 1),
+    ]
+
+    voxel_count = 0
+    oversized = False
+
+    while queue:
+        cz, cy, cx = queue.popleft()
+        voxel_count += 1
+
+        # Check early termination if voxel count yields oversized region
+        cur_vol = voxel_count * voxel_vol_mm3
+        cur_diam = 2.0 * ((3.0 * cur_vol) / (4.0 * np.pi)) ** (1.0 / 3.0)
+        if cur_diam > max_diameter_mm:
+            oversized = True
+            break
+
+        gz = cz + z_min
+        gy = cy + y_min
+        gx = cx + x_min
+
+        for dz, dy, dx in neighbors:
+            nz_l = cz + dz
+            ny_l = cy + dy
+            nx_l = cx + dx
+
+            if 0 <= nz_l < visited.shape[0] and 0 <= ny_l < visited.shape[1] and 0 <= nx_l < visited.shape[2]:
+                if not visited[nz_l, ny_l, nx_l]:
+                    visited[nz_l, ny_l, nx_l] = True
+
+                    # Physical distance from seed
+                    dist_mm = np.sqrt(
+                        ((nz_l - lz) * sz) ** 2 +
+                        ((ny_l - ly) * sy) ** 2 +
+                        ((nx_l - lx) * sx) ** 2
+                    )
+                    if dist_mm <= max_radius_mm:
+                        val = float(volume_hu[gz + dz, gy + dy, gx + dx])
+                        if hu_min <= val <= hu_max and abs(val - seed_val) <= intensity_tol_hu:
+                            segmented[nz_l, ny_l, nx_l] = True
+                            queue.append((nz_l, ny_l, nx_l))
+
+    tot_volume_mm3 = float(voxel_count * voxel_vol_mm3)
+    if voxel_count == 0:
+        eq_diameter_mm = 0.0
+        is_empty = True
+    else:
+        eq_diameter_mm = float(2.0 * ((3.0 * tot_volume_mm3) / (4.0 * np.pi)) ** (1.0 / 3.0))
+        is_empty = False
+
+    return {
+        "voxel_count": voxel_count,
+        "volume_mm3": round(tot_volume_mm3, 2),
+        "equivalent_diameter_mm": round(eq_diameter_mm, 2),
+        "is_empty": is_empty,
+        "is_oversized": oversized or (eq_diameter_mm > max_diameter_mm),
+        "seed_hu": seed_val,
+    }
+

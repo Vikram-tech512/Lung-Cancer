@@ -1,19 +1,10 @@
-evaluation_level,coverage,retained_candidates,nodules_routed_to_human,share_nodules_routed_pct,candidates_routed_to_human,share_candidates_routed_pct,candidates_routed_per_scan,missed_nodules_auto_handled,sensitivity_on_retained,effective_sensitivity,max_sigma_threshold,interpretation_note
-Stage 3 Detector Candidates (Preliminary),1.0,4000,0,0.0,0,0.0,0.0,10,37.5,37.5,0.2415,Effective sensitivity assumes the reviewer catches every routed nodule.
-Stage 3 Detector Candidates (Preliminary),0.95,3800,3,18.8,200,5.0,40.0,7,46.2,56.2,0.0831,Effective sensitivity assumes the reviewer catches every routed nodule.
-Stage 3 Detector Candidates (Preliminary),0.9,3600,5,31.2,400,10.0,80.0,5,54.5,68.8,0.0658,Effective sensitivity assumes the reviewer catches every routed nodule.
-Stage 3 Detector Candidates (Preliminary),0.85,3400,7,43.8,600,15.0,120.0,3,66.7,81.2,0.0551,Effective sensitivity assumes the reviewer catches every routed nodule.
-Stage 3 Detector Candidates (Preliminary),0.8,3200,7,43.8,800,20.0,160.0,3,66.7,81.2,0.048,Effective sensitivity assumes the reviewer catches every routed nodule.
-Stage 3 Detector Candidates (Preliminary),0.75,3000,7,43.8,1000,25.0,200.0,3,66.7,81.2,0.0406,Effective sensitivity assumes the reviewer catches every routed nodule.
-Stage 3 Detector Candidates (Preliminary),0.7,2800,7,43.8,1200,30.0,240.0,3,66.7,81.2,0.0355,Effective sensitivity assumes the reviewer catches every routed nodule.
-Stage 3 Detector Candidates (Preliminary),0.6,2400,7,43.8,1600,40.0,320.0,3,66.7,81.2,0.027,Effective sensitivity assumes the reviewer catches every routed nodule.
-Stage 3 Detector Candidates (Preliminary),0.5,2000,7,43.8,2000,50.0,400.0,3,66.7,81.2,0.021,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",1.0,75950,0,0.0,0,0.0,0.0,56,64.6,64.6,0.1842,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",0.95,72152,4,2.5,3798,5.0,42.7,44,71.4,72.2,0.065,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",0.9,68355,11,7.0,7595,10.0,85.3,35,76.2,77.8,0.0461,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",0.85,64557,20,12.7,11393,15.0,128.0,28,79.7,82.3,0.0385,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",0.8,60760,31,19.6,15190,20.0,170.7,21,83.5,86.7,0.031,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",0.75,56962,43,27.2,18988,25.0,213.3,16,86.1,89.9,0.0245,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",0.7,53165,56,35.4,22785,30.0,256.0,12,88.2,92.4,0.0143,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",0.6,45570,77,48.7,30380,40.0,341.3,6,92.6,96.2,0.0058,Effective sensitivity assumes the reviewer catches every routed nodule.
-"LUNA16 Pre-extracted Candidates (N=75,950)",0.5,37975,99,62.7,37975,50.0,426.7,2,96.6,98.7,0.0002,Effective sensitivity assumes the reviewer catches every routed nodule.
+evaluation_level,coverage,retained_candidates,candidates_routed_to_human,candidates_routed_per_scan,nodules_retained,nodules_routed_to_human,missed_nodules_auto_handled,sensitivity_on_retained,sensitivity_over_all_119_nodules,max_sigma_threshold,interpretation_note
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",1.0,35560,0,0.0,67,0,16,76.12,42.86,0.148,Effective sensitivity assumes reviewer catches every routed candidate nodule.
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",0.95,33782,1778,20.0,65,2,14,78.46,44.54,0.0996,Effective sensitivity assumes reviewer catches every routed candidate nodule.
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",0.9,32004,3556,40.0,59,8,11,81.36,47.06,0.0858,Effective sensitivity assumes reviewer catches every routed candidate nodule.
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",0.85,30226,5334,59.9,51,16,8,84.31,49.58,0.0724,Effective sensitivity assumes reviewer catches every routed candidate nodule.
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",0.8,28448,7112,79.9,47,20,7,85.11,50.42,0.0594,Effective sensitivity assumes reviewer catches every routed candidate nodule.
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",0.75,26670,8890,99.9,43,24,5,88.37,52.1,0.048,Effective sensitivity assumes reviewer catches every routed candidate nodule.
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",0.7,24892,10668,119.9,38,29,4,89.47,52.94,0.0386,Effective sensitivity assumes reviewer catches every routed candidate nodule.
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",0.6,21336,14224,159.8,28,39,4,85.71,52.94,0.0222,Effective sensitivity assumes reviewer catches every routed candidate nodule.
+"Stage 3 Test Candidates (N=35,560, Nodules=119)",0.5,17780,17780,199.8,21,46,3,85.71,53.78,0.0117,Effective sensitivity assumes reviewer catches every routed candidate nodule.

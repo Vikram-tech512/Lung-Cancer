@@ -11,81 +11,31 @@
         "iou": 0.0,
         "hd95_mm": 0.0
       },
-      "created_at": "2026-09-25 13:34:53",
+      "created_at": "2026-11-04 12:07:49",
       "checkpoint_path": null,
       "patient_split_hash": null,
-      "notes": "Awaiting LIDC-IDRI or Decathlon Lung training run"
-    }
-  ],
-  "3D ResNet-18 Half": [
-    {
-      "model_name": "3D ResNet-18 Half",
-      "version": "v1.2.0-cpu",
-      "stage": "EXPERIMENTAL",
-      "architecture": "ResNet3D18Half",
-      "input_dimension": "(1, 32, 32, 32)",
-      "metrics": {
-        "val_auc": 0.9227,
-        "sensitivity": 0.7348,
-        "specificity": 0.9669,
-        "test_auc": 0.9052,
-        "test_auc_ci_95": [
-          0.8512594161148337,
-          0.945648105902627
-        ],
-        "test_ap": 0.323,
-        "cpm_froc": 0.4382,
-        "cpm_ci_95": [
-          0.350068509214798,
-          0.538362332112332
-        ],
-        "ece_calibrated": 0.001,
-        "pointing_game_hit_rate": 0.0886,
-        "proxy_dice": 0.0444
-      },
-      "created_at": "2026-10-24 13:17:44",
-      "checkpoint_path": "checkpoints_3d/resnet3d_luna16_best.pt",
-      "patient_split_hash": "335343f6f1139c7cf6c808416131f630e6542dda3f344902b6d6f7840afcd109",
-      "notes": "Trained on official LUNA16 subsets 0, 1 (178 scans, 1,848 crops at 32^3 1mm isotropic). Val AUC 0.9227 on subset 2 (89 scans). Research Use Only.",
-      "updated_at": "2026-11-01 09:22:13 UTC"
-    },
-    {
-      "model_name": "3D ResNet-18 Half (Detector Fine-Tuned)",
-      "version": "v1.2.1-det-ft",
-      "stage": "EXPERIMENTAL",
-      "architecture": "ResNet3D18Half",
-      "input_dimension": "(1, 32, 32, 32)",
-      "metrics": {
-        "val_auc": 0.8841,
-        "test_auc": 0.8479,
-        "test_ap": 0.3059,
-        "ece_calibrated": 0.0064,
-        "brier_score": 0.0099
-      },
-      "created_at": "2026-11-01 14:32:00",
-      "checkpoint_path": "checkpoints_3d/resnet3d_detector_finetuned.pt",
-      "notes": "Fine-tuned on Stage 3 DoG candidate detector output with hard-negative mining on validation partition (5 scans). Evaluated on 5 held-out test scans (17 nodules)."
+      "notes": "Awaiting LIDC-IDRI or Decathlon Lung training run",
+      "updated_at": null
     }
   ],
   "3D ResNet-50": [
     {
       "model_name": "3D ResNet-50",
-      "version": "v1.1.0-exp",
-      "stage": "EXPERIMENTAL",
+      "version": "v1.0.0",
+      "stage": "NOT_TRAINED",
       "architecture": "3D ResNet-50 Bottleneck + MC Dropout (T=30)",
       "input_dimension": "(1, 64, 64, 64)",
       "metrics": {
-        "auc_roc": 0.6471,
-        "sensitivity": 1.0,
+        "auc_roc": 0.0,
+        "sensitivity": 0.0,
         "specificity": 0.0,
-        "ece": 0.532,
-        "brier_score": 0.4088,
-        "optimal_temperature": 3.3978
+        "ece": 0.0
       },
-      "created_at": "2026-10-24 09:06:51",
-      "checkpoint_path": "checkpoints_3d/resnet3d_luna16_last.pt",
-      "patient_split_hash": "42_LUNA16_resnet3d",
-      "notes": "EXPERIMENTAL 1-epoch, 10-scan smoke test on LUNA16 subset0. Awaiting full 10-fold LUNA16 cross-validation before STAGING promotion."
+      "created_at": "2026-11-04 12:07:49",
+      "checkpoint_path": null,
+      "patient_split_hash": null,
+      "notes": "Primary 3D volumetric classifier",
+      "updated_at": null
     }
   ],
   "3D Swin Transformer": [
@@ -100,10 +50,11 @@
         "sensitivity": 0.0,
         "specificity": 0.0
       },
-      "created_at": "2026-09-25 13:34:53",
+      "created_at": "2026-11-04 12:07:49",
       "checkpoint_path": null,
       "patient_split_hash": null,
-      "notes": "Transformer branch extending 2D ViT research"
+      "notes": "Transformer branch extending 2D ViT research",
+      "updated_at": null
     }
   ],
   "3D DenseNet-121": [
@@ -118,10 +69,11 @@
         "sensitivity": 0.0,
         "specificity": 0.0
       },
-      "created_at": "2026-09-25 13:34:53",
+      "created_at": "2026-11-04 12:07:49",
       "checkpoint_path": null,
       "patient_split_hash": null,
-      "notes": "High-parameter-efficiency volumetric baseline"
+      "notes": "High-parameter-efficiency volumetric baseline",
+      "updated_at": null
     }
   ],
   "Radiomics XGBoost": [
@@ -135,10 +87,11 @@
         "auc_roc": 0.0,
         "f1_score": 0.0
       },
-      "created_at": "2026-09-25 13:34:53",
+      "created_at": "2026-11-04 12:07:49",
       "checkpoint_path": null,
       "patient_split_hash": null,
-      "notes": "Quantitative feature baseline"
+      "notes": "Quantitative feature baseline",
+      "updated_at": null
     }
   ],
   "Hybrid CNN-ViT (Phase 4)": [
@@ -156,7 +109,8 @@
       "created_at": "2026-09-22 12:00:00",
       "checkpoint_path": null,
       "patient_split_hash": null,
-      "notes": "Trained on phase 4 slice dataset (from master_execution_log)"
+      "notes": "Trained on phase 4 slice dataset (from master_execution_log)",
+      "updated_at": null
     }
   ]
 }

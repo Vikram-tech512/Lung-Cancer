@@ -44,14 +44,14 @@ function computeWilsonCI(k: number, n: number): [number, number] {
 }
 
 export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = '' }) => {
-  const [benchmarkMetrics, setBenchmarkMetrics] = useState<any>(null);
+  const [benchmarkData, setBenchmarkData] = useState<any>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/benchmark`)
       .then((res) => res.json())
       .then((data) => {
         if (data.status === 'available') {
-          setBenchmarkMetrics(data.localization || data.metrics?.localization);
+          setBenchmarkData(data);
         }
       })
       .catch(() => {});
@@ -63,6 +63,16 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = '' }
   const [currentStage, setCurrentStage] = useState<string>('Ready for execution');
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const cr = benchmarkData?.continuous_reporting;
+  const fastMedianS = cr?.fast_triage_mode?.median_wall_time_s;
+  const fastBudgetS = cr?.fast_triage_mode?.time_budget_s;
+  const fullWallS = cr?.full_mode?.wall_time_s;
+  const frocSubset3 = benchmarkData?.metrics?.test_froc_subset3;
+  const headline = frocSubset3?.headline_validation_frozen_operating_points?.target_1_0_fp_scan;
+  const sweeps = frocSubset3?.exploratory_test_sweeps;
+  const totalScans = benchmarkData?.metrics?.test_scans_total ?? benchmarkData?.localization?.evaluated_test_scans;
+  const totalNodules = benchmarkData?.metrics?.localization?.total_test_nodules;
 
   const handleStartInference = async () => {
     if (!studyId || studyId === 'Not available') return;
@@ -139,36 +149,53 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = '' }
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{studyId}</span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                <button
-                  onClick={() => setInferenceMode('fast_triage')}
-                  style={{
-                    padding: '6px 12px',
-                    border: 'none',
-                    background: inferenceMode === 'fast_triage' ? 'var(--accent)' : 'var(--bg-panel)',
-                    color: inferenceMode === 'fast_triage' ? '#ffffff' : 'var(--text-muted)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Fast Triage Mode (1.3s warm, &lt; 15s budget)
-                </button>
-                <button
-                  onClick={() => setInferenceMode('full')}
-                  style={{
-                    padding: '6px 12px',
-                    border: 'none',
-                    background: inferenceMode === 'full' ? 'var(--accent)' : 'var(--bg-panel)',
-                    color: inferenceMode === 'full' ? '#ffffff' : 'var(--text-muted)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Full Mode (Radiomics + MC Dropout)
-                </button>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                  <button
+                    onClick={() => setInferenceMode('fast_triage')}
+                    style={{
+                      padding: '6px 12px',
+                      border: 'none',
+                      background: inferenceMode === 'fast_triage' ? 'var(--accent)' : 'var(--bg-panel)',
+                      color: inferenceMode === 'fast_triage' ? '#ffffff' : 'var(--text-muted)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Fast Triage Mode {fastMedianS != null ? `(${fastMedianS.toFixed(2)}s warm${fastBudgetS != null ? `, < ${fastBudgetS.toFixed(0)}s budget` : ''})` : ''}
+                  </button>
+                  <button
+                    onClick={() => setInferenceMode('full')}
+                    style={{
+                      padding: '6px 12px',
+                      border: 'none',
+                      background: inferenceMode === 'full' ? 'var(--accent)' : 'var(--bg-panel)',
+                      color: inferenceMode === 'full' ? '#ffffff' : 'var(--text-muted)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Full Mode {fullWallS != null ? `(${fullWallS.toFixed(1)}s, Radiomics + MC Dropout)` : '(Radiomics + MC Dropout)'}
+                  </button>
+                </div>
+                {/* Mode Performance FROC Indicators */}
+                <div style={{ display: 'flex', gap: '8px', fontSize: '10px' }}>
+                  {headline && (
+                    <span style={{ color: 'var(--accent)', background: 'rgba(37,99,235,0.08)', padding: '3px 6px', borderRadius: '3px', border: '1px solid rgba(37,99,235,0.2)' }}>
+                      <strong>Fast Triage (pool 100/top 20):</strong>{' '}
+                      Headline FROC (Validation-Frozen τ={headline.threshold}): {headline.sensitivity_pct}% sens @ {headline.actual_fp_per_scan} FP/scan [{headline.wilson_ci_pct[0]}%–{headline.wilson_ci_pct[1]}%] (N={totalScans ?? '—'} scans, {totalNodules ?? '—'} nodules)
+                    </span>
+                  )}
+                  {sweeps && (
+                    <span style={{ color: '#a78bfa', background: 'rgba(124,58,237,0.08)', padding: '3px 6px', borderRadius: '3px', border: '1px solid rgba(124,58,237,0.2)' }}>
+                      <strong>Full Mode (pool ≤ 400/all):</strong>{' '}
+                      Exploratory sweep: {sweeps.target_2_0_fp_scan ? `${sweeps.target_2_0_fp_scan.sensitivity_pct}% sens @ ${sweeps.target_2_0_fp_scan.actual_fp_per_scan.toFixed(2)} FP/scan [${sweeps.target_2_0_fp_scan.wilson_ci_pct[0]}%–${sweeps.target_2_0_fp_scan.wilson_ci_pct[1]}%], ` : ''}{sweeps.target_4_0_fp_scan ? `${sweeps.target_4_0_fp_scan.sensitivity_pct}% sens @ ${sweeps.target_4_0_fp_scan.actual_fp_per_scan.toFixed(2)} FP/scan [${sweeps.target_4_0_fp_scan.wilson_ci_pct[0]}%–${sweeps.target_4_0_fp_scan.wilson_ci_pct[1]}%]` : ''} (N={totalScans ?? '—'} scans, {totalNodules ?? '—'} nodules; exploratory)
+                    </span>
+                  )}
+                </div>
               </div>
 
               <button
@@ -271,14 +298,15 @@ export const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({ studyId = '' }
                     </td>
                     <td style={{ padding: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>
                       {(() => {
-                        if (s.number === 3 && benchmarkMetrics) {
-                          const k = benchmarkMetrics.recalled_nodules_count ?? 11;
-                          const n = benchmarkMetrics.total_test_nodules ?? 17;
-                          const scans = benchmarkMetrics.evaluated_test_scans ?? 5;
-                          const candsPerScan = Math.round(benchmarkMetrics.candidates_per_scan ?? 800);
-                          const [ciLow, ciHigh] = computeWilsonCI(k, n);
-                          const sensPct = ((benchmarkMetrics.detection_sensitivity ?? (k / n)) * 100).toFixed(1);
-                          return `Preliminary heuristic detector: ${sensPct}% held-out test recall (95% Wilson CI: ${(ciLow * 100).toFixed(1)}%–${(ciHigh * 100).toFixed(1)}%) @ ${candsPerScan} cands/scan (N=${scans} scans, ${n} nodules; no trained DL checkpoint).`;
+                        if (s.number === 3 && (benchmarkData?.localization || benchmarkData?.metrics?.localization)) {
+                          const locData = benchmarkData.localization || benchmarkData.metrics.localization;
+                          const k = locData.recalled_nodules_count;
+                          const n = locData.total_test_nodules;
+                          const scans = locData.evaluated_test_scans;
+                          const candsPerScan = locData.candidates_per_scan != null ? Math.round(locData.candidates_per_scan) : null;
+                          const [ciLow, ciHigh] = (k != null && n != null) ? computeWilsonCI(k, n) : [0, 0];
+                          const sensPct = locData.detection_sensitivity != null ? (locData.detection_sensitivity * 100).toFixed(1) : (k != null && n ? ((k / n) * 100).toFixed(1) : null);
+                          return `Stage 3 candidate detector: ${sensPct ?? '—'}% held-out test recall (95% Wilson CI: ${(ciLow * 100).toFixed(1)}%–${(ciHigh * 100).toFixed(1)}%)${candsPerScan != null ? ` @ ${candsPerScan} cands/scan` : ''} (N=${scans ?? '—'} scans, ${n ?? '—'} nodules; pool 400).`;
                         }
                         return s.description;
                       })()}

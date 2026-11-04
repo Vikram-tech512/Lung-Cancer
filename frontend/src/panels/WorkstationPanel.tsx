@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../services/api';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 
 interface CaseRecord {
   study_id: string;
@@ -26,9 +27,11 @@ export const WorkstationPanel: React.FC<WorkstationPanelProps> = ({ onSelectStud
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch(`${API_BASE}/cases`, { signal: controller.signal })
+  const [exampleLoading, setExampleLoading] = useState(false);
+  const [exampleMessage, setExampleMessage] = useState<string | null>(null);
+
+  const loadCases = () => {
+    fetch(`${API_BASE}/cases`)
       .then(async response => {
         if (!response.ok) throw new Error('Worklist request failed');
         return response.json();
@@ -40,8 +43,42 @@ export const WorkstationPanel: React.FC<WorkstationPanelProps> = ({ onSelectStud
       })
       .catch(() => setOffline(true))
       .finally(() => setLoading(false));
-    return () => controller.abort();
+  };
+
+  useEffect(() => {
+    loadCases();
   }, []);
+
+  const handleLoadExampleScan = async () => {
+    setExampleLoading(true);
+    setExampleMessage(null);
+    try {
+      const exRes = await fetch(`${API_BASE}/examples`);
+      const exData = await exRes.json();
+      if (!exData.examples || exData.examples.length === 0) {
+        setExampleMessage(exData.message || 'No example scans found under LUNA16_DATA_DIR.');
+        return;
+      }
+      const targetScan = exData.examples[0];
+      const postRes = await fetch(`${API_BASE}/examples`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: targetScan.filename }),
+      });
+      const postData = await postRes.json();
+      if (!postRes.ok) throw new Error(postData.detail || 'Failed to load example scan');
+      setExampleMessage(`Loaded ${targetScan.filename}`);
+      loadCases();
+      if (postData.study_id) {
+        setSelectedId(postData.study_id);
+        onSelectStudy?.(postData.study_id);
+      }
+    } catch (err: any) {
+      setExampleMessage(err.message || 'Failed loading example scan');
+    } finally {
+      setExampleLoading(false);
+    }
+  };
 
   const filteredCases = useMemo(() => {
     const value = query.trim().toLowerCase();
@@ -71,8 +108,23 @@ export const WorkstationPanel: React.FC<WorkstationPanelProps> = ({ onSelectStud
           <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>Study worklist</h2>
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '12px' }}>Risk ordering, deferral, and workload estimates are not available without a verified evaluation result.</p>
         </div>
-        <Badge variant="neutral">Research use only</Badge>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={exampleLoading}
+            onClick={handleLoadExampleScan}
+          >
+            Load example scan
+          </Button>
+          <Badge variant="neutral">Research use only</Badge>
+        </div>
       </header>
+      {exampleMessage && (
+        <div style={{ padding: '6px 10px', fontSize: '12px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-main)' }}>
+          {exampleMessage}
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <label htmlFor="worklist-filter" style={{ fontSize: '12px' }}>Filter studies</label>

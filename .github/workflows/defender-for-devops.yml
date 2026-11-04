@@ -37,9 +37,12 @@ jobs:
       - name: Run Microsoft Security DevOps
         id: msdo
         uses: microsoft/security-devops-action@v1.6.0
+        with:
+          tools: binskim, credscan, template-analyzer, terrascan, trivy
 
       - name: Upload results to Security tab
         uses: github/codeql-action/upload-sarif@v4
+        if: always() && steps.msdo.outputs.sarifFile != ''
         with:
           sarif_file: ${{ steps.msdo.outputs.sarifFile }}
           category: microsoft-defender-for-devops

@@ -8,39 +8,39 @@
    ========================================================================== */
 
 :root {
-  --bg-app: #16181b;
-  --bg-panel: #1e2125;
-  --bg-surface: #24282e;
-  --bg-hover: #2a2f36;
-  --bg-active: #313740;
+  --bg-app: #1b1d21;
+  --bg-panel: #24272c;
+  --bg-surface: #24272c;
+  --bg-hover: #2a2e34;
+  --bg-active: #323740;
   
-  --border-color: #2a2e33;
-  --border-focus: #3b82c4;
+  --border-color: #30343a;
+  --border-focus: #4f7cac;
   --border-light: #363b42;
   
-  --accent-color: #3b82c4;
-  --accent-hover: #4a90d9;
-  --accent-active: #2c6ea8;
-  --accent-subtle: #1c2b3a;
+  --accent-color: #4f7cac;
+  --accent-hover: #5d8bbd;
+  --accent-active: #406891;
+  --accent-subtle: #202b36;
   
   --status-pass: #22c55e;
-  --status-pass-bg: #132819;
+  --status-pass-bg: #15291b;
   --status-pass-border: #1e4d29;
   
   --status-warning: #eab308;
-  --status-warning-bg: #2c2510;
+  --status-warning-bg: #2d2612;
   --status-warning-border: #524213;
   
   --status-fail: #ef4444;
-  --status-fail-bg: #2d1515;
+  --status-fail-bg: #2d1717;
   --status-fail-border: #571e1e;
   
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-inverse: #0f1114;
+  --text-primary: #d8dbe0;
+  --text-secondary: #8b919a;
+  --text-muted: #8b919a;
+  --text-inverse: #1b1d21;
   
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
   
   --radius-xs: 2px;

@@ -1188,70 +1188,112 @@ def evaluate_stage3_localization(
             "interpretation_note": "Effective sensitivity assumes the reviewer catches every routed nodule.",
         })
 
-    # End-to-End FROC at Actual Operating Points
-    print("  Evaluating End-to-End FROC across actual operating points...")
+    # End-to-End FROC across actual operating points under specific mode configurations
     scan_cands_grouped = {}
     for c in test_cands:
         scan_cands_grouped.setdefault(c["seriesuid"], []).append(c)
 
-    all_p_values = sorted(list(set(c["calibrated_prob"] for c in test_cands)), reverse=True)
-    froc_eval_points = []
-    for p_thresh in all_p_values:
-        total_tp = 0
-        total_fp = 0
+    def _evaluate_froc_for_mode(cand_pool_limit: int, top_k_classify: int, mode_name: str, settings_desc: str):
+        mode_scan_cands = {}
+        all_mode_cands = []
         for suid, s_cands in scan_cands_grouped.items():
-            s_anns = [a for a in test_anns if a["seriesuid"] == suid]
-            passed = [c for c in s_cands if c["calibrated_prob"] >= p_thresh]
-            hit_anns = set()
-            for c in passed:
-                if c["label"] == 1:
-                    hit_anns.add(c["matched_ann_idx"])
-                else:
-                    total_fp += 1
-            total_tp += len(hit_anns)
+            pool = s_cands[:cand_pool_limit]
+            selected = pool[:top_k_classify] if top_k_classify is not None else pool
+            mode_scan_cands[suid] = selected
+            all_mode_cands.extend(selected)
 
-        fp_per_scan = total_fp / len(test_mhd_files)
-        sens = total_tp / n_nodules
-        froc_eval_points.append({
-            "fp_per_scan": fp_per_scan,
-            "sens": sens,
-            "tp": total_tp,
-            "fp": total_fp,
-            "thresh": p_thresh,
-        })
+        all_p = sorted(list(set(c["calibrated_prob"] for c in all_mode_cands)), reverse=True)
+        if not all_p:
+            all_p = [0.5]
 
-    max_achievable_fp_scan = froc_eval_points[-1]["fp_per_scan"]
-    end_to_end_froc = {}
-    fp_targets = [1.0, 2.0, 4.0, 8.0]
+        froc_pts = []
+        for p_thresh in all_p:
+            total_tp = 0
+            total_fp = 0
+            for suid, s_cands in mode_scan_cands.items():
+                s_anns = [a for a in test_anns if a["seriesuid"] == suid]
+                passed = [c for c in s_cands if c["calibrated_prob"] >= p_thresh]
+                hit_anns = set()
+                for c in passed:
+                    if c["label"] == 1:
+                        hit_anns.add(c["matched_ann_idx"])
+                    else:
+                        total_fp += 1
+                total_tp += len(hit_anns)
 
-    for target in fp_targets:
-        valid = [pt for pt in froc_eval_points if pt["fp_per_scan"] <= target]
-        if valid:
-            best_pt = max(valid, key=lambda x: (x["sens"], -x["fp_per_scan"]))
-            actual_fp = best_pt["fp_per_scan"]
-            tp = best_pt["tp"]
-            sens = tp / n_nodules
-            ci_l, ci_h = wilson_score_interval(tp, n_nodules)
-            is_reachable = not (actual_fp < target and target > max_achievable_fp_scan)
-            reach_note = (
-                f"Achieved at actual {actual_fp:.2f} FP/scan"
-                if is_reachable
-                else f"Target {target:.1f} FP/scan is unreachable; maximum achievable is {max_achievable_fp_scan:.2f} FP/scan"
-            )
-            end_to_end_froc[str(target)] = {
-                "fp_per_scan_target": target,
-                "actual_fp_per_scan": round(actual_fp, 2),
-                "is_reachable": is_reachable,
-                "recalled_nodules": tp,
-                "total_nodules": n_nodules,
-                "evaluated_test_scans": len(test_mhd_files),
-                "sensitivity": round(sens, 4),
-                "wilson_95_ci": [round(ci_l, 4), round(ci_h, 4)],
-                "probability_threshold": round(best_pt["thresh"], 4),
-                "reachability_note": reach_note,
-                "status": "PRELIMINARY",
-            }
-            print(f"    Target {target:.1f} FP/scan: {reach_note} -> Sensitivity = {tp}/{n_nodules} ({sens*100:.1f}%, 95% Wilson CI: [{ci_l*100:.1f}%, {ci_h*100:.1f}%]) | Prob Thresh: {best_pt['thresh']:.4f}")
+            fp_scan = total_fp / len(test_mhd_files) if test_mhd_files else 0.0
+            sens = total_tp / n_nodules if n_nodules else 0.0
+            froc_pts.append({
+                "fp_per_scan": fp_scan,
+                "sens": sens,
+                "tp": total_tp,
+                "fp": total_fp,
+                "thresh": p_thresh,
+            })
+
+        max_fp_scan = froc_pts[-1]["fp_per_scan"] if froc_pts else 0.0
+        mode_targets = {}
+        for target in [1.0, 2.0, 4.0, 8.0]:
+            valid = [pt for pt in froc_pts if pt["fp_per_scan"] <= target]
+            if valid:
+                best_pt = max(valid, key=lambda x: (x["sens"], -x["fp_per_scan"]))
+                actual_fp = best_pt["fp_per_scan"]
+                tp = best_pt["tp"]
+                sens = tp / n_nodules if n_nodules else 0.0
+                ci_l, ci_h = wilson_score_interval(tp, n_nodules)
+                is_reachable = not (actual_fp < target and target > max_fp_scan)
+                reach_note = (
+                    f"Achieved at actual {actual_fp:.2f} FP/scan"
+                    if is_reachable
+                    else f"Target {target:.1f} FP/scan is unreachable; maximum achievable is {max_fp_scan:.2f} FP/scan"
+                )
+                mode_targets[str(target)] = {
+                    "fp_per_scan_target": target,
+                    "actual_fp_per_scan": round(actual_fp, 2),
+                    "is_reachable": is_reachable,
+                    "recalled_nodules": tp,
+                    "total_nodules": n_nodules,
+                    "evaluated_test_scans": len(test_mhd_files),
+                    "sensitivity": round(sens, 4),
+                    "sensitivity_pct": round(sens * 100.0, 1),
+                    "wilson_95_ci": [round(ci_l, 4), round(ci_h, 4)],
+                    "wilson_95_ci_pct": [round(ci_l * 100.0, 1), round(ci_h * 100.0, 1)],
+                    "probability_threshold": round(best_pt["thresh"], 4),
+                    "reachability_note": reach_note,
+                    "status": "PRELIMINARY",
+                }
+
+        primary_pt = mode_targets.get("1.0") or list(mode_targets.values())[0]
+        return {
+            "mode": mode_name,
+            "settings": settings_desc,
+            "evaluated_test_scans": len(test_mhd_files),
+            "total_test_nodules": n_nodules,
+            "max_achievable_fp_per_scan": round(max_fp_scan, 2),
+            "primary_operating_point": primary_pt,
+            "targets": mode_targets,
+        }
+
+    print("  Evaluating End-to-End FROC for Fast Triage Mode (pool 100 / top 20)...")
+    froc_fast_triage = _evaluate_froc_for_mode(
+        cand_pool_limit=100,
+        top_k_classify=20,
+        mode_name="Fast Triage Mode",
+        settings_desc="pool 100 / top 20",
+    )
+    print(f"    Fast Triage FROC @ 1.0 FP/scan target: Sens={froc_fast_triage['primary_operating_point']['sensitivity_pct']}% @ actual {froc_fast_triage['primary_operating_point']['actual_fp_per_scan']:.2f} FP/scan (95% CI: [{froc_fast_triage['primary_operating_point']['wilson_95_ci_pct'][0]}%, {froc_fast_triage['primary_operating_point']['wilson_95_ci_pct'][1]}%])")
+
+    print("  Evaluating End-to-End FROC for Full Analysis Mode (pool 800 / all candidates)...")
+    froc_full_mode = _evaluate_froc_for_mode(
+        cand_pool_limit=800,
+        top_k_classify=800,
+        mode_name="Full Analysis Mode",
+        settings_desc="pool 800 / all candidates",
+    )
+    print(f"    Full Mode FROC @ 1.0 FP/scan target: Sens={froc_full_mode['primary_operating_point']['sensitivity_pct']}% @ actual {froc_full_mode['primary_operating_point']['actual_fp_per_scan']:.2f} FP/scan (95% CI: [{froc_full_mode['primary_operating_point']['wilson_95_ci_pct'][0]}%, {froc_full_mode['primary_operating_point']['wilson_95_ci_pct'][1]}%])")
+
+    end_to_end_froc = froc_full_mode["targets"]
+    max_achievable_fp_scan = froc_full_mode["max_achievable_fp_per_scan"]
 
     disk_scans_note = (
         f"Only {total_disk_scans} scans available on disk (fewer than the 89 scans of full subset 3 test set); "
@@ -1277,7 +1319,13 @@ def evaluate_stage3_localization(
         "within_radius_fraction": top_op["recall"],
         "within_radius_pct": round(top_op["recall"] * 100.0, 1),
         "recall_vs_candidates_per_scan": recall_curve,
+        "mode_froc": {
+            "fast_triage": froc_fast_triage,
+            "full": froc_full_mode,
+        },
         "end_to_end_froc": end_to_end_froc,
+        "end_to_end_froc_fast_triage": froc_fast_triage["targets"],
+        "end_to_end_froc_full": froc_full_mode["targets"],
         "max_achievable_fp_per_scan": round(max_achievable_fp_scan, 2),
         "classifier_test_metrics": {
             "roc_auc": round(test_auc, 4),
@@ -1674,25 +1722,29 @@ def run_step4_evaluation(
             "interpretation": "Detections strictly within physical lesion boundary (r = diam / 2)",
         })
 
-        # End-to-End FROC (Detector + Fine-Tuned Classifier) at ACTUAL Operating Points
-        for fp_k, froc_v in loc_res.get("end_to_end_froc", {}).items():
-            f_ci = f"[{froc_v['wilson_95_ci'][0]*100:.1f}%, {froc_v['wilson_95_ci'][1]*100:.1f}%]"
-            if froc_v.get("is_reachable", True):
-                writer.writerow({
-                    "evaluation_type": "End-to-End FROC (Detector + Classifier)",
-                    "metric_name": f"Sensitivity @ actual {froc_v['actual_fp_per_scan']:.2f} FP/scan (Target {fp_k})",
-                    "metric_value": f"{froc_v['sensitivity']*100:.1f}% (95% Wilson CI: {f_ci})",
-                    "unit": "%",
-                    "interpretation": f"Matched {froc_v['recalled_nodules']}/{froc_v['total_nodules']} nodules at actual {froc_v['actual_fp_per_scan']:.2f} FP/scan (N={froc_v['evaluated_test_scans']} scans, prob thresh: {froc_v['probability_threshold']})",
-                })
-            else:
-                writer.writerow({
-                    "evaluation_type": "End-to-End FROC (Detector + Classifier)",
-                    "metric_name": f"Sensitivity @ Target {fp_k} FP/scan (UNREACHABLE)",
-                    "metric_value": f"{froc_v['sensitivity']*100:.1f}% (closest actual: {froc_v['actual_fp_per_scan']:.2f} FP/scan)",
-                    "unit": "%",
-                    "interpretation": froc_v.get("reachability_note", f"Target {fp_k} FP/scan is unreachable; maximum achievable is {froc_v['actual_fp_per_scan']:.2f} FP/scan"),
-                })
+        # End-to-End FROC (Detector + Fine-Tuned Classifier) for each mode under its exact settings
+        for mode_k, mode_v in loc_res.get("mode_froc", {}).items():
+            mode_lbl = mode_v["mode"]
+            mode_set = mode_v["settings"]
+            for fp_k, froc_v in mode_v.get("targets", {}).items():
+                f_ci = f"[{froc_v['wilson_95_ci'][0]*100:.1f}%, {froc_v['wilson_95_ci'][1]*100:.1f}%]"
+                eval_type = f"End-to-End FROC ({mode_lbl}: {mode_set})"
+                if froc_v.get("is_reachable", True):
+                    writer.writerow({
+                        "evaluation_type": eval_type,
+                        "metric_name": f"Sensitivity @ actual {froc_v['actual_fp_per_scan']:.2f} FP/scan (Target {fp_k})",
+                        "metric_value": f"{froc_v['sensitivity']*100:.1f}% (95% Wilson CI: {f_ci})",
+                        "unit": "%",
+                        "interpretation": f"Matched {froc_v['recalled_nodules']}/{froc_v['total_nodules']} nodules at actual {froc_v['actual_fp_per_scan']:.2f} FP/scan (N={froc_v['evaluated_test_scans']} scans, prob thresh: {froc_v['probability_threshold']})",
+                    })
+                else:
+                    writer.writerow({
+                        "evaluation_type": eval_type,
+                        "metric_name": f"Sensitivity @ Target {fp_k} FP/scan (UNREACHABLE)",
+                        "metric_value": f"{froc_v['sensitivity']*100:.1f}% (closest actual: {froc_v['actual_fp_per_scan']:.2f} FP/scan)",
+                        "unit": "%",
+                        "interpretation": froc_v.get("reachability_note", f"Target {fp_k} FP/scan is unreachable; maximum achievable is {froc_v['actual_fp_per_scan']:.2f} FP/scan"),
+                    })
 
         writer.writerow({
             "evaluation_type": "Model Attribution Only",

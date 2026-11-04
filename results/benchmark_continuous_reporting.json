@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-02T04:22:41Z",
+  "timestamp": "2026-11-04T06:58:21Z",
   "platform": {
     "os": "win32",
     "cpu_count": 16,
@@ -26,87 +26,87 @@
     "detector_candidate_pool_evaluated": 100,
     "standalone_detector_budget_candidates_per_scan": 800,
     "candidate_budget_distinction_note": "Fast triage classifies top-20 prioritized candidates (top_k=20) to guarantee sub-15s clinical latency (1.23s warm median, 13.4ms classification), whereas standalone Stage 3 evaluation benchmarks recall across up to 800 candidates/scan to characterize detector sensitivity ceiling.",
-    "cold_wall_time_ms": 1329.6,
-    "cold_wall_time_s": 1.33,
+    "cold_wall_time_ms": 1017.43,
+    "cold_wall_time_s": 1.017,
     "cold_stage_timings_ms": {
-      "dicom_qa": 10.25,
-      "preprocessing": 0.02,
-      "segmentation": 101.15,
-      "detection": 1196.41,
-      "classification": 17.11,
+      "dicom_qa": 10.24,
+      "preprocessing": 0.01,
+      "segmentation": 67.7,
+      "detection": 918.99,
+      "classification": 8.41,
       "calibration": 0.0,
       "report": 0.01
     },
-    "median_wall_time_ms": 1227.14,
-    "median_wall_time_s": 1.227,
-    "p95_wall_time_ms": 1729.86,
-    "p95_wall_time_s": 1.73,
-    "median_peak_ram_mb": 820.5,
-    "p95_peak_ram_mb": 841.1,
+    "median_wall_time_ms": 1049.77,
+    "median_wall_time_s": 1.05,
+    "p95_wall_time_ms": 1694.86,
+    "p95_wall_time_s": 1.695,
+    "median_peak_ram_mb": 821.6,
+    "p95_peak_ram_mb": 842.1,
     "time_budget_s": 15.0,
     "budget_compliance_status": "Within Budget",
     "budget_compliance_percent": 100.0,
     "stages": {
       "dicom_qa": {
-        "median_ms": 10.31,
-        "p95_ms": 10.56,
-        "mean_ms": 10.35
+        "median_ms": 10.41,
+        "p95_ms": 10.58,
+        "mean_ms": 10.42
       },
       "preprocessing": {
-        "median_ms": 0.03,
-        "p95_ms": 1371.08,
-        "mean_ms": 342.78
+        "median_ms": 0.01,
+        "p95_ms": 315.53,
+        "mean_ms": 78.89
       },
       "segmentation": {
-        "median_ms": 278.02,
-        "p95_ms": 337.64,
-        "mean_ms": 229.89
+        "median_ms": 72.46,
+        "p95_ms": 104.13,
+        "mean_ms": 82.05
       },
       "detection": {
-        "median_ms": 1108.59,
-        "p95_ms": 1390.97,
-        "mean_ms": 1176.09
+        "median_ms": 945.63,
+        "p95_ms": 1251.88,
+        "mean_ms": 1053.62
       },
       "classification": {
-        "median_ms": 13.36,
-        "p95_ms": 15.61,
-        "mean_ms": 13.26
+        "median_ms": 9.43,
+        "p95_ms": 10.12,
+        "mean_ms": 9.65
       },
       "calibration": {
         "median_ms": 0.0,
-        "p95_ms": 0.01,
+        "p95_ms": 0.0,
         "mean_ms": 0.0
       },
       "report": {
         "median_ms": 0.01,
-        "p95_ms": 0.08,
-        "mean_ms": 0.03
+        "p95_ms": 0.01,
+        "mean_ms": 0.01
       }
     }
   },
   "full_mode": {
-    "wall_time_ms": 2335.98,
-    "wall_time_s": 2.336,
+    "wall_time_ms": 13943.1,
+    "wall_time_s": 13.943,
     "stages_executed": {
       "radiomics_executed": true,
       "ensemble_executed": true,
       "mc_dropout_executed": true
     },
     "full_stage_timings_ms": {
-      "dicom_qa": 10.44,
-      "preprocessing": 0.02,
-      "segmentation": 84.05,
-      "detection": 969.88,
-      "classification": 9.89,
+      "dicom_qa": 10.13,
+      "preprocessing": 0.01,
+      "segmentation": 71.28,
+      "detection": 954.77,
+      "classification": 348.61,
       "calibration": 0.0,
-      "report": 0.0,
-      "radiomics": 45.58,
-      "ensemble": 0.06,
-      "uncertainty": 1120.71
+      "report": 0.19,
+      "radiomics": 7.19,
+      "ensemble": 0.03,
+      "uncertainty": 12546.09
     }
   },
   "cost_estimation": {
-    "triage_cost_usd_per_scan": 1.6e-05,
+    "triage_cost_usd_per_scan": 1.4e-05,
     "cost_rate_basis": "$0.048/CPU-hr"
   }
 }

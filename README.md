@@ -65,7 +65,7 @@ Lung-Cancer/
 │   ├── dicom/                          # DICOM processing & clinical interop
 │   │   ├── loader.py                   # Pydicom volumetric series reader
 │   │   ├── validator.py                # SOP Class, slice spacing, and metadata QA
-│   │   ├── deidentifier.py             # HIPAA Safe Harbor DICOM de-identification
+│   │   ├── deidentifier.py             # DICOM header de-identification
 │   │   ├── compatibility.py            # Multi-vendor scanner adaptation (GE, Siemens, Philips)
 │   │   └── pacs_service.py             # DICOMweb / PACS C-STORE and C-FIND service
 │   ├── preprocessing/                  # Volumetric CT normalization (ct_pipeline.py)
@@ -243,12 +243,11 @@ There is no trained deep learning detector checkpoint for Stage 3 in the reposit
   - **4.0 FP/scan Target**: Closest actual is 1.60 FP/scan — 29.4% Sensitivity (5/17 nodules; 95% Wilson CI: [13.3%, 53.1%]; probability threshold: 0.9849).
   - **8.0 FP/scan Target**: **Unreachable** (maximum achievable false positive rate is 1.60 FP/scan with current candidate pool; closest operating point is actual 1.60 FP/scan).
 - **Latency & Compute Benchmarks (Measured on Real Full-Size CT Series, 197 Slices via `benchmark_continuous_reporting.json`)**:
-  - Stage 3 Heuristic Candidate Detector: 1196.4 ms (cold), 1108.6 ms (warm median).
-  - Fast Triage Pipeline Total: 1.33 s (cold, 1329.6 ms), 1.23 s (warm median, 1227.1 ms), 1.73 s (warm P95, 1729.9 ms) -- within the < 15.0s budget (100% SLA compliance).
-  - Full Pipeline Mode Total: 2.34 s (2336.0 ms).
-  - Peak Memory RSS: 841.1 MB (Budget: < 10,000 MB).
-  - Estimated Compute Cost: $0.000016 per fast triage scan ($0.048/CPU-hr basis).
-  - Candidate Volume Distinction: Fast triage classifies the top-20 prioritized candidates (`top_k = 20`, requiring 13.4 ms classifier time) to maintain real-time clinical responsiveness (< 15.0s budget), whereas standalone Stage 3 evaluation benchmarks recall across budgets of up to 800 candidates/scan to characterize the detector ceiling.
+  - Fast Triage Pipeline Total: 2.22 s (cold, 2219.2 ms), 2.35 s (warm median, 2345.9 ms), 3.50 s (warm P95, 3496.0 ms) -- within the < 15.0s budget (100% SLA compliance).
+  - Full Pipeline Mode Total: 32.86 s (32860.8 ms).
+  - Peak Memory RSS: 840.1 MB (Budget: < 10,000 MB).
+  - Estimated Compute Cost: $0.000031 per fast triage scan ($0.048/CPU-hr basis).
+  - Candidate Volume Distinction: Fast triage classifies the top-20 prioritized candidates (`top_k = 20`) to maintain real-time clinical responsiveness (< 15.0s budget), whereas standalone Stage 3 evaluation benchmarks recall across budgets of up to 400 candidates/scan to characterize the detector ceiling.
 
 ## Observability Endpoints
 

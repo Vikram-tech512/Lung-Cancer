@@ -367,4 +367,111 @@ class TestMonitoring:
         hc = HealthChecker()
         assert hc is not None
 
+# ===========================================================================
+# 11. Empty Scan Verdict (NOT ASSESSED)
+# ===========================================================================
+class TestEmptyScanVerdict:
+    def test_no_candidates_verdict_not_assessed(self):
+        from backend.pipeline.job_queue import JobQueueManager, PipelineJob
+        from backend.api.service import STUDY_STORE
+        from backend.dicom.volume_manager import volume_manager, StudyVolume
 
+        # All-air volume (-1000 HU) will yield 0 detector candidates
+        vol = np.full((32, 32, 32), -1000.0, dtype=np.float32)
+        study_id = "TEST-EMPTY-SCAN-NOT-ASSESSED"
+        volume_manager.register_volume(study_id, StudyVolume(study_id, vol))
+        STUDY_STORE[study_id] = {
+            "study_id": study_id,
+            "patient_id": "TEST-PT",
+            "series_id": "TEST-SERIES",
+            "slice_count": 32,
+            "nodules": [],
+        }
+
+        try:
+            mgr = JobQueueManager()
+            job = PipelineJob(job_id="test-job-empty", study_id=study_id, mode="fast_triage")
+            mgr._execute_pipeline(job)
+
+            report = job.triage_report
+            assert report is not None
+            assert report["primary_verdict"] == "NOT ASSESSED"
+            assert report.get("lung_rads") is None or report.get("lung_rads") == "Not assessed"
+            assert "No candidates detected. This does not exclude nodules; review the scan manually." in report["action_recommendation"]
+            assert "No candidates detected. This does not exclude nodules; review the scan manually." in report["clinical_impression"]
+            assert report["primary_verdict"] != "BENIGN"
+            assert report["primary_verdict"] != "LOW_PROBABILITY"
+        finally:
+            STUDY_STORE.pop(study_id, None)
+            volume_manager._volumes.pop(study_id, None)
+
+
+# ===========================================================================
+# 11. 3D Region-Growing Nodule Segmentation
+# ===========================================================================
+class Test3DRegionGrowing:
+    def test_physical_to_voxel(self):
+        from backend.segmentation.morphology import physical_to_voxel
+        coord_xyz = (100.0, -50.0, 30.0)
+        origin_xyz = (0.0, -100.0, 10.0)
+        spacing_zyx = (2.0, 1.0, 0.5)
+
+        vz, vy, vx = physical_to_voxel(coord_xyz, origin_xyz, spacing_zyx)
+        assert vz == int(round((30.0 - 10.0) / 2.0)) == 10
+        assert vy == int(round((-50.0 - (-100.0)) / 1.0)) == 50
+        assert vx == int(round((100.0 - 0.0) / 0.5)) == 200
+
+    def test_region_grow_synthetic_sphere(self):
+        from backend.segmentation.morphology import region_grow_3d
+        vol = np.full((32, 32, 32), -800.0, dtype=np.float32)
+        center = (16, 16, 16)
+        radius_mm = 4.0
+        spacing = (1.0, 1.0, 1.0)
+
+        for z in range(32):
+            for y in range(32):
+                for x in range(32):
+                    dist = np.sqrt((z - 16)**2 + (y - 16)**2 + (x - 16)**2)
+                    if dist <= radius_mm:
+                        vol[z, y, x] = -100.0
+
+        res = region_grow_3d(
+            volume_hu=vol,
+            seed_zyx=center,
+            spacing_zyx_mm=spacing,
+            hu_min=-600.0,
+            hu_max=200.0,
+            max_radius_mm=10.0,
+            max_diameter_mm=30.0,
+        )
+
+        assert not res['is_empty']
+        assert not res['is_oversized']
+        assert 7.0 <= res['equivalent_diameter_mm'] <= 9.0
+        assert 200.0 <= res['volume_mm3'] <= 350.0
+
+    def test_region_grow_empty_outside_hu(self):
+        from backend.segmentation.morphology import region_grow_3d
+        vol = np.full((16, 16, 16), -950.0, dtype=np.float32)
+        res = region_grow_3d(
+            volume_hu=vol,
+            seed_zyx=(8, 8, 8),
+            hu_min=-600.0,
+            hu_max=200.0,
+        )
+        assert res['is_empty']
+        assert res['voxel_count'] == 0
+        assert res['equivalent_diameter_mm'] == 0.0
+
+    def test_region_grow_oversized(self):
+        from backend.segmentation.morphology import region_grow_3d
+        vol = np.full((40, 40, 40), -100.0, dtype=np.float32)
+        res = region_grow_3d(
+            volume_hu=vol,
+            seed_zyx=(20, 20, 20),
+            hu_min=-600.0,
+            hu_max=200.0,
+            max_radius_mm=25.0,
+            max_diameter_mm=15.0,
+        )
+        assert res['is_oversized']

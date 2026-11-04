@@ -1,7 +1,7 @@
 /**
  * frontend/src/services/api.ts
  * =============================
- * Unified API Client for Lung Cancer AI Research Platform.
+ * Unified API Client for Lung Nodule AI Research Platform.
  * Proxies through Vite / Nginx to FastAPI backend at port 8000.
  */
 

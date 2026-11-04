@@ -141,7 +141,7 @@ export const IntakePanel: React.FC<IntakePanelProps> = ({ onStudyLoaded }) => {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Strict HIPAA Safe Harbor de-identification is applied before any volumetric cache is generated.
+              DICOM header de-identification is applied before any volumetric cache is generated.
             </div>
             <button
               onClick={handleUpload}
@@ -268,7 +268,7 @@ export const IntakePanel: React.FC<IntakePanelProps> = ({ onStudyLoaded }) => {
                     <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <CheckCircle2 size={13} color="var(--status-success)" />
-                        <span>Direct patient identifiers stripped (18 HIPAA tags)</span>
+                        <span>Direct patient identifiers stripped (DICOM header de-identification)</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <CheckCircle2 size={13} color="var(--status-success)" />

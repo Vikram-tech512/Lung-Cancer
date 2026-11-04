@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { API_BASE, api } from '../services/api';
 import { Badge } from '../components/ui/Badge';
+import { calculateMultiplanarLocalization } from '../utils/coordinateTransforms';
 
 export interface FindingItem {
   nodule_id: string;
@@ -311,29 +312,27 @@ export const CTViewerPanel: React.FC<CTViewerPanelProps> = ({
         const cy = finding.center_zyx[1];
         const cx = finding.center_zyx[2];
 
-        // Check if candidate intersects current viewing slice
-        let distFromSlice = 0;
-        let centerPxX = (cx / 512) * W;
-        let centerPxY = (cy / 512) * H;
+        const loc = calculateMultiplanarLocalization(
+          { nodule_id: finding.nodule_id, center_zyx: finding.center_zyx as [number, number, number], diameter_mm: finding.diameter_mm },
+          sliceIndex,
+          viewingPlane,
+          {
+            matrix_width: 512,
+            matrix_height: 512,
+            total_slices: totalSlices,
+            pixel_spacing_x_mm: pixelSpacing[0],
+            pixel_spacing_y_mm: pixelSpacing[1],
+            slice_thickness_mm: sliceThickness,
+          },
+          { width: W, height: H },
+          { zoom, panX: pan.x, panY: pan.y }
+        );
 
-        if (viewingPlane === 'axial') {
-          distFromSlice = Math.abs(sliceIndex - cz) * sliceThickness;
-          centerPxX = (cx / 512) * W;
-          centerPxY = (cy / 512) * H;
-        } else if (viewingPlane === 'coronal') {
-          distFromSlice = Math.abs(sliceIndex - cy) * pixelSpacing[0];
-          centerPxX = (cx / 512) * W;
-          centerPxY = (cz / totalSlices) * H;
-        } else {
-          distFromSlice = Math.abs(sliceIndex - cx) * pixelSpacing[1];
-          centerPxX = (cy / 512) * W;
-          centerPxY = (cz / totalSlices) * H;
-        }
-
-        const radiusMm = finding.diameter_mm / 2.0;
-        if (distFromSlice <= radiusMm + 2.0) {
+        if (loc.isIntersecting) {
+          const centerPxX = loc.canvasX;
+          const centerPxY = loc.canvasY;
+          const radiusPx = Math.max(12, loc.canvasRadius);
           const isSelected = finding.nodule_id === selectedFindingId;
-          const radiusPx = Math.max(12, (finding.diameter_mm / (pixelSpacing[0] * 2)) * (W / 512));
 
           // Draw bounding box
           ctx.strokeStyle = isSelected ? '#ef4444' : '#f59e0b';

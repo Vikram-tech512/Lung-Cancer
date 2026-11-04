@@ -119,3 +119,25 @@ def test_upload_mhd_raw_archive_success(client):
     assert stored["modality"] == "CT"
     assert stored["slice_count"] > 0
     assert stored["mhd_file"] is not None
+
+def test_list_examples_when_env_unset(client, monkeypatch):
+    monkeypatch.delenv("LUNA16_DATA_DIR", raising=False)
+    res = client.get("/api/v2/examples")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["examples"] == []
+    assert "not configured" in data["message"].lower() or "unset" in data["message"].lower()
+
+
+def test_load_example_rejects_path_traversal(client):
+    for bad_name in ["../secret.mhd", "..\\secret.mhd", "subset0/scan.mhd", "sub/../scan.mhd"]:
+        res = client.post("/api/v2/examples", json={"filename": bad_name})
+        assert res.status_code == 400
+        assert "path separators" in res.json()["detail"].lower() or "traversal" in res.json()["detail"].lower()
+
+
+def test_load_example_missing_file_returns_404(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("LUNA16_DATA_DIR", str(tmp_path))
+    res = client.post("/api/v2/examples", json={"filename": "non_existent_scan.mhd"})
+    assert res.status_code == 404
+    assert "not found" in res.json()["detail"].lower()

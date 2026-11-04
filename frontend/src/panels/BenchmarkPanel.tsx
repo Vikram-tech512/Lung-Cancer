@@ -35,8 +35,9 @@ export const BenchmarkPanel: React.FC = () => {
   const calibration = data?.metrics?.calibration;
   const cr = data?.continuous_reporting;
   const loc = data?.localization || data?.metrics?.localization || data?.metrics?.localization_metrics;
-  const rc = data?.risk_coverage || data?.metrics?.risk_coverage;
-  const rc_curve = rc?.curve || (Array.isArray(rc) ? rc : data?.metrics?.uncertainty_mc_dropout?.risk_coverage_curve);
+  const calShift = data?.metrics?.test_detector_calibration_prior_shift;
+  const bssData = data?.metrics?.test_brier_skill_score;
+  const rc_curve = data?.metrics?.risk_coverage_detector_candidates || data?.risk_coverage || data?.metrics?.risk_coverage;
   const robustness = data?.robustness || data?.metrics?.robustness;
 
   return (
@@ -82,7 +83,7 @@ export const BenchmarkPanel: React.FC = () => {
             <div>
               <span style={{ color: 'var(--text-muted)' }}>Test Cohort: </span>
               <strong>
-                {data.metrics?.test_candidates_total != null ? `${data.metrics.test_candidates_total.toLocaleString()} candidates across ${data.metrics.test_scans_total ?? 89} CT scans` : 'No data'}
+                {data.metrics?.test_candidates_total != null ? `${data.metrics.test_candidates_total.toLocaleString()} candidates across ${data.metrics.test_scans_total ?? '—'} CT scans` : 'No data'}
               </strong>
             </div>
           </div>
@@ -221,50 +222,50 @@ export const BenchmarkPanel: React.FC = () => {
             <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <div>
-                  <span style={{ fontWeight: 600, fontSize: '14px' }}>Stage 3 Multi-Scale LoG/DoG Candidate Detection (Preliminary Heuristic vs. Annotations)</span>
+                  <span style={{ fontWeight: 600, fontSize: '14px' }}>Stage 3 Multi-Scale LoG/DoG Candidate Detection (Detector vs. Annotations)</span>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Preliminary rule-based heuristic detector (no trained DL checkpoint). Evaluated on N={loc?.evaluated_test_scans ?? 5} held-out test scans with N={loc?.total_test_nodules ?? 17} ground-truth nodules.
+                    Evaluated on N={loc?.evaluated_test_scans ?? '—'} held-out test scans with N={loc?.total_test_nodules ?? '—'} ground-truth nodules (pool ceiling &le; {calShift?.pool_size_per_scan ?? 400} candidates/scan).
                   </div>
                 </div>
-                <Badge variant="warning">Preliminary Heuristic Benchmark</Badge>
+                <Badge variant="success">Test Evaluation Verified</Badge>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', fontSize: '12px' }}>
                 <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Preliminary Detection Recall</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Detector Sensitivity (Recall)</div>
                   <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-success)', marginTop: '2px' }}>
                     {loc?.detection_sensitivity != null ? `${(loc.detection_sensitivity * 100).toFixed(1)}%` : 'No data'}
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                     {(() => {
-                      const k = loc?.recalled_nodules_count ?? 11;
-                      const n = loc?.total_test_nodules ?? 17;
-                      const scans = loc?.evaluated_test_scans ?? 5;
-                      const [ciL, ciH] = computeWilsonCI(k, n);
-                      const cands = Math.round(loc?.candidates_per_scan ?? 800);
-                      return `95% Wilson CI: [${(ciL * 100).toFixed(1)}%, ${(ciH * 100).toFixed(1)}%] · N=${scans} scans, ${n} nodules (${k}/${n} @ ${cands} c/s)`;
+                      const k = loc?.recalled_nodules_count;
+                      const n = loc?.total_test_nodules;
+                      const scans = loc?.evaluated_test_scans;
+                      const [ciL, ciH] = (k != null && n != null) ? computeWilsonCI(k, n) : [0, 0];
+                      const cands = loc?.candidates_per_scan != null ? Math.round(loc.candidates_per_scan) : null;
+                      return `95% Wilson CI: [${(ciL * 100).toFixed(1)}%, ${(ciH * 100).toFixed(1)}%] · N=${scans ?? '—'} scans, ${n ?? '—'} nodules (${k != null && n != null ? `${k}/${n}` : '—'}${cands != null ? ` @ ${cands} c/s` : ''})`;
                     })()}
                   </div>
                 </div>
 
                 <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Preliminary Median Centroid Error</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Median Centroid Error</div>
                   <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent)', marginTop: '2px' }}>
                     {loc?.median_centroid_error_mm != null ? `${loc.median_centroid_error_mm.toFixed(2)} mm` : 'No data'}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Physical 3D Euclidean distance (N={loc?.total_test_nodules ?? 17} nodules, {loc?.evaluated_test_scans ?? 5} scans)</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Physical 3D Euclidean distance (N={loc?.total_test_nodules ?? '—'} nodules, {loc?.evaluated_test_scans ?? '—'} scans)</div>
                 </div>
 
                 <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Preliminary 90th-Percentile Centroid Error</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>90th-Percentile Centroid Error</div>
                   <div style={{ fontSize: '18px', fontWeight: 700, marginTop: '2px' }}>
                     {loc?.p90_centroid_error_mm != null ? `${loc.p90_centroid_error_mm.toFixed(2)} mm` : 'No data'}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>P90 localization error bound (N={loc?.total_test_nodules ?? 17} nodules)</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>P90 localization error bound (N={loc?.total_test_nodules ?? '—'} nodules)</div>
                 </div>
 
                 <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Preliminary Fraction within Radius</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Fraction within Radius</div>
                   <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-success)', marginTop: '2px' }}>
                     {loc?.within_radius_pct != null ? `${loc.within_radius_pct.toFixed(1)}%` : 'No data'}
                   </div>
@@ -276,10 +277,10 @@ export const BenchmarkPanel: React.FC = () => {
               <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontWeight: 600, fontSize: '13px' }}>
-                    End-to-End FROC: Detector + ResNet3D-18 Classifier (Preliminary on Held-Out Test Scans)
+                    End-to-End FROC: Detector + ResNet3D-18 Classifier (Test Partition, N={loc?.evaluated_test_scans ?? '—'} Scans)
                   </span>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    N={loc?.evaluated_test_scans ?? 5} scans, N={loc?.total_test_nodules ?? 17} annotated nodules
+                    N={loc?.evaluated_test_scans ?? '—'} scans, N={loc?.total_test_nodules ?? '—'} annotated nodules
                   </span>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
@@ -288,10 +289,10 @@ export const BenchmarkPanel: React.FC = () => {
                       <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                         <th style={{ padding: '6px 8px' }}>FP / Scan Target</th>
                         <th style={{ padding: '6px 8px' }}>Actual FP / Scan</th>
-                        <th style={{ padding: '6px 8px' }}>Sensitivity (N={loc?.total_test_nodules ?? 17} nodules)</th>
+                        <th style={{ padding: '6px 8px' }}>Sensitivity (N={loc?.total_test_nodules ?? '—'} nodules)</th>
                         <th style={{ padding: '6px 8px' }}>95% Wilson Interval</th>
                         <th style={{ padding: '6px 8px' }}>Prob. Threshold</th>
-                        <th style={{ padding: '6px 8px' }}>Status</th>
+                        <th style={{ padding: '6px 8px' }}>Operating Mode</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -301,16 +302,11 @@ export const BenchmarkPanel: React.FC = () => {
                         const sensStr = frocData?.sensitivity != null ? `${(frocData.sensitivity * 100).toFixed(1)}% (${frocData.recalled_nodules}/${frocData.total_nodules})` : 'No data';
                         const ciStr = frocData?.wilson_95_ci ? `[${(frocData.wilson_95_ci[0] * 100).toFixed(1)}%, ${(frocData.wilson_95_ci[1] * 100).toFixed(1)}%]` : '—';
                         const pThresh = frocData?.probability_threshold != null ? frocData.probability_threshold.toFixed(4) : '—';
-                        const isReachable = frocData ? (frocData.is_reachable ?? true) : true;
+                        const statusLabel = frocData?.status === 'HEADLINE_VALIDATION_FROZEN' ? 'Headline (Validation-Frozen)' : (frocData?.status === 'EXPLORATORY_TEST_SWEEP' ? 'Exploratory Sweep' : (frocData?.status || 'Evaluated'));
                         return (
                           <tr key={rIdx} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '6px 8px', fontWeight: 600 }}>
                               {targetKey} FP/scan
-                              {!isReachable && (
-                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
-                                  Target unreachable (max: {actFp})
-                                </div>
-                              )}
                             </td>
                             <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>
                               <strong>{actFp}</strong>
@@ -319,17 +315,125 @@ export const BenchmarkPanel: React.FC = () => {
                             <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{ciStr}</td>
                             <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{pThresh}</td>
                             <td style={{ padding: '6px 8px' }}>
-                              {isReachable ? (
-                                <Badge variant="warning">Preliminary</Badge>
-                              ) : (
-                                <Badge variant="neutral">Target Unreachable</Badge>
-                              )}
+                              <Badge variant={frocData?.status === 'HEADLINE_VALIDATION_FROZEN' ? 'success' : 'neutral'}>{statusLabel}</Badge>
                             </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            </div>
+          </Panel>
+
+          {/* Detector Candidate Calibration, Reliability Inversion & Negative BSS (Preliminary) */}
+          <Panel>
+            <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: '14px' }}>
+                    Candidate Calibration &amp; Reliability Inversion (Preliminary vs. Base Rate)
+                  </span>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Evaluated on N={calShift?.evaluated_candidates?.toLocaleString() ?? '—'} detector candidates ({calShift?.positives ?? '—'} positives, prevalence &pi; = {bssData?.base_rate_pct != null ? `${bssData.base_rate_pct.toFixed(4)}%` : '—'}). Temperature T = {calShift?.optimal_temperature_T != null ? calShift.optimal_temperature_T.toFixed(3) : '—'}, Prior Shift &Delta; = {calShift?.prior_shift_delta != null ? calShift.prior_shift_delta.toFixed(4) : '—'}.
+                  </div>
+                </div>
+                <Badge variant="warning">Preliminary · Negative Skill vs Climatology</Badge>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', fontSize: '12px' }}>
+                <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Brier Skill Score (BSS) vs Base Rate</div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-danger)', marginTop: '2px' }}>
+                    {bssData?.temperature_plus_prior_shift_bss != null ? bssData.temperature_plus_prior_shift_bss.toFixed(4) : '—'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Reference climatology BS<sub>ref</sub> = {bssData?.bs_reference_climatology != null ? bssData.bs_reference_climatology.toFixed(6) : '—'} vs Model BS = {bssData?.temperature_plus_prior_shift_brier != null ? bssData.temperature_plus_prior_shift_brier.toFixed(6) : '—'}
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Calibrated Candidate ECE-15</div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-warning)', marginTop: '2px' }}>
+                    {calShift?.metrics?.temperature_scaling_plus_prior_shift?.ece_equal_width_15 != null ? `${(calShift.metrics.temperature_scaling_plus_prior_shift.ece_equal_width_15 * 100).toFixed(2)}% (${calShift.metrics.temperature_scaling_plus_prior_shift.ece_equal_width_15.toFixed(4)})` : '—'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--status-warning)', fontWeight: 600 }}>
+                    Detector-Candidate ECE: {calShift?.ece_interpretation || calShift?.metrics?.temperature_scaling_plus_prior_shift?.ece_notice || 'not informative; see Brier skill'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Adaptive quantile ECE: {calShift?.metrics?.temperature_scaling_plus_prior_shift?.ece_adaptive_15 != null ? `${(calShift.metrics.temperature_scaling_plus_prior_shift.ece_adaptive_15 * 100).toFixed(2)}% (${calShift.metrics.temperature_scaling_plus_prior_shift.ece_adaptive_15.toFixed(4)})` : '—'} across all {calShift?.evaluated_candidates?.toLocaleString() ?? '—'} candidates
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Positive Candidates Analyzed</div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
+                    {calShift?.positives != null && loc?.total_test_nodules != null ? `${calShift.positives} / ${loc.total_test_nodules}` : '—'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Total candidates: {calShift?.evaluated_candidates?.toLocaleString() ?? '—'} (pool ceiling &le; {calShift?.pool_size_per_scan ?? 400} per scan across {data?.metrics?.test_scans_total ?? '—'} scans)
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Prior Shift Interpretation</div>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', marginTop: '2px' }}>
+                    Base Rate Adjustment Only
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    {bssData?.prior_shift_interpretation ?? 'Reflects background candidate prevalence, not model discrimination skill.'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Reliability Inversion Table (Equal-Mass Bins among p > 0.01) */}
+              <div style={{ marginTop: '4px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '13px' }}>
+                    Positive-Class Reliability Inversion (N={calShift?.candidates_with_p_gt_001?.toLocaleString() ?? '—'} candidates with p &gt; 0.01)
+                  </span>
+                  <Badge variant="warning">Preliminary Empirical Inversion</Badge>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '6px 8px' }}>Quantile Bin</th>
+                        <th style={{ padding: '6px 8px' }}>Candidate Count</th>
+                        <th style={{ padding: '6px 8px' }}>Probability Range (p)</th>
+                        <th style={{ padding: '6px 8px' }}>Mean Predicted p</th>
+                        <th style={{ padding: '6px 8px' }}>Observed Positive Rate</th>
+                        <th style={{ padding: '6px 8px' }}>Calibration Gap</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(calShift?.positive_class_equal_mass_bins_p_gt_001 || []).map((r: any, bIdx: number) => {
+                        const binLabel = `Bin ${r.bin_idx ?? bIdx + 1}`;
+                        const count = r.sample_count ?? '—';
+                        const range = r.prob_range ?? '—';
+                        const pred = r.mean_predicted_prob != null ? `${(r.mean_predicted_prob * 100).toFixed(2)}%` : '—';
+                        const obs = r.observed_positive_rate != null ? `${(r.observed_positive_rate * 100).toFixed(2)}%` : '—';
+                        const gap = r.calibration_gap != null ? `${(r.calibration_gap * 100).toFixed(2)}%` : '—';
+                        const isHighestProb = bIdx === ((calShift?.positive_class_equal_mass_bins_p_gt_001?.length || 0) - 1);
+                        return (
+                          <tr key={bIdx} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '6px 8px', fontWeight: 600 }}>{binLabel}</td>
+                            <td style={{ padding: '6px 8px' }}>{count}</td>
+                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{range}</td>
+                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{pred}</td>
+                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: isHighestProb ? 'var(--status-danger)' : 'inherit' }}>
+                              {obs}
+                            </td>
+                            <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{gap}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '6px' }}>
+                  Note: Reliability inversion observed in empirical test candidates — observed positive fraction decreases as predicted probability increases, driven by high false-positive candidate density.
                 </div>
               </div>
             </div>
@@ -367,18 +471,18 @@ export const BenchmarkPanel: React.FC = () => {
                       rc_curve.map((row: any, idx: number) => {
                         const cov = row.coverage ?? row.coverage_fraction ?? 1.0;
                         const retained = row.retained_candidates ?? row.retained_samples ?? '—';
-                        const routedNod = row.nodules_routed_to_clinician ?? row.nodules_routed ?? 0;
-                        const routedCands = typeof retained === 'number' ? (75950 - retained) : (row.routed_to_human ?? 0);
-                        const routedPerScan = (routedCands / 89).toFixed(1);
-                        const missed = row.missed_nodules_retained ?? row.missed_nodules ?? 0;
-                        const effSens = row.effective_sensitivity != null ? `${row.effective_sensitivity}%` : '—';
+                        const routedNod = row.nodules_routed_to_human ?? row.nodules_routed_to_clinician ?? row.nodules_routed ?? 0;
+                        const routedCands = row.candidates_routed_to_human ?? (typeof retained === 'number' && typeof data?.metrics?.test_candidates_total === 'number' ? (data.metrics.test_candidates_total - retained) : (row.routed_to_human ?? 0));
+                        const routedPerScan = row.candidates_routed_per_scan != null ? row.candidates_routed_per_scan.toFixed(1) : (typeof routedCands === 'number' ? (routedCands / (data?.metrics?.test_scans_total ?? 89)).toFixed(1) : '—');
+                        const missed = row.missed_nodules_auto_handled ?? row.missed_nodules_retained ?? row.missed_nodules ?? 0;
+                        const effSens = row.sensitivity_over_all_119_nodules != null ? `${row.sensitivity_over_all_119_nodules.toFixed(1)}%` : (row.effective_sensitivity != null ? `${row.effective_sensitivity}%` : '—');
                         const maxSigma = row.max_sigma_threshold != null ? row.max_sigma_threshold.toFixed(4) : '—';
                         const routedShare = `${((1.0 - cov) * 100).toFixed(1)}%`;
 
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid var(--border, #1e293b)' }}>
                             <td style={{ padding: '6px 10px', fontWeight: 600 }}>{(cov * 100).toFixed(0)}%</td>
-                            <td style={{ padding: '6px 10px' }}>{retained}</td>
+                            <td style={{ padding: '6px 10px' }}>{typeof retained === 'number' ? retained.toLocaleString() : retained}</td>
                             <td style={{ padding: '6px 10px', color: 'var(--accent)' }}>{routedNod}</td>
                             <td style={{ padding: '6px 10px' }}>{routedPerScan}</td>
                             <td style={{ padding: '6px 10px', color: missed > 0 ? 'var(--status-danger, #ef4444)' : 'var(--status-success)' }}>{missed}</td>

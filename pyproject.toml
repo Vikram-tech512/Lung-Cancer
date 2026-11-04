@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name            = "lung-cancer-ai-platform"
 version         = "2.0.0"
-description     = "Clinical-grade full-stack AI platform for volumetric thoracic CT analysis"
+description     = "Research-grade full-stack AI platform for volumetric thoracic CT analysis"
 readme          = "README.md"
 requires-python = ">=3.11"
 license         = "MIT"

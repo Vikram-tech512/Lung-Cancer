@@ -280,7 +280,8 @@ class JobQueueManager:
 
         # Run heuristic multi-scale DoG candidate detector
         from backend.pipeline.stages.detection import DetectionStage
-        detector = DetectionStage(max_candidates=100)
+        cand_pool_max = 800 if job.mode == "full" else 100
+        detector = DetectionStage(max_candidates=cand_pool_max)
         detected_cands = detector.detect_candidates(
             volume=raw_vol,
             raw_volume=raw_vol,
@@ -378,13 +379,13 @@ class JobQueueManager:
             usage_dict = meter.finalize().to_dict()
             job.triage_report = {
                 "study_id": job.study_id,
-                "status": "No candidates above threshold; sensitivity is limited",
+                "status": "No candidates detected. This does not exclude nodules; review the scan manually.",
                 "nodule_count": 0,
                 "findings": [],
-                "primary_verdict": "BENIGN",
-                "lung_rads": "Lung-RADS 1 (Negative)",
-                "clinical_impression": "No candidates above threshold; sensitivity is limited.",
-                "action_recommendation": "Continue standard routine screening interval.",
+                "primary_verdict": "NOT ASSESSED",
+                "lung_rads": None,
+                "clinical_impression": "No candidates detected. This does not exclude nodules; review the scan manually.",
+                "action_recommendation": "No candidates detected. This does not exclude nodules; review the scan manually.",
                 "disclaimer": "AI-generated suggestion, requires clinician review.",
                 "usage": usage_dict,
             }
@@ -406,7 +407,7 @@ class JobQueueManager:
 
         classified_findings: List[Dict[str, Any]] = []
         # Sort candidates and evaluate top-K (K=20)
-        top_k = candidates[:20]
+        top_k = candidates[:20] if job.mode == 'fast_triage' else candidates[:800]
         meter.record_candidate_crops(len(top_k))
 
         for cand in top_k:

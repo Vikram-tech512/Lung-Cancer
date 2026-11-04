@@ -39,20 +39,20 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  // Clinical Operations
-  { id: 'viewer',       label: 'Diagnostic Workstation',  category: 'clinical', icon: Eye },
-  { id: 'workstation',  label: 'Case Archive',            category: 'clinical', icon: Activity },
-  { id: 'intake',       label: 'DICOM Intake & QC',       category: 'clinical', icon: Upload },
-  { id: 'verdict',      label: 'Radiology Report',        category: 'clinical', icon: FileText },
-  { id: 'morphometry',  label: '3D Morphometry',          category: 'clinical', icon: Ruler },
-  { id: 'ai-analysis',  label: 'Model Inference',         category: 'clinical', icon: BrainCircuit },
-  { id: 'caselog',      label: 'Case Audit Log',          category: 'clinical', icon: Database },
+  // Clinical operations
+  { id: 'viewer',       label: 'Diagnostic workstation',  category: 'clinical', icon: Eye },
+  { id: 'workstation',  label: 'Case archive',            category: 'clinical', icon: Activity },
+  { id: 'intake',       label: 'DICOM intake & QC',       category: 'clinical', icon: Upload },
+  { id: 'verdict',      label: 'Radiology report',        category: 'clinical', icon: FileText },
+  { id: 'morphometry',  label: '3D morphometry',          category: 'clinical', icon: Ruler },
+  { id: 'ai-analysis',  label: 'Model inference',         category: 'clinical', icon: BrainCircuit },
+  { id: 'caselog',      label: 'Case audit log',          category: 'clinical', icon: Database },
 
-  // Model & Research Evaluation
-  { id: 'benchmark',    label: 'Benchmark Cohort',        category: 'research', icon: Award },
-  { id: 'experiments',  label: 'Experiment Runs',         category: 'research', icon: GitBranch },
-  { id: 'training',     label: 'Training & Loss',         category: 'research', icon: Cpu },
-  { id: 'registry',     label: 'Model Registry',          category: 'research', icon: Box },
+  // Model & research evaluation
+  { id: 'benchmark',    label: 'Benchmark cohort',        category: 'research', icon: Award },
+  { id: 'experiments',  label: 'Experiment runs',         category: 'research', icon: GitBranch },
+  { id: 'training',     label: 'Training & loss',         category: 'research', icon: Cpu },
+  { id: 'registry',     label: 'Model registry',          category: 'research', icon: Box },
 ];
 
 export const App: React.FC = () => {
@@ -127,43 +127,6 @@ export const App: React.FC = () => {
         fontSize: '13px',
       }}
     >
-      {/* Persistent Regulatory Research Notice Strip */}
-      <div
-        style={{
-          background: '#241a08',
-          borderBottom: '1px solid #573e0e',
-          color: '#fbbf24',
-          fontSize: '11px',
-          fontWeight: 600,
-          letterSpacing: '0.04em',
-          textAlign: 'center',
-          padding: '3px 12px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px',
-          zIndex: 100,
-          flexShrink: 0,
-        }}
-      >
-        <span>RESEARCH USE ONLY — Investigational Prototype — Not Cleared for Standalone Diagnostic Decisions</span>
-        {isSyntheticStudy && (
-          <span
-            style={{
-              background: '#3f2d08',
-              border: '1px solid #d97706',
-              color: '#fef3c7',
-              padding: '1px 6px',
-              borderRadius: '2px',
-              fontSize: '10px',
-              fontWeight: 700,
-            }}
-          >
-            SYNTHETIC DEMO DATA
-          </span>
-        )}
-      </div>
-
       {/* Top Bar: Case ID, Patient ID, Study Date, Modality */}
       <header
         style={{
